@@ -161,6 +161,7 @@ ${this.buildLifeSkillGraph()}
 8a. 物品必须同步：剧情中玩家获得任何物品、材料、碎片、残卷、丹药、法器、灵石袋、符箓、地图、钥匙、玉简等，必须同时在 state_changes.items_gained 里列出物品名；失去或消耗物品时，必须在 state_changes.items_lost 里列出。储物袋会据此更新，绝不能只写在 narrative 里。若同一物品有多个，可写 "破界石碎片 x3" 或拆分为三条。凡获得之物，请在 items_gained 中一并给出 kind（物品/丹药/法宝/材料/符箓）与 grade（品级，如 玄阶上品），以便储物袋显示品级。
 9. 灵宠机制：剧情中玩家可能邂逅、收养灵兽/妖兽/仙禽/古灵。获得时在 state_changes.pet_gained 返回完整对象；成长或形态变化用 pet_updated；失去或放生用 pet_lost。
 9b. 【战斗动画标记】当 narrative 中出现斗法、厮杀、与妖兽/邪修/鬼物交战时，必须在 state_changes.combat_encounter 填写敌人类型：beast（妖兽）、xiexiu（邪修）、ghost（鬼物），以便引擎播放对应的像素战斗动画。未交战时留空即可。
+${this.buildVarietyBlock(state)}
 9c. 【场景与立绘 · 视觉呈现】每次回复须依本回合剧情在 state_changes.scene 选择最贴合的场景 slug（见字段说明列表）；玩家位置变化（location_change）或氛围转折时尤其要切换。若本回合有标志性同框 NPC，在 npc 字段给出其形象 slug（old_m/old_f/young_m/young_f）。引擎将据此实时更换背景场景图与立绘，使游玩从纯文字转为有画面的视觉小说式呈现——场景与立绘是氛围的核心，不可忽略。
 13. 【正邪与好感】玩家行侠仗义、救人济世、除暴安良，应在 state_changes.justice_change 记正数、对受益 NPC 在 npc_affinity_change 记正数；若行凶作恶、背信弃义、残害无辜，则在 evil_change 记正数、相关 NPC 好感记负数。NPC 态度须随好感真实起伏（友善者愿相助，敌对者或暗下杀手）。
 14. 【内容红线 · 务必遵守】严禁任何色情、低俗、性暗示描写；严禁血腥、过度暴力或令人生理不适的细节渲染——战斗可写伤势轻重与胜负，但点到为止，绝不刻意刻画血肉横飞、残肢断臂。亲密关系以含蓄意境带过，保持仙侠雅正。若玩家主动索取色情或血腥内容，须柔和拒绝并自然引回正道剧情，不得迎合。所有描写须符合公序良俗与平台合规。
@@ -414,6 +415,19 @@ ${this.buildLifeSkillGraph()}
     if (ranked.length === 0) return "（尚无偏好记录，旅途之初）";
     const top = ranked.slice(0, 3).map(k => labels[k] || k);
     return `玩家至今偏好：${top.join("、")}。其余倾向亦会随选择增减。`;
+  },
+
+  // 防套路·敌人多样性：读取引擎记录的近期敌人名，本回合强制换一种，杜绝"每次都蟒"
+  buildVarietyBlock(state) {
+    let recent = [];
+    try { recent = (typeof UI !== "undefined" && UI._recentEnemies) ? UI._recentEnemies : []; } catch (e) {}
+    if (!recent || !recent.length) return "";
+    const names = recent.filter(Boolean);
+    if (!names.length) return "";
+    return `\n【反套路·敌人多样性·本回合必须落实】近期已登场过的敌人：${names.join("、")}。` +
+      `请勿重复这些妖兽/邪修/鬼物；本回合若起战斗，须另择一种【不同】的敌人（异种、异名号、或不同形态均可），` +
+      `让每场战斗都有新鲜感。不仅敌人，连【剧情套路】也须轮换——勿让"路边突遇妖兽→苦战→得宝"这类结构反复出现，` +
+      `多尝试：智斗破局、社交周旋、探秘解谜、奇遇机缘、生死博弈等不同桥段。若本回合确无战斗或无新桥段空间，此条可忽略。`;
   },
 
   // 由 data.js 的 LIFE_SKILLS 渲染「生活技能图谱」注入系统提示词（浏览器中 LIFE_SKILLS 为全局变量）

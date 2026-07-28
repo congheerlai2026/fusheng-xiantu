@@ -1544,14 +1544,140 @@ const UI = {
     return map[t] || "";
   },
 
-  // 根据敌人类型选择素材
+  // ============ 敌人多样性系统（妖兽/邪修/鬼物各有多种，随机抽取且防连重复） ============
+  // 每条目：slug 唯一标识；name 显示名；file 走现成 webp；否则用 cfg 生成像素 SVG 立绘
+  ENEMY_POOL: {
+    beast: [
+      { slug: "mang",  name: "赤鳞蟒",   cfg: { body: "#3f8f4f", belly: "#cfe8c2", eye: "#ffd93d" }, feats: ["tail", "fangs"] },
+      { slug: "hu",    name: "斑斓虎",   cfg: { body: "#e08a2b", belly: "#fbe6c8", eye: "#15110c" }, feats: ["stripes", "fangs"] },
+      { slug: "ying",  name: "裂风鹰",   cfg: { body: "#7a5230", belly: "#e3cfa6", eye: "#ffce3a" }, feats: ["wings", "beak"] },
+      { slug: "lang",  name: "啸月狼",   file: "assets/enemy_wolf.webp" },
+      { slug: "zhu",   name: "钢鬃野猪", cfg: { body: "#5b4636", belly: "#cdbfa8", eye: "#15110c" }, feats: ["tusks"] },
+      { slug: "xie",   name: "毒尾蝎",   cfg: { body: "#6a3d8a", belly: "#caa6e0", eye: "#ff5b5b" }, feats: ["tail", "stinger"] },
+      { slug: "xiong", name: "撼山熊",   cfg: { body: "#6b4a2f", belly: "#caa982", eye: "#15110c" }, feats: ["big"] },
+    ],
+    xiexiu: [
+      { slug: "jiexiu", name: "黑风劫修", file: "assets/enemy_xiexiu.webp" },
+      { slug: "xuexiu", name: "血刀魔修", cfg: { body: "#7a1f2b", robe: "#3a0d12", eye: "#ff5b5b" }, feats: ["cultivator", "blade"] },
+      { slug: "duxiu",  name: "毒手邪修", cfg: { body: "#2f6b3a", robe: "#13301a", eye: "#a6e0b0" }, feats: ["cultivator"] },
+    ],
+    ghost: [
+      { slug: "yuanling", name: "含冤厉魄", file: "assets/enemy_ghost.webp" },
+      { slug: "yinhun",   name: "阴魂老者", cfg: { body: "#5a7fa8", eye: "#dfe9ff" }, feats: ["ghost", "wisp"] },
+      { slug: "guhun",    name: "孤野游魂", cfg: { body: "#9aa0a8", eye: "#ffffff" }, feats: ["ghost", "wisp"] },
+    ],
+  },
+
+  // 程序化像素立绘生成（零二进制，省内存，风格与 young NPC 一致）
+  enemySvg(cfg) {
+    const c = cfg.c || {};
+    const P = c.body || "#888";
+    const B = c.belly || "#ddd";
+    const E = c.eye || "#fff";
+    const f = cfg.feats || [];
+    let s = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>";
+    s += "<ellipse cx='32' cy='57' rx='20' ry='4' fill='rgba(0,0,0,0.25)'/>";
+    if (f.includes("ghost")) {
+      s += "<path d='M16 24 q16 -16 32 0 v22 q-4 6 -8 0 q-4 6 -8 0 q-4 6 -8 0 q-4 6 -8 0 z' fill='" + P + "' opacity='0.82'/>";
+      if (f.includes("wisp")) s += "<circle cx='20' cy='13' r='3' fill='" + P + "' opacity='0.5'/><circle cx='45' cy='11' r='2' fill='" + P + "' opacity='0.4'/>";
+    } else if (f.includes("cultivator")) {
+      s += "<rect x='22' y='22' width='20' height='30' rx='6' fill='" + (c.robe || "#333") + "'/>";
+      s += "<circle cx='32' cy='14' r='8' fill='" + P + "'/>";
+      if (f.includes("blade")) s += "<rect x='47' y='22' width='4' height='26' rx='2' fill='#cfd6e0' transform='rotate(20 49 35)'/>";
+    } else {
+      const big = f.includes("big") ? 6 : 0;
+      s += "<ellipse cx='32' cy='" + (34 - big / 2) + "' rx='" + (20 + big) + "' ry='" + (16 + big) + "' fill='" + P + "'/>";
+      s += "<ellipse cx='32' cy='" + (40 - big / 2) + "' rx='" + (12 + big) + "' ry='" + (9 + big) + "' fill='" + B + "' opacity='0.6'/>";
+      if (f.includes("tail")) s += "<path d='M50 40 q14 4 8 -10' stroke='" + P + "' stroke-width='6' fill='none' stroke-linecap='round'/>" + (f.includes("stinger") ? "<path d='M58 30 l5 -9 l-3 9 z' fill='" + E + "'/>" : "");
+      if (f.includes("wings")) s += "<path d='M18 28 l-14 -10 l10 16 z' fill='" + P + "'/><path d='M46 28 l14 -10 l-10 16 z' fill='" + P + "'/>";
+      if (f.includes("stripes")) s += "<rect x='26' y='22' width='3' height='20' fill='rgba(0,0,0,0.25)'/><rect x='35' y='22' width='3' height='20' fill='rgba(0,0,0,0.25)'/>";
+      if (f.includes("tusks")) s += "<path d='M28 46 l-2 8 l3 -6 z' fill='#fff'/><path d='M36 46 l2 8 l-3 -6 z' fill='#fff'/>";
+      if (f.includes("fangs")) s += "<path d='M28 44 l-1 5 l2 -4 z' fill='#fff'/><path d='M36 44 l1 5 l-2 -4 z' fill='#fff'/>";
+      if (f.includes("beak")) s += "<path d='M32 30 l-4 8 l8 0 z' fill='#e0a020'/>";
+    }
+    const ey = f.includes("cultivator") ? 13 : 30;
+    s += "<circle cx='26' cy='" + ey + "' r='3' fill='#fff'/><circle cx='38' cy='" + ey + "' r='3' fill='#fff'/>";
+    s += "<circle cx='26' cy='" + ey + "' r='1.4' fill='" + E + "'/><circle cx='38' cy='" + ey + "' r='1.4' fill='" + E + "'/>";
+    s += "</svg>";
+    return "data:image/svg+xml;utf8," + encodeURIComponent(s);
+  },
+
+  enemyArtFor(entry) {
+    if (!entry) return "assets/enemy_wolf.webp";
+    return entry.file ? entry.file : this.enemySvg({ c: entry.cfg, feats: entry.feats });
+  },
+
+  enemyEntryBySlug(slug, type) {
+    const pool = (this.ENEMY_POOL[type] || []);
+    return pool.find(e => e.slug === slug) || null;
+  },
+
+  // 从叙事文本里抓具体妖兽名（让战斗立绘与文字一致）
+  creatureSlugFromText(text, type) {
+    if (!text) return null;
+    const map = [
+      [/蟒|蛇/, "mang"], [/虎/, "hu"], [/鹰|雕|鹫/, "ying"], [/狼/, "lang"],
+      [/猪|彘/, "zhu"], [/蝎/, "xie"], [/熊/, "xiong"],
+    ];
+    if (type === "beast") {
+      for (const [re, slug] of map) if (re.test(text)) return slug;
+    }
+    return null; // xiexiu/ghost 由 pickEnemy 随机防重
+  },
+
+  // 按类型随机抽取，排除最近 2 次出现过的，做到不连重复
+  pickEnemy(type) {
+    const pool = (this.ENEMY_POOL[type] || []);
+    if (!pool.length) return null;
+    const recent = this._recentEnemySlugs || [];
+    let cand = pool.filter(e => !recent.includes(e.slug));
+    if (cand.length === 0) cand = pool;
+    const pick = cand[Math.floor(Math.random() * cand.length)];
+    this._recentEnemySlugs = [pick.slug].concat(recent).slice(0, 2);
+    this._persistRecentEnemies();
+    return pick;
+  },
+
+  recordEnemy(entry) {
+    if (!entry) return;
+    this._recentEnemySlugs = [entry.slug].concat(this._recentEnemySlugs || []).slice(0, 2);
+    this._persistRecentEnemies();
+    // 供 AI 提示词读取的“近期敌人名”
+    this._recentEnemies = [entry.name].concat(this._recentEnemies || []).slice(0, 3);
+    try { localStorage.setItem("xianxia_recent_enemy_names", JSON.stringify(this._recentEnemies)); } catch (e) {}
+  },
+
+  _persistRecentEnemies() {
+    try { localStorage.setItem("xianxia_recent_enemies", JSON.stringify(this._recentEnemySlugs || [])); } catch (e) {}
+  },
+
+  _loadRecentEnemies() {
+    try {
+      this._recentEnemySlugs = JSON.parse(localStorage.getItem("xianxia_recent_enemies") || "[]") || [];
+      this._recentEnemies = JSON.parse(localStorage.getItem("xianxia_recent_enemy_names") || "[]") || [];
+    } catch (e) { this._recentEnemySlugs = []; this._recentEnemies = []; }
+  },
+
+  // 解析本回合敌人：优先用 AI 文本里的具体妖兽，否则按类型随机防重
+  resolveEnemy(parsed) {
+    const type = this.detectCombat(parsed);
+    if (!type) return null;
+    const text = (parsed && parsed.narrative) || "";
+    const specific = this.creatureSlugFromText(text, type);
+    let entry = specific ? this.enemyEntryBySlug(specific, type) : null;
+    if (!entry) entry = this.pickEnemy(type);
+    if (entry) this.recordEnemy(entry);
+    return entry ? Object.assign({ type: type }, entry) : null;
+  },
+
+  // 根据敌人类型选择素材（保留作兜底）
   enemyImageFor(type) {
     const map = { beast: "assets/enemy_wolf.webp", xiexiu: "assets/enemy_xiexiu.webp", ghost: "assets/enemy_ghost.webp" };
     return map[type] || map.beast;
   },
 
-  // 显示战斗舞台并播放一次战斗动画
-  showBattleStage(enemyType) {
+  // 显示战斗舞台并播放一次战斗动画（enemy 为 resolveEnemy 返回的对象，含专属立绘与名字）
+  showBattleStage(enemy) {
     if (typeof document === "undefined") return;
     const stage = document.getElementById("battle-stage");
     if (!stage) return;
@@ -1560,7 +1686,17 @@ const UI = {
     const gender = (Game.state && Game.state.character && Game.state.character.gender) || 0;
     const heroImg = gender === 1 ? "assets/hero_f.webp" : "assets/hero_m.webp";
     heroEl.innerHTML = `<img src="${heroImg}" alt="hero">`;
-    enemyEl.innerHTML = `<img src="${this.enemyImageFor(enemyType)}" alt="enemy">`;
+    const art = enemy && enemy.file ? enemy.file : (enemy ? this.enemyArtFor(enemy) : this.enemyImageFor(enemy && enemy.type));
+    enemyEl.innerHTML = `<img src="${art}" alt="enemy">`;
+    // 敌人名牌
+    let nameEl = document.getElementById("battle-enemy-name");
+    if (!nameEl) {
+      nameEl = document.createElement("div");
+      nameEl.id = "battle-enemy-name";
+      nameEl.className = "battle-enemy-name";
+      stage.appendChild(nameEl);
+    }
+    nameEl.textContent = (enemy && enemy.name) ? enemy.name : "敌人";
     // 战斗舞台用当前场景图做背景（图缺失则回退渐变）
     const sceneFile = (this.currentScene && SCENE_LIB[this.currentScene]) ? SCENE_LIB[this.currentScene].file : "";
     stage.style.backgroundImage = sceneFile ? `url("assets/${sceneFile}")` : "";
@@ -2079,10 +2215,10 @@ const UI = {
       this.showAscensionVictory(eventFlag === 'craft_ascension');
     }
 
-    // 像素战斗动画：检测到 combat_encounter 或文本中交战时触发
-    const combatType = this.detectCombat(parsed);
-    if (combatType) {
-      this.showBattleStage(combatType);
+    // 像素战斗动画：检测到 combat_encounter 或文本中交战时触发（敌人随机抽取且防连重复）
+    const enemy = this.resolveEnemy(parsed);
+    if (enemy) {
+      this.showBattleStage(enemy);
     } else {
       this.hideBattleStage();
     }
@@ -2581,6 +2717,7 @@ window.addEventListener("DOMContentLoaded", () => {
   } catch (e) {}
 
   UI.initPixelFx();
+  UI._loadRecentEnemies();
   UI.show("menu");
 
   // 温度滑块实时显示
