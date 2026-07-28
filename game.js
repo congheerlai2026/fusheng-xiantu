@@ -33,7 +33,7 @@ const Game = {
 
   // ============ 初始化新角色 ============
   // seed: 世界种子（字符串）。留空则随机生成——同一种子必得同一方天地。
-  createCharacter(name, rootIndex, bgIndex, genderIndex = 0, seed = null, narrationMode = "standard") {
+  createCharacter(name, rootIndex, bgIndex, genderIndex = 0, seed = null, narrationMode = "standard", gameMode = "standard") {
     const root = SPIRITUAL_ROOTS[rootIndex];
     const bg = BACKGROUNDS[bgIndex];
     const gender = GENDERS[genderIndex] || GENDERS[0];
@@ -123,10 +123,12 @@ const Game = {
       narrationMode: narrationMode || "standard",  // 叙事节奏档位：short / standard / immersive
       meta: {
         createdAt: Date.now(),
-        playTurn: 0,
-        alive: true,
-        mainPlot: mainPlot,
+      playTurn: 0,
+      alive: true,
+      pacing: { calmStreak: 0, peakStreak: 0 },
+      mainPlot: mainPlot,
         threads: [],
+        mode: (typeof gameMode !== "undefined" && gameMode) ? gameMode : "standard", // standard | quick
       },
       memory: [],
       biography: null,
@@ -207,6 +209,10 @@ const Game = {
       breakthroughClimax,
       finale,
       directorNote: stage.note,
+      calmStreak: (this.state && this.state.meta && this.state.meta.pacing) ? (this.state.meta.pacing.calmStreak || 0) : 0,
+      peakStreak: (this.state && this.state.meta && this.state.meta.pacing) ? (this.state.meta.pacing.peakStreak || 0) : 0,
+      forcePeak: ((this.state && this.state.meta && this.state.meta.pacing) ? (this.state.meta.pacing.calmStreak || 0) : 0) >= 3,
+      forceCalm: ((this.state && this.state.meta && this.state.meta.pacing) ? (this.state.meta.pacing.peakStreak || 0) : 0) >= 2,
     };
   },
 
@@ -311,6 +317,11 @@ const Game = {
     if (ch.location_change && ch.location_change !== w.location) {
       w.location = ch.location_change;
       deltas.push(`抵达 ${w.location}`);
+      // 地点 → 场景图自动映射：让视觉随位置切换（即便 AI 未返回 scene 字段）
+      const _loc = (typeof LOCATIONS !== "undefined") && LOCATIONS.find(l => l.name === w.location);
+      if (_loc && _loc.scene && SCENE_LIB[_loc.scene]) {
+        if (typeof UI !== "undefined") UI.setScene(_loc.scene);
+      }
     }
     if (ch.day_change !== undefined && typeof ch.day_change === "number" && ch.day_change !== 0) {
       w.day = (w.day || 1) + ch.day_change;
@@ -660,6 +671,13 @@ const Game = {
       if (betaIdx) BetaCode.incrementUsage(parseInt(betaIdx));
       const { flag: eventFlag, deltas } = this.applyChanges(parsed.state_changes);
 
+      // 节奏控制器：累计近回合"平淡/高张"连续数，供 buildPacingBlock 强制张弛
+      const _isPeak = ['breakthrough_success','breakthrough_failed','romance_union','fortuitous_encounter','death','near_death','ascension','craft_ascension'].includes(eventFlag)
+        || (parsed.state_changes && parsed.state_changes.combat_encounter);
+      if (!this.state.meta.pacing) this.state.meta.pacing = { calmStreak: 0, peakStreak: 0 };
+      if (_isPeak) { this.state.meta.pacing.peakStreak++; this.state.meta.pacing.calmStreak = 0; }
+      else { this.state.meta.pacing.calmStreak++; this.state.meta.pacing.peakStreak = 0; }
+
       // 由本次选择更新玩家风格画像（规则随行为生长）
       this.updatePreferences(action, parsed, eventFlag);
 
@@ -774,7 +792,7 @@ const Game = {
     if (mp && mp.title) {
       intro += `\n我仙途自一段未解的因缘/危机起：${mp.conflict}（此乃贯穿全程的中央冲突，请于开场自然引出其第一缕伏笔，但不必一次说尽，留作长线）。`;
     }
-    intro += `此刻我在${w.location}，时值${w.timeOfDay}，天气${w.weather.name}。\n请为我开启修仙之路：描写契合当下情境的开场场景，自然引出第一个事件或遭遇，不要预设我的性格或际遇。给我3-4个具体行动选项。`;
+    intro += `此刻我在${w.location}，时值${w.timeOfDay}，天气${w.weather.name}。\n请为我开启修仙之路：以一处【具体、有画面、有情绪的情境】开场（如脚下踩到某物 / 耳边响起某声 / 眼前乍现异象 / 鼻端飘来异香），少用概述、多写感官；自然引出第一个事件或遭遇。给我3-4个具体可行的行动选项，其中首项须是一个"有画面感的强钩子抉择"（让人忍不住想点）。不要预设我的性格或际遇。`;
     return intro;
   },
 
@@ -1162,6 +1180,31 @@ const UI = {
         if (m.key === curMode) { card.classList.add("selected"); document.getElementById("selected-narrative-mode").value = m.key; }
       });
     }
+
+    // 游戏模式（标准仙途 / 快速仙途）
+    const gmBox = document.getElementById("game-mode-options");
+    if (gmBox) {
+      gmBox.innerHTML = "";
+      const gameModes = [
+        { key: "standard", label: "标准仙途", desc: "长线沉浸，一路修至飞升，仙途漫漫。" },
+        { key: "quick", label: "快速仙途", desc: "约 18 程收束，短平快，适合碎片时间反复重开。" },
+      ];
+      const curGm = document.getElementById("selected-game-mode").value || "standard";
+      gameModes.forEach((m) => {
+        const card = document.createElement("div");
+        card.className = "select-card";
+        card.innerHTML = `
+          <div class="card-title">${m.label}</div>
+          <div class="card-desc">${m.desc}</div>`;
+        card.onclick = () => {
+          document.querySelectorAll("#game-mode-options .select-card").forEach(c => c.classList.remove("selected"));
+          card.classList.add("selected");
+          document.getElementById("selected-game-mode").value = m.key;
+        };
+        gmBox.appendChild(card);
+        if (m.key === curGm) { card.classList.add("selected"); document.getElementById("selected-game-mode").value = m.key; }
+      });
+    }
   },
 
   confirmCreate() {
@@ -1174,7 +1217,9 @@ const UI = {
     const seed = WorldGen.randomSeed();
     const modeInput = document.getElementById("selected-narrative-mode");
     const modeKey = modeInput ? modeInput.value : "standard";
-    Game.createCharacter(name, rootIndex, bgIndex, genderIndex, seed, modeKey);
+    const gameModeInput = document.getElementById("selected-game-mode");
+    const gameModeKey = gameModeInput ? (gameModeInput.value || "standard") : "standard";
+    Game.createCharacter(name, rootIndex, bgIndex, genderIndex, seed, modeKey, gameModeKey);
     this.show("game");
   },
 
@@ -1285,6 +1330,26 @@ const UI = {
       <div class="stat-row"><span>所在</span><span class="stat-val">${w.location}</span></div>
       <div class="stat-row"><span>时辰</span><span class="stat-val">${w.timeOfDay} · 第${w.day}日</span></div>
       <div class="stat-row"><span>天候</span><span class="stat-val">${w.weather.name}</span></div>
+      <hr class="divider">
+      ${(() => {
+        const skills = c.skills || {};
+        const skillKeys = Object.keys(skills);
+        let craftMax = 0, craftTop = "", craftPath = "";
+        skillKeys.forEach(k => { if (skills[k].proficiency > craftMax) { craftMax = skills[k].proficiency; craftTop = k; craftPath = skills[k].path; } });
+        const hasCraft = skillKeys.length > 0;
+        const realmPct = Math.max(0, Math.min(100, Math.round(((c.realmLevel - 1) + (c.realmProgress || 0) / 100) / 10 * 100)));
+        const craftPct = craftMax;
+        let mainPath = (hasCraft && craftPct >= realmPct) ? "以技证道" : "苦修·问道";
+        if (Game.state.meta && Game.state.meta.ascended) mainPath = "已飞升";
+        const goalRow = (label, pct, on, sub) => `
+          <div class="goal-path ${on ? "on" : ""}">
+            <div class="goal-label">${label}${sub ? ` <span class="goal-sub">${sub}</span>` : ""}</div>
+            <div class="progress-bar goal-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+          </div>`;
+        return `<div class="goal-title">仙途目标${mainPath === "已飞升" ? " · 已证大道" : ""}</div>` +
+          goalRow("以技证道", craftPct, mainPath === "以技证道", craftTop ? (craftTop + (craftPath ? "·" + craftPath : "")) : (hasCraft ? "修行中" : "未涉")) +
+          goalRow("苦修·问道", realmPct, mainPath === "苦修·问道" || mainPath === "已飞升", c.realm);
+      })()}
       <hr class="divider">
       <div class="stat-row pet-row"><span>灵宠</span><span class="stat-val">${c.pet ? c.pet.name + " · " + (c.pet.type || "灵兽") : "暂无"}</span></div>
       <hr class="divider">
@@ -2033,6 +2098,14 @@ const UI = {
     if (eventFlag === 'ascension' || eventFlag === 'craft_ascension') {
       this.showAscensionVictory(eventFlag === 'craft_ascension');
     }
+    // 快速仙途模式：到达回合上限（未飞升/未陨落）即自动收束，给出可分享的结局
+    if (eventFlag !== 'death' && eventFlag !== 'ascension' && eventFlag !== 'craft_ascension') {
+      const _md = Game.state.meta;
+      if (_md && _md.mode === 'quick' && _md.playTurn >= 18 && !_md.ascended) {
+        _md.quickEnded = true;
+        this.showEndingBiography();
+      }
+    }
 
     // 像素战斗动画：检测到 combat_encounter 或文本中交战时触发
     const combatType = this.detectCombat(parsed);
@@ -2495,6 +2568,86 @@ const UI = {
 
   closeBiography() {
     document.getElementById('biography-modal').classList.remove('active');
+  },
+
+  closeShareCard() {
+    document.getElementById('share-card-modal').classList.remove('active');
+  },
+
+  // ============ 一键仙途分享卡（竖版结局卡，可存图转发微信） ============
+  shareCard() {
+    if (!Game.state) { this.showToast('尚无仙途记录，先踏入仙途吧'); return; }
+    const c = Game.state.character;
+    const md = Game.state.meta || {};
+    const skills = c.skills || {};
+    let craftMax = 0, craftTop = "", craftPath = "";
+    Object.keys(skills).forEach(k => { if (skills[k].proficiency > craftMax) { craftMax = skills[k].proficiency; craftTop = k; craftPath = skills[k].path; } });
+    const realmPct = Math.max(0, Math.min(100, Math.round(((c.realmLevel - 1) + (c.realmProgress || 0) / 100) / 10 * 100)));
+    let pathLabel, pathSub;
+    if (md.ascended) { pathLabel = "已飞升"; pathSub = "白日飞升 · 证得大道"; }
+    else if (craftTop && craftMax >= realmPct) { pathLabel = "以技证道"; pathSub = craftTop + (craftPath ? "·" + craftPath : ""); }
+    else { pathLabel = "苦修·问道"; pathSub = c.realm; }
+    let ending, endColor;
+    if (md.ascended) { ending = "白日飞升，证得大道"; endColor = "#ffd86b"; }
+    else if (!md.alive) { ending = "仙途陨落，魂归天地"; endColor = "#ff9a9a"; }
+    else { ending = "仙途未竟，仍在路上"; endColor = "#9fd6ff"; }
+
+    const W = 480, H = 760;
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const x = cv.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 0, H);
+    if (md.ascended) { g.addColorStop(0, '#2a2440'); g.addColorStop(1, '#6a5a8a'); }
+    else { g.addColorStop(0, '#1a1f2e'); g.addColorStop(1, '#3a2f4a'); }
+    x.fillStyle = g; x.fillRect(0, 0, W, H);
+    x.strokeStyle = 'rgba(212,175,55,0.6)'; x.lineWidth = 3; x.strokeRect(14, 14, W - 28, H - 28);
+
+    x.textAlign = 'center';
+    x.fillStyle = '#d4af37'; x.font = 'bold 36px "STKaiti","KaiTi",serif';
+    x.fillText('浮 生 仙 途', W / 2, 72);
+    x.fillStyle = 'rgba(255,255,255,0.7)'; x.font = '15px sans-serif';
+    x.fillText('AI 仙侠文字 RPG · 仙途分享卡', W / 2, 98);
+    x.fillStyle = '#fff'; x.font = 'bold 42px "STKaiti","KaiTi",serif';
+    x.fillText(c.name, W / 2, 172);
+    x.fillStyle = 'rgba(255,255,255,0.65)'; x.font = '15px sans-serif';
+    x.fillText(`${c.genderName || ''} · ${c.root} · ${c.background}`, W / 2, 200);
+    x.strokeStyle = 'rgba(255,255,255,0.15)'; x.beginPath(); x.moveTo(40, 224); x.lineTo(W - 40, 224); x.stroke();
+
+    const lines = [
+      ['当前境界', c.realm],
+      ['仙途目标', pathLabel],
+      ['主修路线', pathSub],
+      ['仙程', `第 ${md.playTurn || 0} 程`],
+      ['灵石', String(c.spiritualStones || 0)],
+      ['生活技能', craftTop ? `${craftTop} ${craftMax}/100${craftPath ? '(' + craftPath + ')' : ''}` : '未涉'],
+    ];
+    let y = 266;
+    x.font = '17px sans-serif';
+    lines.forEach(([k, v]) => {
+      x.textAlign = 'left'; x.fillStyle = 'rgba(212,175,55,0.85)'; x.fillText(k, 52, y);
+      x.textAlign = 'right'; x.fillStyle = '#fff'; x.fillText(v, W - 52, y);
+      y += 40;
+    });
+    x.textAlign = 'center';
+    x.fillStyle = endColor; x.font = 'bold 24px "STKaiti","KaiTi",serif';
+    x.fillText('— ' + ending + ' —', W / 2, y + 26);
+    const quotes = ['大道三千，只取一瓢。', '生死轮回，因果自承。', '一念入道，万缘皆空。', '仙途漫漫，唯缘不散。'];
+    x.fillStyle = 'rgba(255,255,255,0.6)'; x.font = '16px "STKaiti","KaiTi",serif';
+    x.fillText(quotes[Math.floor(Math.random() * quotes.length)], W / 2, y + 60);
+    x.fillStyle = 'rgba(255,255,255,0.45)'; x.font = '13px sans-serif';
+    x.fillText('你的每一局，都是独属的小说 · 转发邀同道共修', W / 2, H - 42);
+
+    const dataUrl = cv.toDataURL('image/png');
+    const modal = document.getElementById('share-card-modal');
+    modal.querySelector('.share-card-canvas').innerHTML = `<img class="share-card-img" src="${dataUrl}" alt="仙途分享卡">`;
+    modal.classList.add('active');
+    modal.querySelector('.share-card-download').onclick = () => {
+      const a = document.createElement('a');
+      a.download = `浮生仙途_${c.name}_仙途卡.png`;
+      a.href = dataUrl;
+      a.click();
+      this.showToast('图片已下载，可转发微信/朋友圈');
+    };
   },
 
   escapeHtml(text) {

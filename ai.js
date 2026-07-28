@@ -51,6 +51,9 @@ ${JSON.stringify((() => { const w = Object.assign({}, state.world); delete w.gen
 【本界天地 · 此界天地已锁定，务必遵循其设定，剧情须贴合同一方世界，不可随意切换世界背景】
 ${this.buildWorldBlock(state)}
 
+【当前地点 · 感官简报 · 须融于描写】
+${this.buildLocationBrief(state)}
+
 【玩家金手指 / 系统 · 务必持续记忆，绝不遗忘】
 ${(() => {
   const syss = (state.character && state.character.systems) || [];
@@ -302,6 +305,17 @@ ${this.buildLifeSkillGraph()}
     if (p.highlightDue) {
       s += "⚠ 本回合须策划一次「高光事件」（见叙事规则第10条高光事件库），制造强记忆点，绝不可平淡收场。\n";
     }
+    if (p.forcePeak) {
+      s += `⚠ 节奏强制·本回：侦测到已连续 ${p.calmStreak} 回合平缓无波，本回须主动抖出一个高光事件或危机（见第10条高光事件库），制造张力与转折，张弛有度，绝不可再平。\n`;
+    }
+    if (p.forceCalm) {
+      s += `⚠ 节奏强制·本回：连续高张已 ${p.peakStreak} 回合，本回宜放缓节奏，给玩家喘息、回味与[平安]选项，养势后再起波澜。\n`;
+    }
+    // 区域危险度调制：让地图的危险梯度真正影响张力与可选风险
+    const _loc = (typeof LOCATIONS !== "undefined") ? LOCATIONS.find(l => l.name === (state.world && state.world.location)) : null;
+    if (_loc) {
+      s += `当前所处：${_loc.name}（危险度 ${_loc.danger}/10，类型 ${_loc.type}）。叙事张力与提供的选项风险须与之严格匹配：危险度高则氛围紧张压抑、多[凶险]/[致命]选项；危险度低则平和安稳、多[平安]选项。\n`;
+    }
     // 主线拍位推进提示：让中央冲突随境界（卷）同步向前
     const mp = state.meta && state.meta.mainPlot;
     if (mp && mp.title && !mp.resolved) {
@@ -317,8 +331,23 @@ ${this.buildLifeSkillGraph()}
   // 由玩家所选叙事节奏档位，生成"篇幅规则"段落，注入系统提示词
   buildNarrativeModeBlock(state) {
     if (typeof NARRATIVE_MODES === "undefined") return "";
+    // 快速仙途模式：篇幅更短，一屏读完，节奏更密
+    if (state && state.meta && state.meta.mode === "quick") {
+      return "【叙事篇幅 · 快速仙途】本局为快速仙途：每回合叙事控制在 120–220 字，一屏可读完，重情节推进、轻铺陈，节奏明快。";
+    }
     const mode = NARRATIVE_MODES.find(m => m.key === (state && state.narrationMode)) || NARRATIVE_MODES.find(m => m.key === "standard") || NARRATIVE_MODES[0];
     return mode.rule;
+  },
+
+  // 区域感官简报：把当前地点的氛围/气味/声响注入提示词，让 AI 写出有地点质感的文字
+  buildLocationBrief(state) {
+    if (typeof LOCATIONS === "undefined" || !LOCATIONS.length) return "";
+    const loc = (state && state.world && state.world.location) || "";
+    const entry = LOCATIONS.find(l => l.name === loc);
+    if (!entry || !entry.sensory) return "";
+    return `【当前所在 · ${entry.name}（${entry.type} · 凶险度${entry.danger}/10）】\n` +
+      `环境质感：${entry.sensory}\n` +
+      `请在描写中自然融此地的气息、声响与光影，使玩家"身临其境"；离开此地时，须同步切换氛围与 state_changes.scene。`;
   },
 
   // 依据叙事节奏档位与用户上限，计算最终 max_tokens（档位上限与设置上限取较小者，避免截断 JSON）

@@ -5,10 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>浮生仙途 · AI 仙侠文字RPG</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="theme-pixel.css">
 </head>
-<body class="pixel">
-  <div id="fx-layer"></div>
+<body>
 
 <!-- ==================== 主菜单 ==================== -->
 <div id="screen-menu" class="screen active">
@@ -67,10 +65,25 @@
       <div id="narration-mode-options" class="card-grid"></div>
     </div>
 
+    <div class="form-group">
+      <label class="form-label">游戏模式 <span class="hint-inline">（标准仙途可一路修到飞升；快速仙途约 18 程收束，适合碎片时间反复重开）</span></label>
+      <div id="game-mode-options" class="card-grid"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">世界种子 <span class="hint-inline">（决定此界天地，可分享给同道共入同一方世界）</span></label>
+      <div style="display:flex;gap:10px">
+        <input type="text" id="seed-input" class="form-input" placeholder="留空则随机生成…" maxlength="40">
+        <button class="btn btn-ghost" onclick="UI.randomizeSeed()" style="white-space:nowrap">🎲 随机</button>
+      </div>
+      <div class="seed-note" id="seed-note"></div>
+    </div>
+
     <input type="hidden" id="selected-root" value="0">
     <input type="hidden" id="selected-bg" value="0">
     <input type="hidden" id="selected-gender" value="0">
     <input type="hidden" id="selected-narrative-mode" value="standard">
+    <input type="hidden" id="selected-game-mode" value="standard">
 
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="UI.show('menu')">返回</button>
@@ -96,40 +109,30 @@
   <div class="game-layout">
     <!-- 左侧：状态面板 -->
     <aside class="panel panel-left">
-      <div id="hero-sprite" class="hero-sprite"></div>
       <div id="status-panel" class="status-panel"></div>
       <div class="panel-actions">
         <button class="btn btn-sm btn-ghost" onclick="UI.show('settings')">⚙</button>
         <button class="btn btn-sm btn-ghost" onclick="UI.viewBiography()" title="仙途列传">📜</button>
+        <button class="btn btn-sm btn-jade" onclick="UI.shareWorld()" title="分享此界">🌐</button>
+        <button class="btn btn-sm btn-jade" onclick="UI.shareCard()" title="生成仙途分享卡">📸</button>
         <button class="btn btn-sm btn-gold" onclick="UI.showSupport()" title="上香祈愿">☕</button>
         <button class="btn btn-sm btn-danger" onclick="UI.confirmReincarnate()" title="原地去世，转世投胎">☠</button>
         <button class="btn btn-sm btn-ghost" onclick="UI.show('menu')">≡</button>
       </div>
     </aside>
 
-    <!-- 中间：视觉小说式舞台（背景场景 + 立绘 + 对话框） -->
-    <main class="panel panel-center vn-stage">
-      <div id="realm-scene" class="vn-bg"></div>
-      <div id="vn-actors" class="vn-actors"></div>
-      <div id="battle-stage" class="battle-stage" style="display:none">
-        <div class="battle-floor"></div>
-        <div class="battle-actor battle-hero" id="battle-hero"></div>
-        <div class="battle-fx" id="battle-fx"></div>
-        <div class="battle-actor battle-enemy" id="battle-enemy"></div>
-        <div class="battle-hint" id="battle-hint">战斗触发</div>
-      </div>
+    <!-- 中间：剧情区 -->
+    <main class="panel panel-center">
       <div id="milestone-banner" class="milestone-banner"></div>
-      <div id="vn-dialogue" class="vn-dialogue">
-        <div id="story-text" class="story-text"></div>
-        <div id="loading-indicator" class="loading" style="display:none">
-          <span class="loading-dots">天道推演中</span>
-        </div>
-        <div id="action-options" class="action-options"></div>
-        <div id="action-input-area" class="action-input-area" style="display:none">
-          <textarea id="action-input" class="action-input" placeholder="输入你的行动，或选择上方选项... (Enter发送)" rows="2"></textarea>
-          <button class="btn btn-primary btn-send" onclick="UI.sendCustomAction()">行</button>
-          <div class="action-hint">如遇到问题，请在输入框回复：刷新</div>
-        </div>
+      <div id="story-text" class="story-text"></div>
+      <div id="loading-indicator" class="loading" style="display:none">
+        <span class="loading-dots">天道推演中</span>
+      </div>
+      <div id="action-options" class="action-options"></div>
+      <div id="action-input-area" class="action-input-area" style="display:none">
+        <textarea id="action-input" class="action-input" placeholder="输入你的行动，或选择上方选项... (Enter发送)" rows="2"></textarea>
+        <button class="btn btn-primary btn-send" onclick="UI.sendCustomAction()">行</button>
+        <div class="action-hint">如遇到问题，请在输入框回复：刷新</div>
       </div>
     </main>
 
@@ -187,18 +190,13 @@
       </div>
     </div>
 
-      <div class="form-group">
-        <label class="form-label">叙事节奏（文本长度）</label>
-        <select id="set-narrative-mode" class="form-input">
-          <option value="standard">电视剧形式 · 快节奏到情景交融</option>
-          <option value="immersive">沉浸世界 · 长篇细描</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">界面风格</label>
-        <label class="pixel-toggle"><input type="checkbox" id="set-pixel" onchange="UI.togglePixel(this.checked)"> 像素风（取消勾选恢复水墨风）</label>
-      </div>
+    <div class="form-group">
+      <label class="form-label">叙事节奏（文本长度）</label>
+      <select id="set-narrative-mode" class="form-input">
+        <option value="standard">电视剧形式 · 快节奏到情景交融</option>
+        <option value="immersive">沉浸世界 · 长篇细描</option>
+      </select>
+    </div>
 
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="UI.show('menu')">返回</button>
@@ -271,6 +269,7 @@
     <div class="bio-content"></div>
     <div class="bio-actions" style="display:none">
       <button class="btn btn-sm btn-ghost bio-copy">📋 复制传记</button>
+      <button class="btn btn-sm btn-jade" onclick="UI.shareCard()">📸 生成分享卡</button>
       <button class="btn btn-sm btn-secondary bio-restart">重入轮回</button>
     </div>
   </div>
@@ -299,7 +298,39 @@
   </div>
 </div>
 
-<!-- 世界种子分享功能已下架 -->
+<!-- ==================== 仙途分享卡 ==================== -->
+<div id="share-card-modal" class="modal" onclick="if(event.target===this)UI.closeShareCard()">
+  <div class="modal-card share-card-box">
+    <button class="bio-close" onclick="UI.closeShareCard()">✕</button>
+    <div class="bio-title">仙途分享卡</div>
+    <div class="share-card-canvas"></div>
+    <div class="share-card-tip">长按图片可保存；转发微信/朋友圈，邀同道共修。</div>
+    <div class="bio-actions" style="display:flex">
+      <button class="btn btn-sm btn-jade share-card-download">⬇ 下载图片</button>
+      <button class="btn btn-sm btn-ghost" onclick="UI.closeShareCard()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 世界种子 · 分享此界 ==================== -->
+<div id="seed-share-modal" class="modal" onclick="if(event.target===this)UI.closeShareWorld()">
+  <div class="modal-card seed-card">
+    <button class="bio-close" onclick="UI.closeShareWorld()">✕</button>
+    <div class="bio-title">分享此界</div>
+    <div class="seed-line"><span class="seed-label">世界种子</span><code id="share-seed" class="seed-code"></code></div>
+    <div class="seed-line"><span class="seed-label">本界名号</span><span id="share-worldname" class="seed-code"></span></div>
+    <div class="seed-desc">同道持此种子，可入同一方天地：版图、宗门势力、名动人物、江湖秘闻皆由种子而定，唯各自仙途有别。把链接发给好友，他打开即载入此界。</div>
+    <div class="form-group">
+      <label class="form-label">分享链接（含种子，打开即载入此界）</label>
+      <input type="text" id="share-link" class="form-input" readonly>
+    </div>
+    <div class="share-btns">
+      <button class="btn btn-sm" onclick="UI.copySeedLink()">复制链接</button>
+      <button class="btn btn-sm btn-jade" onclick="UI.copySeed()">复制种子</button>
+      <button class="btn btn-sm btn-ghost" onclick="UI.closeShareWorld()">关闭</button>
+    </div>
+  </div>
+</div>
 
 <script src="config.js"></script>
 <script src="worldgen.js"></script>

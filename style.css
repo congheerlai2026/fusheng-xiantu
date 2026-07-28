@@ -173,6 +173,19 @@ body::before {
 .stat-val { color: var(--text); }
 .progress-bar { height: 4px; background: var(--bg-dark); border-radius: 2px; overflow: hidden; margin: 4px 0 12px; }
 .progress-fill { height: 100%; background: linear-gradient(90deg, var(--jade), var(--gold)); transition: width 0.4s; }
+
+/* ============ 仙途目标 HUD（双飞升路线） ============ */
+.goal-title {
+  font-size: 13px; color: var(--gold-bright); letter-spacing: 2px;
+  margin: 4px 0 8px; padding-left: 2px;
+}
+.goal-path { margin-bottom: 10px; opacity: 0.5; transition: opacity 0.3s; }
+.goal-path.on { opacity: 1; }
+.goal-label { font-size: 12px; color: var(--text); display: flex; justify-content: space-between; align-items: baseline; }
+.goal-sub { color: var(--gold); font-size: 11px; }
+.goal-bar { height: 6px; margin: 4px 0 0; }
+.goal-path.on .progress-fill { background: linear-gradient(90deg, var(--gold), var(--gold-bright)); }
+.goal-path:not(.on) .progress-fill { background: linear-gradient(90deg, rgba(120,140,160,0.5), rgba(120,140,160,0.3)); }
 .divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .panel-actions { padding: 12px; display: flex; gap: 8px; }
 
@@ -181,7 +194,6 @@ body::before {
 .inv-empty { color: var(--text-dim); font-size: 13px; font-style: italic; }
 .inv-item { padding: 6px 0; font-size: 13px; color: var(--text); border-bottom: 1px solid rgba(45,53,72,0.5); }
 .inv-item.technique { color: var(--gold); }
-.inv-item.system-item { color: #b48acb; }
 .item-type { font-size: 11px; padding: 1px 5px; border-radius: 3px; margin-right: 6px; }
 .item-type.功法 { background: rgba(201,168,76,0.15); color: var(--gold); }
 .item-type.物品 { background: rgba(90,155,126,0.15); color: var(--jade); }
@@ -200,17 +212,6 @@ body::before {
 .skill-bar { height: 6px; background: rgba(45,53,72,0.6); border-radius: 3px; margin: 5px 0 2px; overflow: hidden; }
 .skill-bar-fill { height: 100%; background: linear-gradient(90deg, var(--jade), var(--gold)); border-radius: 3px; transition: width 0.4s; }
 .skill-pct { font-size: 10px; color: var(--text-dim); }
-
-/* 仙途主线（中央冲突）+ 暗线伏笔 */
-.inv-item.mainplot { color: var(--gold-bright); font-weight: bold; }
-.mp-stage { font-size: 11px; color: var(--text-dim); font-weight: normal; margin-left: 4px; letter-spacing: 1px; }
-.mainplot-conflict { font-size: 12px; color: var(--text-dim); line-height: 1.6; margin: 4px 0 8px; padding-left: 6px; border-left: 2px solid rgba(201,168,76,0.4); }
-.mainplot-resolved { font-size: 12px; color: var(--jade); margin-top: 4px; }
-.inv-item.thread { font-size: 12px; color: var(--text); }
-.inv-item.thread.open { color: #d9a93a; border-left: 2px solid rgba(217,169,58,0.5); padding-left: 8px; }
-.inv-item.thread.resolved { color: var(--text-dim); opacity: 0.7; text-decoration: line-through rgba(139,133,120,0.4); }
-.thread-turn { font-size: 10px; color: var(--text-dim); margin-left: 6px; white-space: nowrap; }
-.mp-stat { color: var(--gold-bright); }
 
 .mdrawer-skill-item { padding: 6px 0; border-bottom: 1px solid rgba(45,53,72,0.4); }
 .mdrawer-skill-head { display: flex; justify-content: space-between; font-size: 13px; color: var(--text); }
@@ -390,6 +391,16 @@ body::before {
   display: flex; gap: 12px; justify-content: flex-end;
   margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border);
 }
+
+/* ============ 仙途分享卡 ============ */
+.share-card-box { max-width: 520px; text-align: center; }
+.share-card-canvas { margin: 8px auto 4px; }
+.share-card-canvas .share-card-img {
+  width: 280px; max-width: 100%; height: auto; border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45); display: block; margin: 0 auto;
+}
+.share-card-tip { color: var(--text-dim); font-size: 12px; margin: 12px 0 18px; }
+.share-card-box .bio-actions { justify-content: center; }
 
 /* ============ 世界种子 · 分享此界 ============ */
 .seed-card { max-width: 520px; }
