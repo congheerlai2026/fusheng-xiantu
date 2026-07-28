@@ -99,6 +99,7 @@
       <div id="hero-sprite" class="hero-sprite"></div>
       <div id="status-panel" class="status-panel"></div>
       <div class="panel-actions">
+        <button class="btn btn-sm btn-map" onclick="UI.showWorldMap()" title="大地图">🗺 大地图</button>
         <button class="btn btn-sm btn-ghost" onclick="UI.show('settings')">⚙</button>
         <button class="btn btn-sm btn-ghost" onclick="UI.viewBiography()" title="仙途列传">📜</button>
         <button class="btn btn-sm btn-gold" onclick="UI.showSupport()" title="上香祈愿">☕</button>
@@ -152,6 +153,28 @@
 
   <!-- 手机端抽屉遮罩 -->
   <div id="mobile-overlay" class="mobile-overlay" onclick="UI.closeMobileDrawer()"></div>
+</div>
+
+<!-- ==================== 大地图 ==================== -->
+<div id="screen-map" class="screen">
+  <div class="map-wrap">
+    <div class="map-header">
+      <div class="map-titlebar">
+        <div class="map-title" id="map-world-name">九霄寰宇</div>
+        <button class="btn btn-ghost btn-map-close" onclick="UI.show('game')" title="返回">✕</button>
+      </div>
+      <div class="map-omen" id="map-omen">天地异象……</div>
+    </div>
+    <div class="map-body">
+      <div class="map-canvas" id="map-canvas"><!-- SVG 地图注入处 --></div>
+      <div class="map-detail" id="map-detail">
+        <div class="map-detail-empty">点选地图上的地域节点，查看其风土与凶险。</div>
+      </div>
+    </div>
+    <div class="map-footer" id="map-footer">
+      <button class="btn btn-primary" onclick="UI.startGameFromMap()">踏入仙途</button>
+    </div>
+  </div>
 </div>
 
 <!-- ==================== 设置 ==================== -->

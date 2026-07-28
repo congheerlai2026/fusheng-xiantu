@@ -316,6 +316,7 @@ const Game = {
     if (ch.location_change && ch.location_change !== w.location) {
       w.location = ch.location_change;
       deltas.push(`抵达 ${w.location}`);
+      if (this.currentScreen === "map") this.renderWorldMap(); // 地图打开时实时更新当前位置
     }
     if (ch.day_change !== undefined && typeof ch.day_change === "number" && ch.day_change !== 0) {
       w.day = (w.day || 1) + ch.day_change;
@@ -1077,6 +1078,132 @@ const UI = {
     if (screen === "settings") this.renderSettings();
   },
 
+  // ============ 大地图 ============
+  // 由世界种子渲染 SVG 大地图（宏观疆域框 + 地域节点 + 灵脉连线 + 当前位置标记）
+  renderWorldMap() {
+    const gen = (Game.state && Game.state.world && Game.state.world.gen) || null;
+    const canvas = document.getElementById("map-canvas");
+    const detail = document.getElementById("map-detail");
+    const nameEl = document.getElementById("map-world-name");
+    const omenEl = document.getElementById("map-omen");
+    if (!canvas) return;
+    if (!gen) {
+      canvas.innerHTML = '<div style="color:var(--text-dim);padding:24px;text-align:center">此界尚未生成世界，请先创建角色。</div>';
+      return;
+    }
+    // 兼容旧版存档（无地图坐标字段）：提示重开新局而非渲染 NaN
+    if (!gen.regions[0] || typeof gen.regions[0].x !== "number") {
+      canvas.innerHTML = '<div style="color:var(--text-dim);padding:24px;text-align:center">此界为旧版世界，暂无大地图。开启新局即可生成一方大世界。</div>';
+      return;
+    }
+    if (nameEl) nameEl.textContent = gen.name;
+    if (omenEl) omenEl.textContent = "天地异象 · " + gen.omen;
+    if (detail) detail.innerHTML = '<div class="map-detail-empty">点选地图上的地域节点，查看其风土与凶险。</div>';
+
+    const W = 1000, H = 680;
+    const cur = (Game.state.world && Game.state.world.location) || gen.startLocation;
+
+    const dangerColor = (d) => {
+      if (d <= 1) return "#5fae6a";   // 凡俗/平和
+      if (d <= 3) return "#4f9ec9";   // 荒野/坊市
+      if (d <= 5) return "#e0a23c";   // 禁地
+      if (d <= 8) return "#d65a5a";   // 秘境/试炼
+      return "#b06bd6";               // 仙迹
+    };
+
+    // 1) 宏观疆域底框（按地域包围盒计算）
+    const box = {};
+    gen.regions.forEach(r => {
+      const b = box[r.macro] || (box[r.macro] = { x0: r.x, y0: r.y, x1: r.x, y1: r.y });
+      b.x0 = Math.min(b.x0, r.x); b.y0 = Math.min(b.y0, r.y);
+      b.x1 = Math.max(b.x1, r.x); b.y1 = Math.max(b.y1, r.y);
+    });
+    let zones = "";
+    (gen.macroRegions || []).forEach(m => {
+      const b = box[m.name]; if (!b) return;
+      const x0 = b.x0 - 55, y0 = b.y0 - 45, x1 = b.x1 + 55, y1 = b.y1 + 45;
+      const cx = (x0 + x1) / 2;
+      zones += `<rect class="map-zone" x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}"></rect>`;
+      zones += `<text class="map-zone-label" x="${cx}" y="${y0 + 22}" text-anchor="middle">${m.name}</text>`;
+    });
+
+    // 2) 灵脉连线（每个地域连最近的另一个地域）
+    const pts = gen.regions;
+    const links = [];
+    for (let i = 0; i < pts.length; i++) {
+      let best = -1, bd = 1e9;
+      for (let j = 0; j < pts.length; j++) {
+        if (i === j) continue;
+        const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y, dd = dx * dx + dy * dy;
+        if (dd < bd) { bd = dd; best = j; }
+      }
+      if (best >= 0) {
+        const a = Math.min(i, best), b = Math.max(i, best);
+        if (!links.some(l => l[0] === a && l[1] === b)) links.push([a, b]);
+      }
+    }
+    let linkSvg = "";
+    links.forEach(([a, b]) => {
+      linkSvg += `<line class="map-link" x1="${pts[a].x}" y1="${pts[a].y}" x2="${pts[b].x}" y2="${pts[b].y}"></line>`;
+    });
+
+    // 3) 地域节点
+    let nodes = "";
+    pts.forEach((r, i) => {
+      const isCur = r.name === cur;
+      const rad = 10 + Math.min(6, r.danger);
+      nodes += `<g class="map-node ${isCur ? "map-current" : ""}" data-i="${i}" onclick="UI.showRegionDetail(${i})">`
+        + `<circle class="node-core" cx="${r.x}" cy="${r.y}" r="${rad}" fill="${dangerColor(r.danger)}" stroke="#000" stroke-width="1.5"></circle>`
+        + `<text x="${r.x}" y="${r.y + 5}" text-anchor="middle" font-size="13" fill="#0b0d14" style="pointer-events:none;font-weight:bold">${r.name[0]}</text>`
+        + `<text class="node-label" x="${r.x}" y="${r.y + rad + 16}" text-anchor="middle">${r.name}</text>`
+        + `</g>`;
+    });
+    // 当前位置脉冲环
+    const curR = pts.find(r => r.name === cur);
+    const ring = curR ? `<circle class="map-current-ring" cx="${curR.x}" cy="${curR.y}" r="18"></circle>` : "";
+
+    canvas.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">${zones}${linkSvg}${nodes}${ring}</svg>`;
+  },
+
+  // 展示大地图；intro=true 时为开局预览（显示「踏入仙途」）
+  showWorldMap(intro) {
+    this.renderWorldMap();
+    const screen = document.getElementById("screen-map");
+    if (screen) screen.classList.toggle("map-intro", !!intro);
+    this.show("map");
+  },
+
+  // 开局预览中「踏入仙途」→ 进入游戏并直接开始
+  startGameFromMap() {
+    this._skipOpeningHint = true;
+    this.show("game");
+    this.startGame();
+    this._skipOpeningHint = false;
+  },
+
+  // 点选地域节点 → 详情面板
+  showRegionDetail(i) {
+    const gen = (Game.state && Game.state.world && Game.state.world.gen);
+    if (!gen) return;
+    const r = gen.regions[i];
+    if (!r) return;
+    document.querySelectorAll(".map-node").forEach(n => n.classList.remove("selected"));
+    const node = document.querySelector('.map-node[data-i="' + i + '"]');
+    if (node) node.classList.add("selected");
+    const facs = (gen.factions || []).filter(f => f.base === r.name);
+    const npcs = (gen.npcs || []).filter(n => n.where === r.name);
+    const dt = ["", "平和", "微险", "凶险", "险峻", "险绝", "危厄", "凶煞", "绝命", "通天", "飞升"][Math.min(10, r.danger)] || ("凶险" + r.danger);
+    let html = `<h3>${r.name}</h3>`;
+    html += `<div class="md-macro">${r.macro} · <span class="md-type">${r.type}</span></div>`;
+    html += `<div class="md-desc">${r.desc}</div>`;
+    html += `<div class="md-row"><b>凶险程度：</b>${r.danger} / 10（${dt}）</div>`;
+    if (facs.length) html += `<div class="md-row"><b>盘踞势力：</b>${facs.map(f => f.name).join("、")}</div>`;
+    if (npcs.length) html += `<div class="md-row"><b>相关人物：</b>${npcs.map(n => n.name + "（" + n.title + "）").join("、")}</div>`;
+    if (r.name === (Game.state.world.location)) html += `<div class="md-row" style="color:var(--gold-bright)">★ 你当前所在</div>`;
+    const detail = document.getElementById("map-detail");
+    if (detail) detail.innerHTML = html;
+  },
+
   // ============ 主菜单 ============
   renderMenu() {
     const hasSave = Game.hasSave();
@@ -1187,7 +1314,7 @@ const UI = {
     const modeInput = document.getElementById("selected-narrative-mode");
     const modeKey = modeInput ? modeInput.value : "standard";
     Game.createCharacter(name, rootIndex, bgIndex, genderIndex, seed, modeKey);
-    this.show("game");
+    this.showWorldMap(true); // 开局先生成并展示大地图
   },
 
   // ============ 随机生成 ============
@@ -1247,13 +1374,16 @@ const UI = {
     this.renderMobileDrawer();
     this.initVnStage();
     if (Game.log.length === 0) {
-      // 显示开局引导
-      const storyEl = document.getElementById("story-text");
-      storyEl.innerHTML = `<div class="opening-hint">
-        <p>道友，你的仙途即将开启。</p>
-        <p>下方输入你的行动，或点击下方建议选项。AI将根据你的选择演绎独一无二的修仙故事。</p>
-        <button class="btn btn-primary" onclick="UI.startGame()">踏入仙途</button>
-      </div>`;
+      if (!this._skipOpeningHint) {
+        // 显示开局引导
+        const storyEl = document.getElementById("story-text");
+        storyEl.innerHTML = `<div class="opening-hint">
+          <p>道友，你的仙途即将开启。</p>
+          <p>下方输入你的行动，或点击下方建议选项。AI将根据你的选择演绎独一无二的修仙故事。</p>
+          <button class="btn btn-primary" onclick="UI.startGame()">踏入仙途</button>
+        </div>`;
+      }
+      // 若经大地图预览(_skipOpeningHint)进入，则留空等待 startGame 填充
     } else {
       this.renderHistory();
     }
@@ -2013,6 +2143,7 @@ const UI = {
         <div class="mdrawer-section-title">世界</div>
         <div class="mdrawer-world-row"><span style="color:var(--text-dim);font-size:12px">仙程</span><span class="ms-val">第 ${Game.state.meta.playTurn} 程</span></div>
         <div class="mdrawer-world-row"><span style="color:var(--text-dim);font-size:12px">篇章</span><span class="ms-val">${Game.getPacing(Game.state.meta.playTurn).phaseName}</span></div>
+        <button class="btn btn-block btn-map" onclick="UI.showWorldMap()">🗺 展开大地图</button>
       </div>`;
 
     body.innerHTML = progressHtml + npcHtml + skillHtml + invHtml + worldHtml;

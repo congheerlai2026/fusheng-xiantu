@@ -538,3 +538,77 @@ body.pixel .battle-fx-burst .cast-particle {
   body.pixel .vn-actor.hero { left: 4%; height: 36%; }
   body.pixel .vn-actor.npc  { right: 5%; height: 36%; }
 }
+
+/* ============ 大地图 ============ */
+body.pixel #screen-map { background: var(--bg-dark); }
+body.pixel .map-wrap {
+  display: flex; flex-direction: column;
+  height: 100dvh; width: 100%;
+  background: radial-gradient(1200px 700px at 50% 38%, #11192e 0%, var(--bg-dark) 72%);
+  color: var(--text);
+}
+body.pixel .map-header {
+  padding: 10px 14px 8px; border-bottom: 2px solid var(--border);
+  background: var(--bg-panel);
+}
+body.pixel .map-titlebar { display: flex; align-items: center; justify-content: space-between; }
+body.pixel .map-title { font-size: 20px; color: var(--gold-bright); letter-spacing: 3px; text-shadow: 2px 2px 0 #000; }
+body.pixel .btn-map-close { padding: 4px 10px; font-size: 14px; }
+body.pixel .map-omen { margin-top: 5px; font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+
+body.pixel .map-body { flex: 1; display: flex; min-height: 0; }
+body.pixel .map-canvas {
+  flex: 1; position: relative; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; padding: 6px;
+}
+body.pixel .map-canvas svg { width: 100%; height: 100%; }
+body.pixel .map-detail {
+  width: 290px; flex: none; border-left: 2px solid var(--border);
+  background: var(--bg-panel); padding: 14px; overflow-y: auto;
+}
+body.pixel .map-detail-empty { color: var(--text-dim); font-size: 13px; line-height: 1.9; }
+body.pixel .map-detail h3 { color: var(--gold-bright); font-size: 17px; margin: 0 0 4px; letter-spacing: 2px; }
+body.pixel .map-detail .md-macro { color: var(--jade); font-size: 12px; margin-bottom: 8px; }
+body.pixel .map-detail .md-type {
+  display: inline-block; font-size: 11px; padding: 2px 8px; border: 1px solid var(--border);
+  margin-bottom: 8px; color: var(--text-dim);
+}
+body.pixel .map-detail .md-desc { font-size: 13px; line-height: 1.9; }
+body.pixel .map-detail .md-row { margin-top: 8px; font-size: 12px; color: var(--text-dim); line-height: 1.7; }
+body.pixel .map-detail .md-row b { color: var(--text); }
+body.pixel .map-footer {
+  padding: 10px 14px; border-top: 2px solid var(--border); background: var(--bg-panel);
+  display: flex; justify-content: center;
+}
+body.pixel .map-footer .btn-primary { min-width: 220px; font-size: 15px; letter-spacing: 4px; }
+/* 非 intro 模式（游戏中打开）：隐藏底部「踏入仙途」 */
+body.pixel #screen-map:not(.map-intro) .map-footer { display: none; }
+
+body.pixel .map-node { cursor: pointer; }
+body.pixel .map-node .node-core { transition: filter .15s; }
+body.pixel .map-node:hover .node-core,
+body.pixel .map-node.selected .node-core { filter: drop-shadow(0 0 6px var(--gold-bright)); }
+body.pixel .map-node .node-label { fill: var(--text); font-size: 13px; pointer-events: none; }
+body.pixel .map-node.selected .node-label { fill: var(--gold-bright); }
+body.pixel .map-current-ring {
+  fill: none; stroke: var(--gold-bright); stroke-width: 2.5; opacity: .85;
+  animation: map-pulse 1.6s ease-in-out infinite;
+}
+@keyframes map-pulse { 0%,100% { opacity: .25; } 50% { opacity: .9; } }
+body.pixel .map-link { stroke: rgba(120,140,200,.22); stroke-width: 1.5; fill: none; }
+body.pixel .map-zone { fill: rgba(255,255,255,.03); stroke: rgba(255,255,255,.06); stroke-width: 1; }
+body.pixel .map-zone-label { fill: var(--text-dim); font-size: 15px; letter-spacing: 6px; opacity: .45; }
+
+body.pixel .btn-map { color: var(--gold-bright); border-color: var(--gold); }
+body.pixel .btn-map:hover { background: rgba(224,182,76,.12); }
+body.pixel .btn-block { width: 100%; margin-top: 10px; }
+
+/* 小屏：大地图详情改为底部抽屉 */
+@media (max-width: 900px) {
+  body.pixel .map-body { flex-direction: column; }
+  body.pixel .map-detail {
+    width: auto; border-left: none; border-top: 2px solid var(--border);
+    max-height: 40%;
+  }
+  body.pixel .map-footer .btn-primary { width: 100%; }
+}

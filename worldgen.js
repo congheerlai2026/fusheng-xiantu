@@ -46,6 +46,16 @@ const REGION_TYPES = [
   { type: "仙迹", danger: 10, realm: 7, flavor: ["飞升仙人遗留之宫，霞光万道", "传说中的蓬莱药洲，凡人难觅其踪"] },
 ];
 
+// 宏观疆域（六域）：构成世界版图骨架，并为每域划定地图坐标框（SVG 1000x680 空间）
+const MACRO_REGIONS = [
+  { name: "中州", flavor: "天下中枢，宗门林立，灵脉交汇，正道共主之所在。", zone: { x0: 340, y0: 235, x1: 660, y1: 465 } },
+  { name: "东域", flavor: "东海之滨，商港云集，散修异族往来，机变百出。", zone: { x0: 705, y0: 250, x1: 955, y1: 525 } },
+  { name: "西域", flavor: "大漠黄沙，古国废墟，魔修刀客横行，埋金无数。", zone: { x0: 45, y0: 250, x1: 295, y1: 525 } },
+  { name: "南疆", flavor: "十万大山，瘴疠蛮荒，巫蛊妖族共居，凶险无比。", zone: { x0: 300, y0: 520, x1: 700, y1: 660 } },
+  { name: "北原", flavor: "冰封雪野，蛮族游牧，古战场遗魂不息，豪勇尚武。", zone: { x0: 250, y0: 30, x1: 750, y1: 200 } },
+  { name: "海外", flavor: "蓬莱诸岛，仙踪渺茫，灵气最盛却最难寻，传为飞升之径。", zone: { x0: 780, y0: 40, x1: 970, y1: 205 } },
+];
+
 const SECT_PREFIX = ["太玄", "凌霄", "幽冥", "赤火", "碧落", "苍梧", "无极", "九幽", "紫宸", "寒山", "流云", "沉沙", "焚天", "听雪", "归尘", "万剑", "漱玉", "星陨"];
 const SECT_CORE = ["剑", "丹", "符", "阵", "器", "魂", "妖", "魔", "雷", "风", "星", "禅", "水", "毒"];
 const SECT_SUFFIX = ["宗", "门", "派", "教", "阁", "殿", "谷", "岛", "山", "宫", "庭", "崖"];
@@ -115,27 +125,45 @@ const WorldGen = {
     // 1) 界名
     const worldName = pick(WORLD_PREFIX) + pick(WORLD_SUFFIX);
 
-    // 2) 地域（版图节点，保证含宗门+坊市作为起点候选）
+    // 2) 地域（版图节点，按宏观疆域分布并生成地图坐标，构成大世界版图）
     const regions = [];
     const usedNames = new Set();
-    const regionCount = ri(6, 7);
-    const forcedTypes = ["宗门", "坊市", "禁地"];
-    let typeCursor = 0;
-    while (regions.length < regionCount) {
-      let t;
-      if (typeCursor < forcedTypes.length) {
-        t = REGION_TYPES.find((x) => x.type === forcedTypes[typeCursor]);
-        typeCursor++;
-      } else {
-        t = pick(REGION_TYPES);
-      }
+    const macroByName = {};
+    MACRO_REGIONS.forEach((m) => { macroByName[m.name] = m; });
+    const makeRegion = (macroName, t) => {
+      const zone = macroByName[macroName].zone;
       let nm, guard = 0;
       do { nm = pick(REGION_PREFIX) + pick(REGION_MID); guard++; } while (usedNames.has(nm) && guard < 30);
       usedNames.add(nm);
-      regions.push({ name: nm, type: t.type, danger: t.danger, realm: t.realm, desc: pick(t.flavor) });
+      return {
+        name: nm, type: t.type, danger: t.danger, realm: t.realm, desc: pick(t.flavor),
+        macro: macroName,
+        x: ri(zone.x0, zone.x1),
+        y: ri(zone.y0, zone.y1),
+      };
+    };
+    const ensureType = (type) => {
+      if (regions.some((r) => r.type === type)) return;
+      const t = REGION_TYPES.find((x) => x.type === type);
+      const idx = ri(0, regions.length - 1);
+      const macroName = regions[idx].macro;
+      regions[idx] = makeRegion(macroName, t);
+    };
+    const regionCount = ri(14, 16);
+    // 第一轮：每个宏观疆域至少 1 个地域，撑起版图骨架
+    MACRO_REGIONS.forEach((m) => regions.push(makeRegion(m.name, pick(REGION_TYPES))));
+    // 第二轮：随机补足，疆域与类型均随机，丰富世界
+    while (regions.length < regionCount) {
+      regions.push(makeRegion(pick(MACRO_REGIONS).name, pick(REGION_TYPES)));
     }
+    // 保证关键类型存在（起点宗门/凡俗、险地禁地）
+    ensureType("宗门");
+    ensureType("凡俗");
+    ensureType("禁地");
     const startCandidates = regions.filter((r) => r.type === "宗门" || r.type === "凡俗");
-    const startLocation = (startCandidates[0] || regions[0]).name;
+    const startRegion = startCandidates[0] || regions[0];
+    const startLocation = startRegion.name;
+    const startMacro = startRegion.macro;
 
     // 3) 宗门势力
     const factions = [];
@@ -197,12 +225,14 @@ const WorldGen = {
       id: this.hashSeed(s) >>> 0,
       name: worldName,
       omen,
+      macroRegions: MACRO_REGIONS.map((m) => ({ name: m.name, flavor: m.flavor })),
       regions,
       factions,
       npcs,
       rumors,
       treasures,
       startLocation,
+      startMacro,
     };
   },
 };

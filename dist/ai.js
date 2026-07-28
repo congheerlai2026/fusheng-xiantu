@@ -239,8 +239,10 @@ ${this.buildVarietyBlock(state)}
     const lines = [];
     lines.push(`· 本界名号：${gen.name}`);
     lines.push(`· 天地异象：${gen.omen}`);
-    lines.push("· 已知版图（地名·性质·凶险·风貌）：");
-    gen.regions.forEach(r => lines.push(`  - ${r.name}（${r.type}·凶险${r.danger}）：${r.desc}`));
+    lines.push("· 本界宏观疆域（六域骨架，构成大世界版图）：");
+    gen.macroRegions.forEach(m => lines.push(`  - ${m.name}：${m.flavor}`));
+    lines.push("· 已知版图（疆域·地名·性质·凶险·风貌）：");
+    gen.regions.forEach(r => lines.push(`  - 【${r.macro}】${r.name}（${r.type}·凶险${r.danger}）：${r.desc}`));
     lines.push("· 当世宗门势力：");
     gen.factions.forEach(f => lines.push(`  - ${f.name}（${f.disposition}），根基在${f.base}；${f.sigil}`));
     lines.push("· 名动一方的人物：");
