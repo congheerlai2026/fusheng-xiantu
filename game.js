@@ -1245,6 +1245,7 @@ const UI = {
     this.renderInventory();
     this.renderMobileBar();
     this.renderMobileDrawer();
+    this.initVnStage();
     if (Game.log.length === 0) {
       // 显示开局引导
       const storyEl = document.getElementById("story-text");
@@ -1434,6 +1435,7 @@ const UI = {
     }
     el.innerHTML = `<div class="realm-label"><span class="realm-name">${this.escapeHtml(lib.name)}</span>` +
       `<span class="realm-stage">${this.escapeHtml(realm)} · 第${rl}/10拍</span></div>`;
+    this.updateVnToggleScene();
   },
 
   // 由 AI 显式切换场景（state_changes.scene）
@@ -1897,6 +1899,37 @@ const UI = {
     const overlay = document.getElementById("mobile-overlay");
     if (drawer) drawer.classList.remove("open");
     if (overlay) overlay.classList.remove("show");
+  },
+
+  // 手机端 VN 舞台折叠/展开（默认折叠，剧情文本优先）
+  _vnCollapsed: true,
+  toggleVnStage() {
+    this._vnCollapsed = !this._vnCollapsed;
+    const stage = document.querySelector(".vn-stage");
+    if (stage) stage.classList.toggle("vn-collapsed", this._vnCollapsed);
+    // 持久化
+    try { localStorage.setItem("xianxia_vn_collapsed", this._vnCollapsed ? "1" : "0"); } catch(e) {}
+    // 展开后滚到底部看剧情
+    if (!this._vnCollapsed) {
+      setTimeout(() => this.scrollToBottom(), 350);
+    }
+  },
+  // 初始化 VN 折叠状态（读档后调用）
+  initVnStage() {
+    this._vnCollapsed = localStorage.getItem("xianxia_vn_collapsed") !== "0"; // 默认折叠
+    const stage = document.querySelector(".vn-stage");
+    if (stage) stage.classList.toggle("vn-collapsed", this._vnCollapsed);
+    // 更新场景名显示
+    this.updateVnToggleScene();
+  },
+  // 更新折叠条上的场景名
+  updateVnToggleScene() {
+    const el = document.getElementById("vn-toggle-scene");
+    if (!el || !Game.state || !Game.state.character) return;
+    const realm = Game.state.character.realm || "";
+    const rl = Game.state.character.realmLevel || 1;
+    const lib = SCENE_LIB[this.currentScene] || { name: realm || "仙途" };
+    el.textContent = `${lib.name} · ${realm}`;
   },
 
   renderHistory() {

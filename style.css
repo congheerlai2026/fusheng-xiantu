@@ -485,7 +485,7 @@ body::before {
 /* ============ 手机端 ============ */
 
 /* 默认隐藏（桌面端不显示） */
-.mobile-bar, .mobile-drawer, .mobile-overlay { display: none; }
+.mobile-bar, .mobile-drawer, .mobile-overlay, .vn-toggle { display: none; }
 
 @media (max-width: 640px) {
   /* 隐藏桌面侧栏 */
@@ -499,7 +499,51 @@ body::before {
   }
   .panel-center { border: none; }
 
-  /* -------- 紧凑顶部�� -------- */
+  /* -------- 手机端 VN 舞台折叠（默认收起，剧情优先） -------- */
+  .vn-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: linear-gradient(180deg, #1a2330, #161c26);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
+    z-index: 10;
+    position: relative;
+  }
+  .vn-toggle-scene {
+    font-size: 12px;
+    color: var(--gold);
+    letter-spacing: 1px;
+  }
+  .vn-toggle-icon {
+    font-size: 10px;
+    color: var(--text-dim);
+    transition: transform 0.25s;
+  }
+  /* 折叠状态：隐藏场景图和立绘，对话框撑满 */
+  .vn-stage.vn-collapsed .vn-bg,
+  .vn-stage.vn-collapsed .vn-actors,
+  .vn-stage.vn-collapsed .battle-stage,
+  .vn-stage.vn-collapsed #milestone-banner {
+    display: none !important;
+  }
+  .vn-stage.vn-collapsed .vn-dialogue {
+    position: relative;
+    max-height: none;
+    flex: 1;
+    background: transparent;
+    border-top: none;
+    box-shadow: none;
+    padding: 8px 0 0;
+  }
+  .vn-stage.vn-collapsed .vn-toggle-icon {
+    transform: rotate(-90deg);
+  }
+
+  /* -------- 紧凑顶部栏 -------- */
   .mobile-bar {
     display: flex;
     position: fixed; top: 0; left: 0; right: 0; z-index: 100;
@@ -509,6 +553,7 @@ body::before {
     align-items: center;
     padding: 0 8px;
   }
+  .vn-toggle { display: flex; }
   .mobile-bar-stats {
     flex: 1; display: flex; align-items: center; gap: 8px;
     font-size: 12px; color: var(--text-dim);
@@ -625,12 +670,32 @@ body::before {
   .story-text, .action-options, .action-input-area, .loading {
     padding-left: 14px; padding-right: 14px;
   }
-  .story-text { padding-top: 14px; -webkit-overflow-scrolling: touch; }
-  .action-input-area { padding-bottom: 20px; }
+  .story-text { padding-top: 10px; -webkit-overflow-scrolling: touch; }
+  .action-input-area { padding-bottom: 16px; gap: 8px; }
+  .action-input { padding: 10px 12px; font-size: 13px; }
   .game-title { font-size: 36px; letter-spacing: 6px; }
   .btn-lg { min-width: 100%; }
   .modal-card { max-width: 94vw; padding: 24px 20px; max-height: 90vh; }
   .card-grid { grid-template-columns: 1fr; }
+
+  /* 手机端选项更紧凑（给剧情留空间） */
+  .btn-option {
+    padding: 9px 12px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .action-options { padding: 0 14px 8px; }
+
+  /* 手机端 VN 对话框：展开时给更多空间给剧情 */
+  .vn-dialogue {
+    max-height: 65%;
+    padding: 10px 12px 12px;
+  }
+  .vn-dialogue .story-text {
+    padding: 0;
+    min-height: 80px;
+  }
 
   /* 遮罩（抽屉打开时） */
   .mobile-overlay {

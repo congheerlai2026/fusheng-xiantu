@@ -109,6 +109,11 @@
 
     <!-- 中间：视觉小说式舞台（背景场景 + 立绘 + 对话框） -->
     <main class="panel panel-center vn-stage">
+      <!-- 手机端：场景折叠条（默认折叠，点开看立绘/大背景） -->
+      <div id="vn-toggle" class="vn-toggle" onclick="UI.toggleVnStage()">
+        <span id="vn-toggle-scene" class="vn-toggle-scene"></span>
+        <span class="vn-toggle-icon">▼</span>
+      </div>
       <div id="realm-scene" class="vn-bg"></div>
       <div id="vn-actors" class="vn-actors"></div>
       <div id="battle-stage" class="battle-stage" style="display:none">
