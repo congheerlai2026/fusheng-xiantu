@@ -1908,7 +1908,7 @@ const UI = {
     const stage = document.querySelector(".vn-stage");
     if (stage) stage.classList.toggle("vn-collapsed", this._vnCollapsed);
     // 持久化
-    try { localStorage.setItem("xianxia_vn_collapsed", this._vnCollapsed ? "1" : "0"); } catch(e) {}
+    try { localStorage.setItem("xianxia_vn_collapsed_v2", this._vnCollapsed ? "1" : "0"); } catch(e) {}
     // 展开后滚到底部看剧情
     if (!this._vnCollapsed) {
       setTimeout(() => this.scrollToBottom(), 350);
@@ -1916,7 +1916,7 @@ const UI = {
   },
   // 初始化 VN 折叠状态（读档后调用）
   initVnStage() {
-    this._vnCollapsed = localStorage.getItem("xianxia_vn_collapsed") === "1"; // 默认展开（gal game 形态）
+    this._vnCollapsed = localStorage.getItem("xianxia_vn_collapsed_v2") === "1"; // 默认展开（gal game 形态）；旧键作废，避免陈旧折叠状态残留
     const stage = document.querySelector(".vn-stage");
     if (stage) stage.classList.toggle("vn-collapsed", this._vnCollapsed);
     // 更新场景名显示
