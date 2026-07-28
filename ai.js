@@ -135,6 +135,16 @@ ${this.buildLifeSkillGraph()}
   · 高智爽文：以丹道博弈、商道破局、阵法智斗等"硬核职业化"智斗替代无脑碾压。
 - 运用原则：①以上元素须与【本界天地】【本回合节奏指令】融合，自然浮现，不可生硬堆砌；②须在诸流派间轮换，避免长期只用一种套路令人生厌；③凶险与代价仍须真实（参见第4条生死铁律），不可因"爽文"而让低境无敌。
 
+【叙事工艺 · 写出"有仙气"而非"正确但平庸"的文字 · 务必遵循】
+死规矩之外的文笔才是玩家留存的关键。请按以下工艺落笔，杜绝"AI 味"：
+1. 展示，不要告知（Show, don't tell）。禁止用"心中念头急转""暗自警惕""只觉出尘之气""五感稍敏于凡人"这类抽象概括代替画面。要写：他指节扣在剑柄上泛了白；她袖中滑出半寸寒芒，又被指甲抵回去；你喉头一甜，血沫先一步漫过齿关。让动作、感官、细节替角色发声，不靠旁白下结论。
+2. 感官锚定，三感起步。每段至少落两到三处可感知细节——气味（艾草混着新斩竹的清气）、触感（石阶沁凉贴着掌心）、声响（远处更锣一声闷响，惊起檐上宿鸟）、光影（夕照把她的睫毛染成金边）。把"身临其境"落到具体器官上，而非"气氛紧张"四字。
+3. 反陈词滥调。杜绝"落日熔金""出尘之气""敬酒不吃吃罚酒""眸若星辰""风华绝代""一股浩然之气"等被用烂的套话；用具体、陌生化、带作者指纹的笔触替代。形容一人，写她袖口磨白的边、写她开口前总先垂一眼鞋尖——而非"清冷如仙"。
+4. 选项必须有真实差异与代价。3-4 个选项须指向不同走向、不同代价、不同风险，禁止四选项全填 [平安]（低境修士如蝼蚁，连看似平和的场合也暗藏错步之险）。无论战斗、探索还是社交，都须至少含 1 个带 [凶险]/[致命] 的真实选项；社交/平静场景可用：顺手翻看对方之物（触忌）、答应陌生人私密邀约、追问禁忌往事、当众点破对方隐秘、独自深入坊市暗巷等，让低境者始终活在"一步踏错便万劫"的修仙世界。同时至少 1 个 [平安] 稳妥之选，令抉择"有分量、难两全"。
+5. 短句节奏，留白胜堆砌。多用逗号句号切分，避免一逗到底的长句；情绪高点用短句断行制造呼吸感。每段不超 3 句，空行分段。
+6. 情绪钩子收尾。每回合末尾留一个未解的张力或悬念（一缕不对劲的灵气、对方眼底一闪的算计、怀中玉简忽然发烫），让读者想点下一回合。
+7. 建立辨识度文风。在"流畅现代网文白话"基础上，敢用一两处精准的古意词与通感（如"钟声是凉的""灵气是有重量的""剑意比雪还薄"），让文字被记住，而非正确却无味。
+
 【叙事与判定规则】
 1. 每次回复必须同时推进剧情并判定行动结果，二者不可偏废。
 2. 文风：用流畅、现代、人人读得下去的网文白话文风。可带适度文采与画面感（风声、寒霜、檀香、剑鸣），但严禁堆砌古文、生造生僻字、刻意半文半白令读者费解；不写"话说""且听下回分解"等章回套语。
@@ -346,19 +356,41 @@ ${this.buildLifeSkillGraph()}
     const entry = LOCATIONS.find(l => l.name === loc);
     if (!entry || !entry.sensory) return "";
     return `【当前所在 · ${entry.name}（${entry.type} · 凶险度${entry.danger}/10）】\n` +
-      `环境质感：${entry.sensory}\n` +
-      `请在描写中自然融此地的气息、声响与光影，使玩家"身临其境"；离开此地时，须同步切换氛围与 state_changes.scene。`;
+      `环境质感（仅作灵感种子，切勿逐字抄入 narrative）：${entry.sensory}\n` +
+      `请在描写中自然融此地的气息、声响与光影，使玩家"身临其境"。⚠ 严禁把上面"环境质感"原句照抄进 narrative——须化用为属于本回合的新描写：换角度、换感官、叠加角色当下的动作与情绪，写出你自己的句子。离开此地时，须同步切换氛围与 state_changes.scene。`;
   },
 
-  // 依据叙事节奏档位与用户上限，计算最终 max_tokens（档位上限与设置上限取较小者，避免截断 JSON）
+  // 判断是否为"推理模型"：此类模型会把 reasoning（思考）token 计入 max_tokens 预算，
+  // 挤占 narrative + options 的实际输出空间，导致 JSON 被截断、选项丢失（游戏卡死）。
+  _isReasoningModel(cfg) {
+    const model = (cfg && cfg.model) || "";
+    const base = (cfg && cfg.baseURL) || "";
+    return /deepseek/i.test(base)
+      || /(reason|deepseek|r1\b|v4|v3\.2|thinking|o1|o3|o4|qwq|glm-z1|step|qwen3-?thinking)/i.test(model);
+  },
+
+  // 依据叙事节奏档位与用户上限，计算最终 max_tokens。
+  // 关键修复：推理模型（如 deepseek-v4-flash）会在 max_tokens 内消耗 reasoning_tokens，
+  // 必须额外抬高输出上限，否则 narrative 被"思考"饿死、options 截断。
   getMaxTokens(state, cfg) {
+    const isReasoning = this._isReasoningModel(cfg);
     let base = 850;
     if (typeof NARRATIVE_MODES !== "undefined") {
       const mode = NARRATIVE_MODES.find(m => m.key === (state && state.narrationMode)) || NARRATIVE_MODES.find(m => m.key === "standard");
       if (mode) base = mode.maxTokens;
     }
-    const cap = (cfg && typeof cfg.maxTokens === "number") ? cfg.maxTokens : 1200;
-    return Math.min(base, cap);
+    if (!isReasoning) {
+      // 非推理模型：保持原行为（档位上限与设置上限取较小者）
+      const cap = (cfg && typeof cfg.maxTokens === "number") ? cfg.maxTokens : 2000;
+      return Math.min(base, cap);
+    }
+    // 推理模型：base + 推理开销预留（standard 约 1500、immersive 约 2000 之上再留 1100~1400）
+    const headroom = (base <= 1500) ? 1100 : 1400;
+    const desired = base + headroom;
+    const cap = (cfg && typeof cfg.maxTokens === "number") ? cfg.maxTokens : 2000;
+    // 推理模型宁可多花 token，也绝不允许 options 被截断（截断=玩家无法操作=严重违约）；
+    // 若用户设定上限低于所需，以 desired 为准，保证叙事与选项完整。
+    return Math.max(desired, cap);
   },
 
   // 由玩家实际选择生成"风格画像"，注入系统提示词
@@ -389,7 +421,8 @@ ${this.buildLifeSkillGraph()}
     if (typeof LIFE_SKILLS === "undefined" || !Array.isArray(LIFE_SKILLS)) return "（生活技能数据未载入）";
     return LIFE_SKILLS.map(s => {
       const paths = s.paths.map(p => `${p.key}（${p.desc}）`).join("；");
-      return `  - ${s.name}：${s.desc}\n    进阶之路：${paths}`;
+      const flavor = s.flavor ? `\n    匠心与代价：${s.flavor}` : "";
+      return `  - ${s.name}：${s.desc}${flavor}\n    进阶之路：${paths}`;
     }).join("\n");
   },
 
