@@ -687,15 +687,20 @@ body::before {
   }
   .action-options { padding: 0 14px 8px; }
 
-  /* 手机端 VN 对话框：展开时给更多空间给剧情 */
+  /* 手机端 VN 对话框：gal game 底部半透明浮层（不再占满一屏，让立绘+背景常驻可见） */
   .vn-dialogue {
-    max-height: 65%;
+    max-height: 48%;
     padding: 10px 12px 12px;
+    background: rgba(10,13,20,.82);
   }
   .vn-dialogue .story-text {
     padding: 0;
     min-height: 80px;
   }
+
+  /* 手机端立绘略放大，强化 gal game 视觉重心（dialogue 顶部在 48%，立绘底边在 50% 以上不重叠，头部避开顶部折叠条） */
+  .vn-actor { bottom: 50%; }
+  .vn-actor.hero, .vn-actor.npc { height: 48%; }
 
   /* 遮罩（抽屉打开时） */
   .mobile-overlay {

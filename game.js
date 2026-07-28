@@ -1901,8 +1901,8 @@ const UI = {
     if (overlay) overlay.classList.remove("show");
   },
 
-  // 手机端 VN 舞台折叠/展开（默认折叠，剧情文本优先）
-  _vnCollapsed: true,
+  // 手机端 VN 舞台折叠/展开（默认展开：gal game 形态，立绘+背景常驻，对话框为底部浮层）
+  _vnCollapsed: false,
   toggleVnStage() {
     this._vnCollapsed = !this._vnCollapsed;
     const stage = document.querySelector(".vn-stage");
@@ -1916,7 +1916,7 @@ const UI = {
   },
   // 初始化 VN 折叠状态（读档后调用）
   initVnStage() {
-    this._vnCollapsed = localStorage.getItem("xianxia_vn_collapsed") !== "0"; // 默认折叠
+    this._vnCollapsed = localStorage.getItem("xianxia_vn_collapsed") === "1"; // 默认展开（gal game 形态）
     const stage = document.querySelector(".vn-stage");
     if (stage) stage.classList.toggle("vn-collapsed", this._vnCollapsed);
     // 更新场景名显示

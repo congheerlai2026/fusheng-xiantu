@@ -265,6 +265,29 @@ body.pixel .mb-hp, body.pixel .mb-qi { box-shadow: inset 1px 1px 0 #000; border:
 body.pixel .mobile-bar { box-shadow: inset 0 -2px 0 #070910; }
 body.pixel .mobile-drawer { box-shadow: 0 -4px 0 rgba(0,0,0,0.5); }
 
+/* ---------- 手机端 VN 折叠条像素化 ---------- */
+body.pixel .vn-toggle {
+  background: linear-gradient(180deg, #141826, #0e121c);
+  border-bottom: 2px solid #070910;
+  box-shadow: inset 0 -1px 0 #2a3146;
+}
+body.pixel .vn-toggle-scene {
+  font-family: 'Zpix', monospace;
+  font-size: 11px;
+  color: var(--gold-bright);
+  text-shadow: 1px 1px 0 #070910;
+}
+body.pixel .vn-toggle-icon {
+  font-size: 10px;
+  color: #5a6a8a;
+}
+/* 折叠状态下对话框：去掉像素框，融入背景 */
+body.pixel .vn-stage.vn-collapsed .vn-dialogue {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
 /* ---------- 像素风开关（设置页） ---------- */
 .pixel-toggle { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; cursor: pointer; }
 body.pixel .pixel-toggle { color: var(--text); }
