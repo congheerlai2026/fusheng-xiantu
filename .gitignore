@@ -4,3 +4,6 @@ selftest*.js
 *.out
 node_modules/
 .DS_Store
+
+# 本地发布目录（曾为嵌套git仓库导致Pages构建失败），不入库
+deploy-public/
