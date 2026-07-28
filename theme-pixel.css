@@ -1,0 +1,509 @@
+/* ============================================================
+   《浮生仙途》· 像素风主题（仅在 <body class="pixel"> 下生效）
+   设计：扁平配色 / 锐利无圆角 / 双线像素框 / 硬阴影按钮 /
+        分段式数值条 / 像素图标 / CRT 扫描线 / 境界场景
+   ============================================================ */
+
+/* ---------- 自托管中文像素字体 Zpix（最像素） ----------
+   多源：本地 fonts/Zpix.ttf 优先（离线可用）；部署环境无该文件时自动回退 jsDelivr CDN */
+@font-face {
+  font-family: 'Zpix';
+  src: url('fonts/Zpix.ttf') format('truetype'),
+       url('https://cdn.jsdelivr.net/gh/SolidZORO/zpix-pixel-font/dist/Zpix.ttf') format('truetype');
+  font-display: swap;
+}
+
+/* ---------- 调色板重定义（扁平、深色、像素感） ---------- */
+body.pixel {
+  --bg-dark:   #0b0d14;
+  --bg-panel:  #141826;
+  --bg-card:   #1c2233;
+  --border:    #2a3146;
+  --text:      #e8e2d2;
+  --text-dim:  #8b86a0;
+  --gold:      #e0b64c;
+  --gold-bright:#ffd86b;
+  --jade:      #5fcf9b;
+  --crimson:   #d65a5a;
+  --danger:    #ff6b6b;
+  --ink:       #2a2622;
+
+  font-family: 'Zpix', "Courier New", monospace !important;
+  background: var(--bg-dark);
+  image-rendering: pixelated;
+  letter-spacing: 0;
+  line-height: 1.55;
+}
+
+/* 去掉水墨纹理，保持纯平底色 */
+body.pixel::before { display: none; }
+
+/* 全局锐利：无圆角 */
+body.pixel * { border-radius: 0 !important; }
+
+/* ---------- CRT 扫描线 + 暗角 ---------- */
+body.pixel::after {
+  content: "";
+  position: fixed; inset: 0; z-index: 9990; pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.16) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,0.38) 100%);
+}
+
+/* ---------- 像素框（重组件：弹窗/卡片/标签/旗帜） ---------- */
+body.pixel .modal-card,
+body.pixel .select-card,
+body.pixel .form-input,
+body.pixel .item-type,
+body.pixel .event-flag,
+body.pixel .milestone-inner,
+body.pixel .incense-btn,
+body.pixel .toast,
+body.pixel .seed-card,
+body.pixel .support-card,
+body.pixel .bio-card,
+body.pixel .beta-code-item,
+body.pixel .settings-tips,
+body.pixel .help-content,
+body.pixel .beta-share-tip {
+  border: 2px solid #070910 !important;
+  box-shadow: inset 0 0 0 2px #2a3146, 3px 3px 0 rgba(0,0,0,0.45);
+}
+
+/* 三栏面板：双线内框，不投影，便于并列 */
+body.pixel .panel {
+  border: 2px solid #070910 !important;
+  box-shadow: inset 0 0 0 2px #2a3146;
+}
+
+/* ---------- 像素按钮：扁平填充 + 立体硬阴影 ---------- */
+body.pixel .btn {
+  border: 2px solid #070910 !important;
+  background: #1c2233;
+  color: #e8e2d2;
+  box-shadow: inset 2px 2px 0 #2f3a52, inset -2px -2px 0 #0b0d14, 3px 3px 0 rgba(0,0,0,0.5);
+  text-shadow: 1px 1px 0 #070910;
+  font-weight: normal;
+  transition: none;
+}
+body.pixel .btn:hover {
+  transform: translate(1px, 1px);
+  box-shadow: inset 2px 2px 0 #2f3a52, inset -2px -2px 0 #0b0d14, 2px 2px 0 rgba(0,0,0,0.5);
+  color: var(--gold-bright);
+  background: #232b40;
+}
+body.pixel .btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: inset 2px 2px 0 #0b0d14, inset -2px -2px 0 #2f3a52, 0 0 0 rgba(0,0,0,0);
+}
+body.pixel .btn-primary  { background: #6a4f2a; color: #fff3d0; }
+body.pixel .btn-primary:hover { background: #7a5d33; }
+body.pixel .btn-secondary { background: #1f3a30; color: var(--jade); }
+body.pixel .btn-gold     { background: #6a5526; color: #fff3d0; }
+body.pixel .btn-jade     { background: #163027; color: var(--jade); }
+body.pixel .btn-danger   { background: #3a1f1f; color: var(--danger); }
+body.pixel .btn-ghost    { background: transparent; color: var(--text-dim); }
+body.pixel .btn-ghost:hover { color: var(--text); border-color: #070910 !important; }
+
+/* 选项按钮 */
+body.pixel .btn-option {
+  border: 2px solid #070910 !important;
+  background: #161c2b;
+  color: #e8e2d2;
+  box-shadow: inset 2px 2px 0 #232c40, 3px 3px 0 rgba(0,0,0,0.4);
+  transition: none;
+}
+body.pixel .btn-option:hover {
+  background: #1d2536;
+  border-color: #070910 !important;
+  color: var(--gold-bright);
+  padding-left: 16px;
+}
+body.pixel .btn-option.has-lethal { border-color: #5a1414 !important; }
+body.pixel .btn-option.has-lethal:hover { background: #2a1717; color: #ff8a8a; }
+
+/* ---------- 分段式数值条（HP / 灵力 / 修炼 / 熟练度） ---------- */
+body.pixel .progress-bar,
+body.pixel .mdrawer-progress,
+body.pixel .skill-bar {
+  background: #0b0d14;
+  border: 2px solid #070910;
+  box-shadow: inset 1px 1px 0 #000;
+  height: 9px;
+  overflow: hidden;
+}
+body.pixel .progress-fill,
+body.pixel .mdrawer-progress-fill,
+body.pixel .skill-bar-fill {
+  background-color: var(--jade);
+  background-image: repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,0.38) 6px 8px);
+  box-shadow: none;
+  height: 100%;
+  transition: none;
+}
+body.pixel .mb-hp-fill {
+  background-color: #d65a5a;
+  background-image: repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 4px, rgba(0,0,0,0.38) 4px 6px);
+}
+body.pixel .mb-qi-fill {
+  background-color: #4a86d6;
+  background-image: repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 4px, rgba(0,0,0,0.38) 4px 6px);
+}
+
+/* ---------- 像素标题 ---------- */
+body.pixel .game-title {
+  font-family: 'Zpix', monospace;
+  color: var(--gold-bright);
+  text-shadow: 3px 3px 0 #070910, 6px 6px 0 rgba(224,182,76,0.22);
+  letter-spacing: 10px;
+}
+
+/* ---------- 剧情正文 ---------- */
+body.pixel .story-content { font-size: 16px; line-height: 1.9; letter-spacing: 0; }
+body.pixel .story-content.streaming { color: var(--gold-bright); }
+
+/* ---------- 像素图标（各 item-type 内联 SVG 像素图） ---------- */
+body.pixel .item-type {
+  border: 1px solid #070910;
+  position: relative;
+}
+body.pixel .item-type::before {
+  content: "";
+  display: inline-block;
+  width: 14px; height: 14px;
+  margin-right: 5px;
+  vertical-align: -2px;
+  background-repeat: no-repeat;
+  background-size: 14px 14px;
+  image-rendering: pixelated;
+}
+body.pixel .item-type.功法::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Crect x='7' y='2' width='2' height='9' fill='%23d8d8e0'/%3E%3Crect x='5' y='11' width='6' height='2' fill='%23e0b64c'/%3E%3Crect x='7' y='13' width='2' height='3' fill='%238a6a3a'/%3E%3C/svg%3E"); }
+body.pixel .item-type.物品::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Crect x='3' y='5' width='10' height='8' fill='%235fcf9b'/%3E%3Crect x='3' y='5' width='10' height='2' fill='%238fe0b8'/%3E%3Crect x='7' y='5' width='2' height='8' fill='%231c2233'/%3E%3C/svg%3E"); }
+body.pixel .item-type.丹药::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Crect x='5' y='5' width='6' height='6' fill='%23e08a5a'/%3E%3Crect x='6' y='6' width='2' height='2' fill='%23ffd0a8'/%3E%3C/svg%3E"); }
+body.pixel .item-type.法宝::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Crect x='5' y='5' width='6' height='6' fill='%237e96dc'/%3E%3Crect x='7' y='3' width='2' height='2' fill='%23cdd8ff'/%3E%3Crect x='3' y='7' width='2' height='2' fill='%23cdd8ff'/%3E%3Crect x='11' y='9' width='2' height='2' fill='%23cdd8ff'/%3E%3C/svg%3E"); }
+body.pixel .item-type.材料::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Crect x='6' y='3' width='4' height='10' fill='%239bb06a'/%3E%3Crect x='5' y='5' width='2' height='6' fill='%23c0d088'/%3E%3Crect x='9' y='7' width='2' height='4' fill='%23c0d088'/%3E%3C/svg%3E"); }
+body.pixel .item-type.符箓::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Crect x='5' y='2' width='6' height='12' fill='%23b48acb'/%3E%3Crect x='7' y='4' width='2' height='8' fill='%23ffffff'/%3E%3C/svg%3E"); }
+body.pixel .item-type.系统::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Crect x='7' y='3' width='2' height='10' fill='%23b48acb'/%3E%3Crect x='3' y='7' width='10' height='2' fill='%23b48acb'/%3E%3Crect x='5' y='5' width='2' height='2' fill='%23d8b8ee'/%3E%3Crect x='9' y='9' width='2' height='2' fill='%23d8b8ee'/%3E%3C/svg%3E"); }
+body.pixel .item-type.skill::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Crect x='6' y='3' width='4' height='4' fill='%239bb06a'/%3E%3Crect x='7' y='7' width='2' height='6' fill='%238a6a3a'/%3E%3C/svg%3E"); }
+
+/* ============================================================
+   视觉小说式舞台（背景场景 + 立绘 + 底部对话框）
+   结构样式全局生效（水墨/像素两种模式通用）；像素装饰仅 body.pixel 下加强
+   ============================================================ */
+.vn-stage { position: relative; overflow: hidden; background: #0b0d14; }
+.vn-bg {
+  position: absolute; inset: 0;
+  background-color: #0b0d14;
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+  image-rendering: pixelated;
+  transition: background-image .45s steps(3), opacity .4s;
+}
+/* 底部压暗渐变，保证对话框可读 */
+.vn-bg::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(8,10,16,.22) 0%, rgba(8,10,16,0) 26%, rgba(8,10,16,0) 40%, rgba(8,10,16,.50) 72%, rgba(8,10,16,.86) 100%);
+}
+/* 场景图缺失时：按境界的兜底渐变（由 JS 加 .no-scene） */
+.vn-bg.no-scene {
+  background-image:
+    linear-gradient(180deg, #1a2740 0%, #0e1626 55%, #0a0f1a 100%);
+}
+.vn-actors { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 3; }
+.vn-actor {
+  position: absolute; bottom: 55%;
+  image-rendering: pixelated;
+  filter: drop-shadow(2px 2px 0 rgba(0,0,0,.5));
+}
+.vn-actor.hero { left: 7%; height: 42%; }
+.vn-actor.npc  { right: 9%; height: 42%; transform: scaleX(-1); }
+.vn-actor img { height: 100%; width: auto; image-rendering: pixelated; animation: hero-breathe 3.2s ease-in-out infinite; }
+.vn-dialogue {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 7;
+  max-height: 54%; overflow-y: auto;
+  background: rgba(10,13,20,.86);
+  border-top: 2px solid #070910;
+  box-shadow: inset 0 2px 0 #2a3146;
+  padding: 12px 16px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.vn-dialogue .story-text { flex: 0 1 auto; overflow-y: auto; padding: 0; }
+.vn-dialogue .action-options { padding: 0; }
+.vn-dialogue .action-input-area { padding: 0; }
+.vn-dialogue .loading { padding: 0; }
+
+/* 场景名小标（左上角） */
+body.pixel .realm-label {
+  position: absolute; left: 10px; top: 8px; z-index: 4;
+  display: flex; align-items: baseline; gap: 8px;
+  text-shadow: 2px 2px 0 #070910; pointer-events: none;
+}
+body.pixel .realm-name { font-size: 15px; color: var(--gold-bright); letter-spacing: 2px; }
+body.pixel .realm-stage { font-size: 11px; color: #e8e2d2; }
+
+/* ---------- 旗帜 / 里程碑 像素化 ---------- */
+body.pixel .event-flag {
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25), 3px 3px 0 rgba(0,0,0,0.4);
+  text-shadow: 2px 2px 0 #070910;
+}
+body.pixel .milestone-inner {
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25), 3px 3px 0 rgba(0,0,0,0.4);
+}
+body.pixel .milestone-name { text-shadow: 2px 2px 0 #070910; }
+
+/* ---------- 弹窗：去掉模糊，用硬暗底 ---------- */
+body.pixel .modal { backdrop-filter: none; background: rgba(5,8,12,0.85); }
+
+/* ---------- 滚动条：粗像素 ---------- */
+body.pixel ::-webkit-scrollbar { width: 10px; height: 10px; }
+body.pixel ::-webkit-scrollbar-track { background: #0b0d14; border-left: 1px solid #070910; }
+body.pixel ::-webkit-scrollbar-thumb { background: #2a3146; border: 2px solid #070910; }
+body.pixel ::-webkit-scrollbar-thumb:hover { background: #3a4560; }
+
+/* ---------- 移动端顶部栏迷你条像素化 ---------- */
+body.pixel .mb-hp, body.pixel .mb-qi { box-shadow: inset 1px 1px 0 #000; border: 1px solid #070910; }
+body.pixel .mobile-bar { box-shadow: inset 0 -2px 0 #070910; }
+body.pixel .mobile-drawer { box-shadow: 0 -4px 0 rgba(0,0,0,0.5); }
+
+/* ---------- 像素风开关（设置页） ---------- */
+.pixel-toggle { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; cursor: pointer; }
+body.pixel .pixel-toggle { color: var(--text); }
+.pixel-toggle input { width: 16px; height: 16px; accent-color: var(--gold); }
+
+/* ============================================================
+   像素风 · 动画增强（仅在 <body class="pixel"> 下生效）
+   纯 CSS/JS 程序化动画：无外部素材、不影响原水墨逻辑
+   ============================================================ */
+
+/* 全局灵气粒子层（固定全屏，置于内容之下、扫描线之上） */
+body.pixel #fx-layer {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
+}
+body.pixel #fx-layer .qi {
+  position: absolute; bottom: -12px;
+  width: 3px; height: 3px;
+  background: var(--jade);
+  box-shadow: 0 0 5px var(--jade);
+  opacity: 0;
+  image-rendering: pixelated;
+  animation: qi-rise linear infinite;
+}
+@keyframes qi-rise {
+  0%   { transform: translateY(0) translateX(0); opacity: 0; }
+  12%  { opacity: 0.8; }
+  88%  { opacity: 0.45; }
+  100% { transform: translateY(-104vh) translateX(var(--drift, 10px)); opacity: 0; }
+}
+
+/* CRT 扫描线轻微呼吸，让屏幕“活着” */
+body.pixel::after { animation: scan-flicker 7s steps(1) infinite; }
+@keyframes scan-flicker {
+  0%, 95%, 100% { opacity: 1; }
+  96% { opacity: 0.85; }
+  98% { opacity: 0.95; }
+}
+
+/* ---------- 境界场景：名号呼吸辉光 ---------- */
+body.pixel .realm-label .realm-name { animation: name-glow 3.2s ease-in-out infinite; }
+@keyframes name-glow {
+  0%,100% { text-shadow: 2px 2px 0 #070910, 0 0 4px rgba(255,216,107,0.30); }
+  50%     { text-shadow: 2px 2px 0 #070910, 0 0 11px rgba(255,216,107,0.75); }
+}
+
+/* 星空闪烁（每个星点随机延迟/时长，由内联 style 控制） */
+body.pixel .rs-star { animation: twinkle 2.4s steps(1) infinite; }
+@keyframes twinkle { 0%,100% { opacity:.25; } 50% { opacity:.95; } }
+
+/* 日月呼吸 */
+body.pixel .rs-celestial { animation: celestial-pulse 4.5s ease-in-out infinite; }
+@keyframes celestial-pulse { 0%,100% { opacity:.85; } 50% { opacity:1; filter: brightness(1.3); } }
+
+/* 雷电闪烁 */
+body.pixel .rs-bolt { animation: bolt 2.8s steps(1) infinite; }
+@keyframes bolt { 0%,90%,100% { opacity:0; } 91% { opacity:.95; } 94% { opacity:0; } 96% { opacity:.85; } }
+
+/* 境界场景粒子（由 buildRealmFx 注入，绝对定位于场景内） */
+body.pixel .realm-fx { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+body.pixel .realm-fx .p { position: absolute; width: 3px; height: 3px; image-rendering: pixelated; }
+body.pixel .realm-fx .p.fall    { animation: p-fall linear infinite; }
+body.pixel .realm-fx .p.rise    { animation: p-rise linear infinite; }
+body.pixel .realm-fx .p.drift   { animation: p-drift linear infinite; }
+body.pixel .realm-fx .p.twinkle { animation: twinkle 2s steps(1) infinite; }
+@keyframes p-fall  { 0%{transform:translateY(-12px);opacity:0} 12%{opacity:.9} 100%{transform:translateY(88px);opacity:.15} }
+@keyframes p-rise  { 0%{transform:translateY(88px);opacity:0} 12%{opacity:.85} 100%{transform:translateY(-12px);opacity:.1} }
+@keyframes p-drift { 0%{transform:translateX(-12px);opacity:0} 14%{opacity:.7} 86%{opacity:.7} 100%{transform:translateX(calc(100% + 12px));opacity:0} }
+
+/* ---------- 剧情正文：流式光标闪烁 ---------- */
+body.pixel .story-content.streaming::after {
+  content: "▋"; color: var(--gold-bright); margin-left: 2px;
+  animation: blink 1s steps(1) infinite;
+}
+@keyframes blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+
+/* ---------- 分段数值条：带跳动过渡 + 变化闪动 ---------- */
+body.pixel .progress-fill,
+body.pixel .mdrawer-progress-fill,
+body.pixel .skill-bar-fill { transition: width .5s steps(6); }
+body.pixel .progress-fill.flash,
+body.pixel .skill-bar-fill.flash { animation: bar-flash .5s steps(2); }
+@keyframes bar-flash { 0% { filter: brightness(2.2); } 100% { filter: brightness(1); } }
+
+/* ---------- 里程碑横幅入场 ---------- */
+body.pixel .milestone-banner:not(:empty) .milestone-inner { animation: banner-in .5s steps(4) both; }
+@keyframes banner-in { 0% { transform: translateY(-14px) scale(.96); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
+body.pixel .milestone-name { animation: name-glow 2.4s ease-in-out infinite; }
+
+/* ---------- Toast 弹入 ---------- */
+body.pixel .toast { animation: toast-in .25s steps(3) both; }
+@keyframes toast-in { 0% { transform: translateY(10px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+
+/* ---------- 事件旗帜：新事件脉冲 ---------- */
+body.pixel .event-flag { animation: flag-pulse 2.4s ease-in-out infinite; }
+@keyframes flag-pulse {
+  0%,100% { box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25), 3px 3px 0 rgba(0,0,0,0.4); }
+  50%     { box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25), 3px 3px 0 rgba(0,0,0,0.4), 0 0 9px rgba(224,182,76,0.55); }
+}
+
+/* 尊重系统「减少动态效果」偏好 */
+@media (prefers-reduced-motion: reduce) {
+  body.pixel *,
+  body.pixel *::before,
+  body.pixel *::after { animation: none !important; }
+}
+
+/* ============================================================
+   角色立绘 & 战斗动画
+   ============================================================ */
+
+/* ---------- 左侧主角小像（星露谷式 · 小巧） ---------- */
+body.pixel #hero-sprite {
+  display: flex; justify-content: center; align-items: flex-end;
+  height: 118px; margin: -8px -10px 8px; padding-bottom: 6px;
+  background: linear-gradient(180deg, rgba(15,22,36,0) 0%, rgba(15,22,36,.55) 100%);
+  border-bottom: 2px solid var(--panel-border);
+  image-rendering: pixelated;
+  position: relative; overflow: hidden;
+}
+body.pixel #hero-sprite::after {
+  content: ""; position: absolute; bottom: 0; left: 15%; right: 15%; height: 3px;
+  background: rgba(0,0,0,.35); border-radius: 50%; filter: blur(0);
+}
+body.pixel .hero-img {
+  max-height: 104px; max-width: 100%; object-fit: contain;
+  image-rendering: pixelated; animation: hero-breathe 3.2s ease-in-out infinite;
+  filter: drop-shadow(2px 2px 0 rgba(0,0,0,.45));
+}
+@keyframes hero-breathe {
+  0%,100% { transform: translateY(0) scale(1); }
+  50%     { transform: translateY(-3px) scale(1.015); }
+}
+
+/* ---------- 战斗舞台（上半屏覆盖，底部对话框仍可见） ---------- */
+body.pixel #battle-stage {
+  position: absolute; left: 0; right: 0; top: 0; bottom: 54%;
+  z-index: 6;
+  background: linear-gradient(180deg, #121829 0%, #0d121c 65%, #1a2333 100%);
+  background-size: cover; background-position: center;
+  border: 3px solid var(--panel-border); border-radius: 0;
+  box-shadow: inset 0 0 18px rgba(0,0,0,.55), 4px 4px 0 rgba(0,0,0,.45);
+  overflow: hidden; image-rendering: pixelated;
+  transition: opacity .3s steps(3);
+}
+body.pixel #battle-stage.battle-out { opacity: 0; }
+body.pixel .battle-floor {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 18px;
+  background: repeating-linear-gradient(90deg, #1e2b3d 0 12px, #26364a 12px 24px);
+  border-top: 2px solid #3a4f6b;
+}
+body.pixel .battle-actor {
+  position: absolute; bottom: 14px; width: 90px; height: 120px;
+  display: flex; align-items: flex-end; justify-content: center;
+  image-rendering: pixelated; transition: none;
+}
+body.pixel .battle-actor img {
+  max-height: 100%; max-width: 100%; object-fit: contain;
+  image-rendering: pixelated; filter: drop-shadow(3px 3px 0 rgba(0,0,0,.5));
+}
+body.pixel .battle-hero { left: 10%; }
+body.pixel .battle-enemy { right: 10%; transform: scaleX(-1); }
+body.pixel .battle-hint {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+  font-size: 11px; color: var(--gold-bright); letter-spacing: 2px;
+  text-shadow: 1px 1px 0 #000; opacity: 0; transition: opacity .25s;
+  pointer-events: none;
+}
+
+/* ---------- 战斗动画关键帧 ---------- */
+@keyframes hero-attack-anim {
+  0%   { transform: translateX(0); }
+  25%  { transform: translateX(28px) translateY(-8px) scale(1.05); }
+  55%  { transform: translateX(52px) translateY(-2px); }
+  80%  { transform: translateX(0); }
+  100% { transform: translateX(0); }
+}
+@keyframes enemy-attack-anim {
+  0%   { transform: scaleX(-1) translateX(0); }
+  25%  { transform: scaleX(-1) translateX(28px) translateY(-8px) scale(1.05); }
+  55%  { transform: scaleX(-1) translateX(52px) translateY(-2px); }
+  80%  { transform: scaleX(-1) translateX(0); }
+  100% { transform: scaleX(-1) translateX(0); }
+}
+@keyframes hero-cast-anim {
+  0%   { transform: translateX(0) scale(1); filter: brightness(1); }
+  30%  { transform: translateX(8px) scale(1.08); filter: brightness(1.4) drop-shadow(0 0 8px var(--jade)); }
+  60%  { transform: translateX(0) scale(1); filter: brightness(1.1); }
+  100% { transform: translateX(0) scale(1); filter: brightness(1); }
+}
+@keyframes hit-shake {
+  0%,100% { transform: scaleX(-1) translate(0,0); filter: brightness(1); }
+  15% { transform: scaleX(-1) translate(-5px,2px) rotate(-3deg); filter: brightness(2) sepia(.3) hue-rotate(-30deg); }
+  30% { transform: scaleX(-1) translate(6px,-2px) rotate(3deg); filter: brightness(1.8); }
+  45% { transform: scaleX(-1) translate(-4px,1px) rotate(-2deg); }
+  60% { transform: scaleX(-1) translate(0,0); filter: brightness(1); }
+}
+@keyframes hero-hit-shake {
+  0%,100% { transform: translate(0,0); filter: brightness(1); }
+  15% { transform: translate(-5px,2px) rotate(-3deg); filter: brightness(2) sepia(.3) hue-rotate(-30deg); }
+  30% { transform: translate(6px,-2px) rotate(3deg); filter: brightness(1.8); }
+  45% { transform: translate(-4px,1px) rotate(-2deg); }
+  60% { transform: translate(0,0); filter: brightness(1); }
+}
+
+body.pixel .battle-hero.hero-attack { animation: hero-attack-anim .7s steps(6) both; }
+body.pixel .battle-enemy.enemy-attack { animation: enemy-attack-anim .7s steps(6) both; }
+body.pixel .battle-hero.hero-cast { animation: hero-cast-anim .9s steps(5) both; }
+body.pixel .battle-enemy.enemy-hit { animation: hit-shake .55s steps(4) both; }
+body.pixel .battle-hero.hero-hit { animation: hero-hit-shake .55s steps(4) both; }
+
+/* ---------- 战斗特效粒子 ---------- */
+body.pixel .battle-fx {
+  position: absolute; inset: 0; pointer-events: none; z-index: 5;
+}
+body.pixel .battle-fx-burst {
+  position: absolute; width: 4px; height: 4px; transform: translate(-50%,-50%);
+}
+body.pixel .battle-fx-burst .hit-particle {
+  position: absolute; width: 4px; height: 4px;
+  animation: fx-burst .55s steps(4) forwards;
+}
+body.pixel .battle-fx-burst .cast-particle {
+  position: absolute; width: 4px; height: 14px; left: -1px; top: -7px;
+  animation: fx-cast .7s ease-out forwards;
+}
+@keyframes fx-burst {
+  0%   { transform: translate(0,0) scale(1); opacity: 1; }
+  100% { transform: translate(var(--dx,20px), var(--dy,-20px)) scale(.2); opacity: 0; }
+}
+@keyframes fx-cast {
+  0%   { transform: rotate(0deg) translateX(0) scale(.6); opacity: 1; }
+  100% { transform: rotate(360deg) translateX(38px) scale(0); opacity: 0; }
+}
+
+/* 小屏适配：战斗舞台与立绘收窄 */
+@media (max-width: 900px) {
+  body.pixel #hero-sprite { height: 96px; }
+  body.pixel .hero-img { max-height: 84px; }
+  body.pixel .battle-actor { width: 70px; height: 90px; }
+  body.pixel .vn-actor.hero { left: 4%; height: 36%; }
+  body.pixel .vn-actor.npc  { right: 5%; height: 36%; }
+}

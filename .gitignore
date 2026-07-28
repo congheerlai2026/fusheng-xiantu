@@ -1,0 +1,6 @@
+test_*.js
+selftest*.js
+*.log
+*.out
+node_modules/
+.DS_Store

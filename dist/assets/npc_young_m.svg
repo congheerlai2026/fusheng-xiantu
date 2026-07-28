@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 48" shape-rendering="crispEdges">
+  <!-- 长剑（手持） -->
+  <rect x="27" y="9" width="2" height="28" fill="#c2cad6"/>
+  <rect x="27" y="9" width="2" height="4" fill="#eef2f7"/>
+  <rect x="25" y="36" width="6" height="2" fill="#e0b64c"/>
+  <rect x="26" y="38" width="4" height="2" fill="#8a6a2a"/>
+  <!-- 发髻 -->
+  <rect x="12" y="0" width="8" height="3" fill="#2b2b33"/>
+  <rect x="13" y="1" width="6" height="2" fill="#3a3a44"/>
+  <!-- 脸 -->
+  <rect x="12" y="4" width="8" height="9" fill="#ecc9a0"/>
+  <rect x="12" y="4" width="8" height="2" fill="#d8b48c"/>
+  <!-- 眉眼 -->
+  <rect x="14" y="7" width="1" height="2" fill="#2b2b33"/>
+  <rect x="18" y="7" width="1" height="2" fill="#2b2b33"/>
+  <rect x="13" y="11" width="6" height="1" fill="#d49b7a"/>
+  <!-- 道袍身 -->
+  <rect x="9" y="13" width="14" height="27" fill="#3f6f7e"/>
+  <rect x="10" y="14" width="12" height="25" fill="#4a8294"/>
+  <!-- 袖 -->
+  <rect x="6" y="15" width="3" height="15" fill="#3f6f7e"/>
+  <rect x="23" y="15" width="4" height="15" fill="#3f6f7e"/>
+  <rect x="6" y="15" width="3" height="3" fill="#4a8294"/>
+  <!-- 交领 -->
+  <rect x="14" y="13" width="4" height="3" fill="#e4eef3"/>
+  <rect x="15" y="16" width="2" height="9" fill="#e4eef3"/>
+  <!-- 腰带 -->
+  <rect x="9" y="27" width="14" height="3" fill="#e0b64c"/>
+  <rect x="9" y="28" width="14" height="1" fill="#f2d27a"/>
+  <!-- 腿 -->
+  <rect x="11" y="40" width="4" height="7" fill="#2c3e46"/>
+  <rect x="17" y="40" width="4" height="7" fill="#2c3e46"/>
+  <!-- 手 -->
+  <rect x="6" y="29" width="3" height="3" fill="#ecc9a0"/>
+  <rect x="25" y="13" width="3" height="3" fill="#ecc9a0"/>
+</svg>

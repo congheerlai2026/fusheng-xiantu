@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>浮生仙途 · 首批内测招募</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .landing { max-width: 720px; margin: 0 auto; padding: 60px 24px 80px; }
+    .landing-title { font-size: 56px; letter-spacing: 12px; color: var(--gold-bright); text-align: center; text-shadow: 0 0 30px rgba(201,168,76,0.3); }
+    .landing-sub { text-align: center; color: var(--text-dim); font-size: 15px; letter-spacing: 4px; margin-top: 8px; }
+    .landing-tag { text-align: center; color: var(--gold); font-size: 14px; margin: 16px 0 40px; font-style: italic; }
+    .recruit-badge { text-align: center; margin-bottom: 40px; }
+    .recruit-badge span { display: inline-block; padding: 6px 24px; background: rgba(176,69,69,0.15); border: 1px solid var(--crimson); color: var(--danger); border-radius: 20px; font-size: 14px; letter-spacing: 3px; }
+    .features { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 48px; }
+    .feature-card { padding: 24px 20px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; text-align: center; transition: all 0.3s; }
+    .feature-card:hover { border-color: var(--gold); transform: translateY(-2px); }
+    .feature-icon { font-size: 28px; margin-bottom: 12px; }
+    .feature-title { color: var(--gold-bright); font-size: 15px; margin-bottom: 8px; letter-spacing: 2px; }
+    .feature-desc { color: var(--text-dim); font-size: 13px; line-height: 1.7; }
+    .steps-section { background: var(--bg-card); border-radius: 8px; padding: 32px; margin-bottom: 40px; border: 1px solid var(--border); }
+    .steps-title { color: var(--gold); font-size: 18px; margin-bottom: 24px; text-align: center; letter-spacing: 4px; }
+    .step-item { display: flex; gap: 16px; margin-bottom: 20px; align-items: flex-start; }
+    .step-item:last-child { margin-bottom: 0; }
+    .step-num { flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #5a4a2e, #8a6a3e); color: #f5ecd5; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+    .step-content h4 { color: var(--text); font-size: 15px; margin-bottom: 6px; }
+    .step-content p { color: var(--text-dim); font-size: 13px; line-height: 1.7; }
+    .step-content a { color: var(--jade); text-decoration: none; border-bottom: 1px dashed var(--jade); }
+    .step-content a:hover { color: var(--gold-bright); border-color: var(--gold); }
+    .enter-btn { display: block; width: 100%; max-width: 360px; margin: 0 auto; padding: 18px; font-size: 18px; text-align: center; letter-spacing: 8px; background: linear-gradient(135deg, #5a4a2e, #8a6a3e); color: #f5ecd5; border: 1px solid var(--gold); border-radius: 6px; cursor: pointer; transition: all 0.3s; text-decoration: none; }
+    .enter-btn:hover { background: linear-gradient(135deg, #6a5a3e, #9a7a4e); box-shadow: 0 0 24px rgba(201,168,76,0.3); transform: translateY(-1px); }
+    .landing-footer { text-align: center; color: var(--text-dim); font-size: 12px; margin-top: 40px; line-height: 1.8; }
+    @media (max-width: 600px) {
+      .features { grid-template-columns: 1fr; }
+      .landing-title { font-size: 40px; letter-spacing: 8px; }
+    }
+  </style>
+</head>
+<body>
+<div class="landing">
+  <h1 class="landing-title">浮生仙途</h1>
+  <p class="landing-sub">AI 仙侠文字 RPG</p>
+  <p class="landing-tag">大道三千，只取一瓢。生死轮回，因果自承。</p>
+
+  <div class="recruit-badge">
+    <span>首批内测 · 限 5 席</span>
+  </div>
+
+  <div class="features">
+    <div class="feature-card">
+      <div class="feature-icon">🌀</div>
+      <div class="feature-title">AI 驱动 无限剧情</div>
+      <div class="feature-desc">没有固定剧本，输入任何行动AI实时演绎，每次游玩都是全新故事</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">⚔</div>
+      <div class="feature-title">正统仙侠体系</div>
+      <div class="feature-desc">灵根·境界·功法·丹药·天劫，炼气到飞升的完整修仙之路</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">💀</div>
+      <div class="feature-title">真实生死因果</div>
+      <div class="feature-desc">会受伤、会死亡、寿元有限。每个选择都有后果，无读档无重生</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">✦</div>
+      <div class="feature-title">极高自由度</div>
+      <div class="feature-desc">不限于选项A/B，可自由输入任何行动，越有创意越有惊喜</div>
+    </div>
+  </div>
+
+  <div class="steps-section">
+    <h3 class="steps-title">三步入仙途</h3>
+    <div class="step-item">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <h4>获取免费 API Key</h4>
+        <p>访问 <a href="https://platform.deepseek.com" target="_blank">platform.deepseek.com</a> 注册账号，创建 API Key。注册即送 500 万 token 免费额度，够玩很久，不花一分钱。</p>
+      </div>
+    </div>
+    <div class="step-item">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <h4>进入游戏配置</h4>
+        <p>点击下方「踏入仙途」进入游戏 → 点「设置 / API配置」→ 选「DeepSeek」预设 → 粘贴你的 API Key → 保存。</p>
+      </div>
+    </div>
+    <div class="step-item">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <h4>创建角色，开始修仙</h4>
+        <p>取名、选灵根、选出身，AI 即刻为你展开一段独一无二的仙侠旅程。</p>
+      </div>
+    </div>
+  </div>
+
+  <a href="index.html" class="enter-btn">踏 入 仙 途</a>
+
+  <div class="landing-footer">
+    <p>数据仅存于本地浏览器，不会上传。API Key 仅你自己可见。</p>
+    <p>内测反馈请联系招募人，你的建议将直接影响后续版本。</p>
+  </div>
+</div>
+</body>
+</html>

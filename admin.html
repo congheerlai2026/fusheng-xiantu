@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>浮生仙途 · 内测号生成器（管理员）</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg-dark: #0d1117; --bg-panel: #161b22; --bg-card: #1c2330;
+      --border: #2d3548; --text: #e6dcc8; --text-dim: #8b8578;
+      --gold: #c9a84c; --gold-bright: #e8c969; --jade: #5a9b7e; --crimson: #b04545;
+    }
+    body {
+      font-family: "Songti SC", "STSong", "SimSun", "Noto Serif SC", serif;
+      background: var(--bg-dark); color: var(--text); min-height: 100vh;
+      padding: 40px 20px;
+    }
+    .container { max-width: 700px; margin: 0 auto; }
+    h1 { font-size: 32px; color: var(--gold-bright); letter-spacing: 6px; margin-bottom: 8px; }
+    h2 { font-size: 20px; color: var(--gold); letter-spacing: 3px; margin: 30px 0 16px; }
+    .hint { color: var(--text-dim); font-size: 14px; line-height: 1.8; margin-bottom: 24px; background: var(--bg-card); padding: 16px; border-radius: 6px; border-left: 3px solid var(--jade); }
+    .preset-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+    .preset-label { color: var(--text-dim); font-size: 13px; line-height: 32px; }
+    .form-group { margin-bottom: 20px; }
+    .form-label { display: block; color: var(--gold); font-size: 14px; margin-bottom: 8px; letter-spacing: 2px; }
+    .form-input {
+      width: 100%; padding: 12px 16px; background: var(--bg-card);
+      border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text); font-family: inherit; font-size: 15px;
+    }
+    .form-input:focus { outline: none; border-color: var(--gold); }
+    .btn {
+      padding: 10px 20px; border: 1px solid var(--border); background: var(--bg-card);
+      color: var(--text); font-family: inherit; font-size: 14px; cursor: pointer;
+      border-radius: 4px; transition: all 0.2s; letter-spacing: 1px;
+    }
+    .btn:hover { border-color: var(--gold); color: var(--gold-bright); }
+    .btn-primary { background: linear-gradient(135deg, #5a4a2e, #8a6a3e); border-color: var(--gold); color: #f5ecd5; }
+    .btn-primary:hover { background: linear-gradient(135deg, #6a5a3e, #9a7a4e); color: #fff; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    .preset-btn { padding: 6px 14px; font-size: 13px; }
+    .codes-list { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
+    .code-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px; background: var(--bg-card);
+      border: 1px solid var(--border); border-radius: 6px;
+    }
+    .code-label { color: var(--gold); font-size: 13px; white-space: nowrap; min-width: 70px; }
+    .code-text {
+      flex: 1; padding: 8px 12px; background: var(--bg-dark);
+      border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text); font-family: "Courier New", monospace; font-size: 12px;
+      word-break: break-all; user-select: all;
+    }
+    .toast {
+      position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(100px);
+      background: var(--bg-card); color: var(--gold-bright);
+      padding: 12px 32px; border-radius: 24px;
+      border: 1px solid var(--gold); font-size: 14px; letter-spacing: 2px;
+      opacity: 0; transition: all 0.3s; z-index: 9999; pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .share-all {
+      margin-top: 20px; padding: 16px; background: var(--bg-card);
+      border-radius: 6px; border: 1px solid var(--border);
+    }
+    .share-all p { color: var(--text-dim); font-size: 13px; line-height: 1.8; margin-bottom: 10px; }
+    .share-all textarea {
+      width: 100%; padding: 12px; background: var(--bg-dark); border: 1px solid var(--border);
+      border-radius: 4px; color: var(--text); font-family: "Courier New", monospace; font-size: 12px;
+      min-height: 100px; resize: vertical; margin-bottom: 10px;
+    }
+    .url-share {
+      margin-top: 20px; padding: 16px; background: rgba(90,155,126,0.08);
+      border: 1px solid var(--jade); border-radius: 6px;
+    }
+    .url-share p { color: var(--jade); font-size: 13px; line-height: 1.8; margin-bottom: 8px; }
+    .url-input {
+      width: 100%; padding: 10px 12px; background: var(--bg-dark); border: 1px solid var(--border);
+      border-radius: 4px; color: var(--text); font-family: "Courier New", monospace; font-size: 12px;
+    }
+    .security-warn {
+      margin-top: 30px; padding: 16px; background: rgba(176,69,69,0.08);
+      border: 1px solid var(--crimson); border-radius: 6px;
+    }
+    .security-warn p { color: var(--crimson); font-size: 13px; line-height: 1.8; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>浮生仙途</h1>
+    <p style="color:var(--text-dim);font-size:14px;letter-spacing:2px;margin-bottom:30px">内测号生成器 · 管理员工具</p>
+
+    <div class="hint">
+      此页面仅供管理员本地使用，请勿部署到公网。<br>
+      填入你的 API 配置 → 生成 5 个内测号 → 分发给试玩者。<br>
+      试玩者在公网页面点「内测通道」→ 粘贴内测号 → 直接开玩。
+    </div>
+
+    <h2>API 配置</h2>
+    <div class="preset-row">
+      <span class="preset-label">快速预设：</span>
+      <button class="btn btn-sm preset-btn" onclick="applyPreset('deepseek')">DeepSeek</button>
+      <button class="btn btn-sm preset-btn" onclick="applyPreset('qwen')">通义千问</button>
+      <button class="btn btn-sm preset-btn" onclick="applyPreset('openai')">OpenAI</button>
+      <button class="btn btn-sm preset-btn" onclick="applyPreset('siliconflow')">硅基流动</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">API Key</label>
+      <input type="password" id="api-key" class="form-input" placeholder="sk-..." oninput="saveToStorage()">
+    </div>
+    <div class="form-group">
+      <label class="form-label">API Base URL</label>
+      <input type="text" id="base-url" class="form-input" placeholder="https://api.deepseek.com/v1" oninput="saveToStorage()">
+    </div>
+    <div class="form-group">
+      <label class="form-label">模型名称</label>
+      <input type="text" id="model" class="form-input" placeholder="deepseek-chat" oninput="saveToStorage()">
+    </div>
+    <div class="form-group">
+      <label class="form-label">公网地址（试玩者打开的链接）</label>
+      <input type="text" id="public-url" class="form-input" placeholder="https://.../#beta=" oninput="saveToStorage()">
+      <p style="color:var(--text-dim);font-size:12px;margin-top:6px;line-height:1.6">试玩者点开即自动激活内测号。沙箱回收后换了新地址，改这里即可，不用改代码。</p>
+    </div>
+
+    <button class="btn btn-primary" style="margin-top:10px" onclick="generateCodes()">生成 5 个内测号</button>
+
+    <div id="result"></div>
+
+    <h2>上香祈愿 · 文案配置</h2>
+    <div class="hint">
+      已采用「虚拟香火」方案：玩家燃香只累加本机香火值，<b>不收银钱、不绑身份、零合规风险</b>，无需任何收款码。<br>
+      你只需配置弹窗里的祈愿文案（可改）。生成 config.js 后覆盖游戏目录，重新部署即可生效。
+    </div>
+    <div class="form-group">
+      <label class="form-label">祈愿文案（可改）</label>
+      <input type="text" id="qr-note" class="form-input" value="若《浮生仙途》为你带来片刻仙缘，不妨为这方天地燃一炷清香。此香不收银钱，只纳心意——你点燃的香火，是此身继续推演天道的薪火。" oninput="onNoteChange()">
+    </div>
+    <div class="share-all">
+      <p>config.js 内容（复制覆盖原文件，或点下载）：</p>
+      <textarea id="config-out" readonly placeholder="修改文案后自动生成..."></textarea>
+      <button class="btn btn-sm" onclick="downloadConfig()">下载 config.js</button>
+      <button class="btn btn-sm" onclick="copyConfig()">复制</button>
+    </div>
+
+    <div class="security-warn">
+      <p>⚠ <b>安全提醒</b></p>
+      <p>1. 内测号可被解码出 API Key，仅发给信任的试玩者</p>
+      <p>2. 建议在 DeepSeek 后台设置消费额度上限（如 ¥10），防泄露后被滥用</p>
+      <p>3. 此页面数据仅存在本地浏览器，关闭不丢失</p>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const PRESETS = {
+      deepseek: { baseURL: "https://api.deepseek.com/v1", model: "deepseek-v4-flash" },
+      qwen: { baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus" },
+      openai: { baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+      siliconflow: { baseURL: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen2.5-7B-Instruct" },
+    };
+
+    function applyPreset(name) {
+      const p = PRESETS[name];
+      if (!p) return;
+      document.getElementById("base-url").value = p.baseURL;
+      document.getElementById("model").value = p.model;
+      saveToStorage();
+    }
+
+    function saveToStorage() {
+      localStorage.setItem("admin_api_key", document.getElementById("api-key").value);
+      localStorage.setItem("admin_base_url", document.getElementById("base-url").value);
+      localStorage.setItem("admin_model", document.getElementById("model").value);
+      localStorage.setItem("admin_public_url", document.getElementById("public-url").value);
+    }
+
+    function loadFromStorage() {
+      document.getElementById("api-key").value = localStorage.getItem("admin_api_key") || "";
+      document.getElementById("base-url").value = localStorage.getItem("admin_base_url") || "https://api.deepseek.com/v1";
+      document.getElementById("model").value = localStorage.getItem("admin_model") || "deepseek-v4-flash";
+      document.getElementById("public-url").value = localStorage.getItem("admin_public_url") || "https://3000-1db10b0ae7544c7bb5d1c616507171b1.e2b.ap-beijing.sandbox.cloudstudio.club/";
+    }
+
+    function generateCodes() {
+      const apiKey = document.getElementById("api-key").value.trim();
+      const baseURL = document.getElementById("base-url").value.trim();
+      const model = document.getElementById("model").value.trim();
+
+      if (!apiKey) { showToast("请先填写 API Key"); return; }
+      if (!baseURL) { showToast("请填写 Base URL"); return; }
+      if (!model) { showToast("请填写模型名称"); return; }
+
+      const codes = [];
+      for (let i = 1; i <= 5; i++) {
+        // 随机前缀：让 5 个号外观明显不同（不再像复制粘贴），序号仍在末尾决定席位
+        const nonce = Math.random().toString(36).slice(2, 10);
+        const payload = [nonce, apiKey, baseURL, model, i].join("|");
+        const encoded = btoa(unescape(encodeURIComponent(payload)));
+        const urlSafe = encoded.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+        codes.push({ code: "FS-" + urlSafe, index: i });
+      }
+
+      let html = '<h2>已生成内测号</h2>';
+      html += '<div class="codes-list">';
+      codes.forEach((c, i) => {
+        html += '<div class="code-item">' +
+          '<span class="code-label">内测号 ' + c.index + '</span>' +
+          '<input type="text" class="code-text" id="code-' + i + '" value="' + c.code + '" readonly>' +
+          '<button class="btn btn-sm" onclick="copyCode(' + i + ')">复制</button>' +
+          '</div>';
+      });
+      html += '</div>';
+
+      // 全部复制
+      const allText = codes.map((c, i) => "内测号" + (i + 1) + "：\n" + c.code).join("\n\n");
+      html += '<div class="share-all">';
+      html += '<p>全部内测号（可一键复制发给团队分发）：</p>';
+      html += '<textarea id="all-codes" readonly>' + allText + '</textarea>';
+      html += '<button class="btn btn-sm" onclick="copyAll()">复制全部</button>';
+      html += '</div>';
+
+      // 分享链接
+      const publicUrl = (document.getElementById("public-url").value.trim() ||
+        "https://3000-1db10b0ae7544c7bb5d1c616507171b1.e2b.ap-beijing.sandbox.cloudstudio.club/")
+        .replace(/\/+$/, "");
+      html += '<div class="url-share">';
+      html += '<p>🔗 也可直接发分享链接，试玩者打开即激活：</p>';
+      codes.forEach((c, i) => {
+        const url = publicUrl + "/#beta=" + c.code;
+        html += '<div style="margin-bottom:8px">' +
+          '<span style="color:var(--jade);font-size:13px">试玩者' + c.index + '：</span>' +
+          '<input type="text" class="url-input" id="url-' + i + '" value="' + url + '" readonly onclick="this.select()">' +
+          '<button class="btn btn-sm" style="margin-top:4px" onclick="copyUrl(' + i + ')">复制链接</button>' +
+          '</div>';
+      });
+      html += '</div>';
+
+      document.getElementById("result").innerHTML = html;
+      showToast("已生成 5 个内测号");
+    }
+
+    function copyCode(i) {
+      const el = document.getElementById("code-" + i);
+      el.select();
+      navigator.clipboard.writeText(el.value).then(() => showToast("内测号已复制")).catch(() => {
+        document.execCommand("copy");
+        showToast("已复制");
+      });
+    }
+
+    function copyAll() {
+      const el = document.getElementById("all-codes");
+      el.select();
+      navigator.clipboard.writeText(el.value).then(() => showToast("全部已复制")).catch(() => {
+        document.execCommand("copy");
+        showToast("已复制");
+      });
+    }
+
+    function copyUrl(i) {
+      const el = document.getElementById("url-" + i);
+      el.select();
+      navigator.clipboard.writeText(el.value).then(() => showToast("链接已复制")).catch(() => {
+        document.execCommand("copy");
+        showToast("已复制");
+      });
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById("toast");
+      t.textContent = msg;
+      t.classList.add("show");
+      setTimeout(() => t.classList.remove("show"), 2000);
+    }
+
+    // ============ 上香祈愿 · 文案配置 ============
+    function onNoteChange() {
+      renderConfigOut();
+    }
+
+    function renderConfigOut() {
+      const note = document.getElementById("qr-note").value;
+      const cfg =
+        "// 运营配置（虚拟香火方案，无需收款码）\n" +
+        "window.GAME_CONFIG = {\n" +
+        "  incense: {\n" +
+        '    title: "上香祈愿",\n' +
+        "    note: " + JSON.stringify(note) + "\n" +
+        "  }\n" +
+        "};\n";
+      document.getElementById("config-out").value = cfg;
+    }
+
+    // 初始渲染一次
+    renderConfigOut();
+
+    function downloadConfig() {
+      const text = document.getElementById("config-out").value;
+      if (!text) { showToast("请先配置文案"); return; }
+      const blob = new Blob([text], { type: "text/javascript" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "config.js";
+      a.click();
+      showToast("已下载 config.js");
+    }
+
+    function copyConfig() {
+      const el = document.getElementById("config-out");
+      if (!el.value) { showToast("请先配置文案"); return; }
+      el.select();
+      navigator.clipboard.writeText(el.value).then(() => showToast("已复制")).catch(() => {
+        document.execCommand("copy");
+        showToast("已复制");
+      });
+    }
+
+    loadFromStorage();
+  </script>
+</body>
+</html>
