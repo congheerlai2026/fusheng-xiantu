@@ -1,0 +1,854 @@
+// ============================================================
+//  AI 接口层
+//  支持 OpenAI 兼容 API (DeepSeek / Qwen / OpenAI / 本地 Ollama)
+// ============================================================
+
+const AIService = {
+  // 读取本地配置
+  getConfig() {
+    return {
+      apiKey:  localStorage.getItem("xianxia_api_key")  || "",
+      baseURL: localStorage.getItem("xianxia_base_url") || "https://api.deepseek.com/v1",
+      model:   localStorage.getItem("xianxia_model")   || "deepseek-v4-flash",
+      temperature: parseFloat(localStorage.getItem("xianxia_temperature") || "0.85"),
+      maxTokens:   parseInt(localStorage.getItem("xianxia_max_tokens") || "2000"),
+    };
+  },
+
+  saveConfig(cfg) {
+    localStorage.setItem("xianxia_api_key",  cfg.apiKey);
+    localStorage.setItem("xianxia_base_url", cfg.baseURL);
+    localStorage.setItem("xianxia_model",    cfg.model);
+    localStorage.setItem("xianxia_temperature", String(cfg.temperature));
+    localStorage.setItem("xianxia_max_tokens",  String(cfg.maxTokens));
+  },
+
+  hasConfig() {
+    return !!this.getConfig().apiKey;
+  },
+
+  // 构建系统提示词：定义仙侠世界规则
+  buildSystemPrompt(state) {
+    const memoryBlock = (state.memory && state.memory.length)
+      ? state.memory.join("\n")
+      : "（尚无记忆，这是旅途之初）";
+    const playstyleBlock = this.buildPlaystyleBlock(state);
+    return `你是一款仙侠文字RPG《浮生仙途》的游戏主持人(GM)。你负责推动剧情、判定结果、演绎有血有肉的NPC。请以成熟网文作者的笔力去写。
+
+【世界设定】
+- 正统修仙世界：灵根、境界、功法、丹药、天劫、宗门、秘境皆有定规。
+- 世界残酷而真实：修士争斗、资源匮乏、天劫无情、魔道横行、因果必报。
+- NPC有独立性格、目的与记忆，会依据玩家声望、过往恩怨、当前处境做出不同反应；可给重要NPC起名，并让其反复登场。
+- 玩家会受伤、会衰老、会死亡；死亡即终局，无重生（除非剧情明确给予续命之物）。
+
+【当前角色状态】
+${JSON.stringify(state.character, null, 2)}
+（注意：character.inventory 为玩家当前储物袋清单；本回合若有物品增减，必须在 state_changes.items_gained / items_lost 中同步，否则储物袋不会更新。）
+
+【当前世界状态】
+${JSON.stringify((() => { const w = Object.assign({}, state.world); delete w.gen; return w; })(), null, 2)}
+
+【本界天地 · 此界天地已锁定，务必遵循其设定，剧情须贴合同一方世界，不可随意切换世界背景】
+${this.buildWorldBlock(state)}
+
+【玩家金手指 / 系统 · 务必持续记忆，绝不遗忘】
+${(() => {
+  const syss = (state.character && state.character.systems) || [];
+  if (!syss.length) return "（玩家当前未觉醒任何金手指 / 系统）";
+  return `玩家拥有的金手指 / 系统如下，是其修行之路的重要组成部分，须始终牢记并自然融入剧情：\n` +
+    syss.map(s => `  · ${s}`).join("\n") +
+    `\n注意：即使【仙途记忆】中未再提及，这些系统也【始终有效、始终在场】。须周期性让系统自然登场（发布任务、结算签到奖励、弹出提示、记录成就等），保持存在感；不可让其在后续剧情中无声消失。`;
+})()}
+
+【仙途记忆 · 务必参考以保持连贯】
+${memoryBlock}
+
+【主线 · 中央冲突 · 仙途之 spine · 务必贯穿始终】
+${this.buildMainPlotBlock(state)}
+
+【伏笔 · 暗线编织与回收 · 务必遵循】
+${this.buildThreadBlock(state)}
+
+【人物好感 · 务必参考以演绎 NPC 态度】
+${(() => {
+  const npcs = (state.npcs && Object.keys(state.npcs).length) ? state.npcs : null;
+  if (!npcs) return "（尚无相交之人）";
+  const lines = Object.keys(npcs).map(name => {
+    const n = npcs[name];
+    const a = n.affinity || 0;
+    let senti = "中立";
+    if (a >= 60) senti = "生死之交"; else if (a >= 30) senti = "亲近"; else if (a >= 10) senti = "友善";
+    else if (a <= -60) senti = "敌对"; else if (a <= -30) senti = "忌惮"; else if (a <= -10) senti = "疏远";
+    const extra = n.title ? `（${n.title}）` : "";
+    return `  - ${name}${extra}：好感 ${a > 0 ? "+" : ""}${a}（${senti}）`;
+  });
+  return lines.join("\n");
+})()}
+- 对已有 NPC 一律使用与本表完全一致的名字（如"苏璃"勿写作"苏仙子"），以便好感累积到同一人；新登场的重要人物也请采用稳定全名。
+- 玩家行侠仗义、救人济世、除暴安良，应在 state_changes.justice_change 记正数、对受益 NPC 在 npc_affinity_change 记正数；若行凶作恶、背信弃义、残害无辜，则在 evil_change 记正数、相关 NPC 好感记负数。NPC 态度须随好感真实起伏（友善者愿相助，敌对者或暗下杀手）。
+
+【身份与公平 · 务必遵守】
+- 性别、真身（如"超市购物袋"）等仅为角色的身份标识，用于NPC以相应礼数称谓相称（男称道友/道长，女称仙子/道友，异类亦以道友待之），不得以此预设其性格、际遇、能力或剧情走向。
+- 男或女、出身寒门或世家，都可能在任何道路上成就或陨落。剧情走向完全由玩家自己的选择驱动，而非由出生标签决定。
+
+【玩家风格 · 由其行为自然生长，须顺应而非预设】
+${playstyleBlock}
+- 以上风格完全来自玩家至今的实际选择，并非出生设定。请在后续剧情中顺应其偏好，多给予此类机缘与挑战；若玩家转向新行为，风格随之改变。
+- 严禁以性别、出身等身份标签预设剧情走向或限制玩家可走的道路。
+
+【本回合节奏指令 · 由体验引擎依当前境界与程数下发，务必遵循】
+${this.buildPacingBlock(state)}
+
+【叙事篇幅 · 由玩家所选节奏决定，务必严格遵循】
+${this.buildNarrativeModeBlock(state)}
+
+【仙侠风物图谱 · 可自然化入剧情，增世界质感】
+- 灵根体质：金木水火土五行灵根，及变异灵根（雷/冰/风）、天灵根、空灵根、剑灵根、药灵根；亦有特殊道体（先天道胎、混沌体、太阴/太阳之体）。资质影响进境速度，非决定命运。
+- 宗门架构：大宗多设诸脉（剑脉、丹脉、器脉、阵脉、符脉、道脉、戒律），外门→内门→亲传逐级资源递增；中立商盟（如天星商会）发布任务、以稀缺资源（筑基丹等）为酬。
+- 妖兽灵兽：分九阶对应境界（一阶≈炼气，九阶≈渡劫）；化形级以上近人族。收服灵兽常立血契，可通心语、共享修为；神兽血脉（青龙/白虎/朱雀/玄武）稀有而强。灵宠可伴战、探矿、采药。
+- 丹道法宝：丹药分疗伤/突破/增益/毒/特殊诸类（辟谷丹、聚气丹、筑基丹、回春丹…），以灵火/异火炼制。法宝分法器→灵器→法宝→灵宝→仙器，高阶生器灵；攻伐/防御/空间/神魂/辅助五类（如储物戒、照影镜、摄魂幡）。
+- 秘境禁地：古修洞府、宗门遗址、古战场、封印之地，藏传承与灵宝，按凶险分级（凶险/高危/绝命）；洞天福地灵气倍于外界，为上宗根基。
+- 天材地宝：灵草、妖丹、妖晶、灵矿、异火、先天灵物，皆为修行资粮与剧情钩子。
+- 正邪之争：正道守规占洞天福地，魔道百无禁忌据绝地；散修夹缝求生。冲突常绕资源、传承、理念（如有情道 vs 无情道）展开。
+- 品级规制：功法、法宝、丹药、天材地宝皆标品级，由低至高：黄阶 < 玄阶 < 地阶 < 天阶 < 帝阶；每阶分 下品、中品、上品、极品。凡剧情中新出之物（无论获得、炼制或现世），须按其价值与稀有度标定品级，写法如「玄阶上品·青锋剑」「黄阶中品·聚气丹」「地阶极品·九转还魂丹」，切勿含糊带过；品级直接影响威力、价格与剧情分量。
+
+【生活技能 · 熟练度与进阶之路 · 修仙不止练功】
+- 除苦修之外，玩家可修习下列「生活技能」（参考《凡人修仙传》《一念逍遥》《鬼谷八荒》《觅长生》等仙侠世界观）：
+${this.buildLifeSkillGraph()}
+- 每次修习或运用某技能，须在 state_changes.life_skill_changes 回传：[{"name":"技能名","proficiency_change": 数字(熟练度增减，单轮通常 1-12，满 100 即登峰造极),"path":"选定/解锁的进阶之路名（首次择路或后续强化时填，如 丹王道）"}]。
+- 同一技能有多条「进阶之路」，玩家依自身选择决定专精走向（如炼丹可走 丹王道/异火丹道/毒丹道）；选定后该路即其专精，剧情与所得丹药/法宝随之不同。请在选项与剧情中自然呈现"选择走向"的契机——当某技能将成未成（熟练度≥70 且未择路），应给出择路的关键抉择。
+- 【以技证道 · 飞升另有蹊径】修仙不止练功。某一生活技能练至「登峰造极」（熟练度满 100）并择定登顶之路、由此悟出独属自己的「道」时，即可触发「以技证道飞升」（state_changes.event_flag 标记 "craft_ascension"）——不必先至大乘/飞升期，肉身凡胎亦可凭一艺通天。此刻须在 narrative 中写足"由艺入道、顿悟飞升"的气象与机缘。
+
+【与时俱进 · 当红网文潮流，须自然化入仙侠】
+- 本作须随时代审美持续演进，切忌只守"纯苦修、杀人夺宝、老白套路"等传统俗套；应主动吸收当下走红的流派元素，让世界观与剧情常写常新、对当代读者有代入感。
+- 可自然融入的当红潮流（一律以东方仙侠语境转译，严禁出现手机、电、枪、科学术语等现代器物，严守【叙事与判定规则】第3条）：
+  · 系统流/金手指：以"天道面板""命格任务""签到仙缘""成就殿""气运值"等仙侠化包装，给玩家清晰目标感与即时反馈。
+  · 赛博修仙/职场修仙：以"灵石贷""渡劫险""宗门考编""述职大典""修炼KPI""九九六苦修"等黑色幽默解构修真，映射当代职场与生存焦虑，年轻读者代入感极强。
+  · 规则怪谈/无限流/中式克苏鲁：以"诡则禁地""不可名状的古修残念""副本秘境""单元剧+主线"演绎智斗破局与存在主义惊悚，求生视角代入感强。
+  · 反套路/发疯文学：解构传统套路，NPC 亦可摆烂、发疯、拒绝内耗；以"疯得有逻辑"的爽感替代一路隐忍。
+  · 博弈叙事：升级须有代价，变强可能伴随道心异化与更深的纠缠；多设计"与天道/规则/大势博弈"的线，而非一路横推。
+  · 家族/群像修仙：血脉、宗族老祖、气运之争，群像视角交替。
+  · 直播/诸天流：以"香火愿力""万众围观""跨界投影""弹幕式仙缘"等仙侠化形式，制造被注视的戏剧张力。
+  · 高智爽文：以丹道博弈、商道破局、阵法智斗等"硬核职业化"智斗替代无脑碾压。
+- 运用原则：①以上元素须与【本界天地】【本回合节奏指令】融合，自然浮现，不可生硬堆砌；②须在诸流派间轮换，避免长期只用一种套路令人生厌；③凶险与代价仍须真实（参见第4条生死铁律），不可因"爽文"而让低境无敌。
+
+【叙事与判定规则】
+1. 每次回复必须同时推进剧情并判定行动结果，二者不可偏废。
+2. 文风：用流畅、现代、人人读得下去的网文白话文风。可带适度文采与画面感（风声、寒霜、檀香、剑鸣），但严禁堆砌古文、生造生僻字、刻意半文半白令读者费解；不写"话说""且听下回分解"等章回套语。
+3. 严禁出现现代事物（手机、电、枪、科学术语等），始终保持在东方仙侠语境。
+4. 【生死随境界而变·核心铁律】死亡威胁须与境界成反比：低境修士一如蝼蚁——炼气、筑基者寻常争斗、妖兽、毒物、失足、走火皆可重伤乃至殒落，此类凶险必须被如实演绎，绝不可为护主角而刻意回避死亡。高境（元婴及以上）肉身强韧、神识护体，凡俗凶险难撼其身，非天劫、老一辈大能、禁忌之术、天地大劫不可轻易致死。一句话：境界越低越易伤亡，境界越高越难陨落。
+5. 节奏由上方【本回合节奏指令】统领：奇遇与危机交替、张弛有度。危机须有真实分量，低境尤甚，失手便可能陨落；但也不必每回合都将人置于死地，张弛相间，让玩家感到抉择确有其代价与分量，而非安全无虞的过家家。
+10. 【高光事件库 · 须主动运用】以下为本作最大魅力，须依节奏指令适时抖出，且须有铺垫与回响，不可凭空砸下：①突破顿悟（境界跃升，金光异象）②灵宠缔结/进化（羁绊）③惊天秘闻揭露（身世/世界真相）④阵营抉择（影响世界走向的重大分支）⑤死战逆袭（濒死后翻盘）⑥神兵/天材地宝入手⑦缘遇（与重要 NPC 情缘/师徒/生死交）⑧天地异变/秘境开启。（高光事件亦须遵守【叙事篇幅】字数上限，以精炼笔法写就，不可借高光之名超长。）
+11. 【前期·留人钩子】开局至低境（炼气/筑基）及前三十程内，须保证起伏密集、钩子不断：开局即奇遇、早埋危机、渐有成长、中程转折。但"终章"与"大结局"不再锁死于第30程，而由玩家真实境界与突破决定（见【本回合节奏指令】）：境界跃迁即新篇章节点，飞升期即真正大结局。
+12. 【中后期·波澜随境涨】玩家突破至中高境后，高光事件规模须随境界水涨船高（见第10条高光事件库）；飞升期进入真正大结局"合"，此后可自由续写仙界新篇，但须有圆满收束感。绝不允许长程平淡。
+6. 当玩家输入自定义行动时，必须直接回应其行动，不要无视。
+7. 地点必须同步：只要 narrative 中玩家的物理位置发生改变（进入洞府、秘境、妖兽体内、传送、遁走等），state_changes.location_change 必须填写新地点名，以便状态栏实时更新。
+8. 功法必须同步：剧情中玩家获得任何功法、残篇、传承时，必须同时在 state_changes.techniques_gained 里列出功法名；储物袋与功法栏会据此更新，不能只写在 narrative 里。
+8b. 金手指 / 系统必须同步：玩家自开局起即可拥有或中途觉醒「金手指 / 系统」（如天道面板、命格任务、签到仙缘、成就殿、气运值、诡则提示等，参见【与时俱进】系统流）。凡玩家在 premise 中声明、或剧情中觉醒 / 获得任何系统，必须同时在 state_changes.systems_gained 列出系统名；失去或崩解则在 systems_lost 列出。系统栏会据此更新，绝不能只写在 narrative 里。这些系统是玩家修行的重要组成部分，后续须持续登场、绝不可凭空遗忘。
+8a. 物品必须同步：剧情中玩家获得任何物品、材料、碎片、残卷、丹药、法器、灵石袋、符箓、地图、钥匙、玉简等，必须同时在 state_changes.items_gained 里列出物品名；失去或消耗物品时，必须在 state_changes.items_lost 里列出。储物袋会据此更新，绝不能只写在 narrative 里。若同一物品有多个，可写 "破界石碎片 x3" 或拆分为三条。凡获得之物，请在 items_gained 中一并给出 kind（物品/丹药/法宝/材料/符箓）与 grade（品级，如 玄阶上品），以便储物袋显示品级。
+9. 灵宠机制：剧情中玩家可能邂逅、收养灵兽/妖兽/仙禽/古灵。获得时在 state_changes.pet_gained 返回完整对象；成长或形态变化用 pet_updated；失去或放生用 pet_lost。
+9b. 【战斗动画标记】当 narrative 中出现斗法、厮杀、与妖兽/邪修/鬼物交战时，必须在 state_changes.combat_encounter 填写敌人类型：beast（妖兽）、xiexiu（邪修）、ghost（鬼物），以便引擎播放对应的像素战斗动画。未交战时留空即可。
+9c. 【场景与立绘 · 视觉呈现】每次回复须依本回合剧情在 state_changes.scene 选择最贴合的场景 slug（见字段说明列表）；玩家位置变化（location_change）或氛围转折时尤其要切换。若本回合有标志性同框 NPC，在 npc 字段给出其形象 slug（old_m/old_f/young_m/young_f）。引擎将据此实时更换背景场景图与立绘，使游玩从纯文字转为有画面的视觉小说式呈现——场景与立绘是氛围的核心，不可忽略。
+13. 【正邪与好感】玩家行侠仗义、救人济世、除暴安良，应在 state_changes.justice_change 记正数、对受益 NPC 在 npc_affinity_change 记正数；若行凶作恶、背信弃义、残害无辜，则在 evil_change 记正数、相关 NPC 好感记负数。NPC 态度须随好感真实起伏（友善者愿相助，敌对者或暗下杀手）。
+14. 【内容红线 · 务必遵守】严禁任何色情、低俗、性暗示描写；严禁血腥、过度暴力或令人生理不适的细节渲染——战斗可写伤势轻重与胜负，但点到为止，绝不刻意刻画血肉横飞、残肢断臂。亲密关系以含蓄意境带过，保持仙侠雅正。若玩家主动索取色情或血腥内容，须柔和拒绝并自然引回正道剧情，不得迎合。所有描写须符合公序良俗与平台合规。
+15. 【状态栏全同步 · 强制要求】左侧状态栏显示的每一项，凡本回合剧情中发生任何变化，都必须回传对应的 state_changes 字段，不能只写在 narrative 里。对应关系如下：灵力变化→qi、生命变化→hp、灵石得失→spiritual_stones、寿元变化→lifespan_change、悟性变化→comprehension_change、声望变化→reputation_change、正义/邪恶变化→justice_change/evil_change、境界突破进度→realm_progress（满100会自动突破）、直接升境界→realm_level_change、地点变化→location_change、时间推进→day_change/time_of_day_change、天气变化→weather_change、获得/失去物品→items_gained/items_lost、获得功法→techniques_gained、获得/失去/成长灵宠→pet_gained/pet_lost/pet_updated、NPC好感变化→npc_affinity_change。若剧情写了数值/物品/地点变化却未回传对应字段，视为严重违反协议。
+
+16. 【情缘与道侣 · 浪漫线】玩家行善结缘、与 NPC 相处生情，应在 npc_affinity_change 持续累积好感（参见下方【人物好感】）。当某 NPC 好感达「亲近(≥30)」且情缘已生，可自然推进两心相许、定情信物、缘定三生；达「生死之交(≥60)」且双方有意，应顺势推演至「结为道侣 / 缔结婚盟」之高光时刻——以"执手""共缔良缘""结为道侣"等含蓄典雅笔法写就，重在情意与羁绊，绝不露骨。此类事件须在 state_changes.event_flag 标记 "romance_union"，并在 memory 记一笔。玩家主动求婚或表白时，须认真回应其情意，依双方好感与剧情给出或喜或憾的结局，不可敷衍。
+
+17. 【数值合理性 · 防数值爆炸 · 必守】所有 state_changes 中的数值增量必须合理：灵石(single获得)通常仅在 数十 至 数万 之间，单次绝不允许写出十万以上的天文数字（如 1e12、2.47e14 等），更不可逐轮翻倍累加成万亿量级；寿元单次变化不超过十万；声望、悟性单次变化通常不超过数十。若剧情需要"巨额财富/天地赐福"，用定性描写（如"富可敌国""灵石如山"）即可，不要写具体天文数字。返回的 JSON 最后一个字符必须是 }，禁止在 JSON 之外追加任何文字（含中文收尾）。
+
+18. 【主线 · 中央冲突 · 仙途 spine】本作已为玩家立下一条贯穿全程的中央冲突（见上方【主线·中央冲突】区块），它是剧情的脊梁。你须让它随境界（卷）持续推进：每数程便令矛盾升级、真相浮现一角、或令关键人物登场；突破与高光时刻尤须与主线咬合。飞升期（终卷）须让中央冲突收束为真正大结局之"合"——恩怨了断、因果闭合、天地共贺，不可草草收场或又开无尽新坑。state_changes.main_plot.note 须每回合简述本回合主线进展（无变化可填"主线稳步推进"之类）。
+19. 【伏笔 · 暗线编织与回收】须有"草蛇灰线"：早段即埋伏笔，并在日后恰当时机回收（见上方【伏笔】区块）。埋下须在 state_changes.threads_planted 登记，回收须在 state_changes.threads_resolved 以相同（或高度包含）文字登记；凡埋必收，回收须在 narrative 中写足回响（人物恍然、因果闭合、情感落点）。临近飞升时所有未解伏笔须尽数回响，不可留悬空线。
+
+【行动选项规则】
+- 每次必须给出 3-4 个选项，风格各异：至少含"探索/行动""交际/谋略""修炼/内省"三类之一，避免雷同。
+- 选项须具体、可执行、有后果暗示，严禁出现"继续前进""看看再说"这类空话。
+- 不要与上回合选项重复。
+- 每个选项末尾须附一个风险标签（方括号内），界面将据此提示凶险程度；标签须依玩家【当前境界】判定同一举动的风险：低境多出[致命]/[凶险]，高境多出[凶险]/[平安]。
+  · [平安]：稳妥可行，无性命之虞
+  · [凶险]：有伤亡之险，可能重伤
+  · [致命]：生死攸关，可能当场殒落
+  例："强攻妖兽 [凶险]"、"闭关苦修 [平安]"、"以命赌一线生机 [致命]"。
+- 严禁把选项内容写在 narrative 中。narrative 只承载剧情文本；所有可点击选项必须严格放入 JSON 顶层的 "options" 数组。若 narrative 末尾出现 "options:"、项目符号列表（如 "- ..."）、数字编号列表（如 "1. ..."）或类似 UI 文本，属于严重格式错误。
+- 【硬性约束 · 与篇幅无关】无论选择何种叙事节奏（电视剧/沉浸），都必须在返回的 JSON 中完整写出 3-4 个 options。电视剧模式下 narrative 可长可短，但 options 绝不可省略或截断；在接近 max_tokens 上限时必须优先保证 options 数组完整闭合。否则玩家将无法继续操作，视为严重协议违约。
+
+【输出格式】
+你【必须且只能】返回一个JSON对象：禁止输出任何JSON之外的内容（包括markdown标题、代码块标记\`\`\`、前后缀说明、思考过程）；禁止用代码块包裹；输出文本的第一个字符必须是 { ，最后一个字符必须是 } 。若叙事过长挤占 token 导致 options 被截断，玩家将无法操作，属严重违约。严格按如下格式：
+{
+  "narrative": "剧情叙述，长度与节奏严格遵循上方【叙事篇幅】指令，【绝不得超过其字数上限】（超长将被截断并丢失 options）；描绘场景/对话/事件发展与转折；narrative 必须是非空字符串，严禁留空或只写 JSON 结构说明",
+  "state_changes": {
+    "qi": 数字(正为获得灵力，负为消耗),
+    "hp": 数字(正为恢复生命，负为受伤),
+    "spiritual_stones": 数字(正为获得，负为消耗),
+    "realm_progress": 数字(修炼进度变化,0-100),
+    "realm_level_change": 数字(直接提升或降低境界层级，如从炼气期到筑基期填1；仅在剧情明确突破或跌落境界时使用),
+    "comprehension_change": 数字(悟性变化),
+    "day_change": 数字(经过的天数),
+    "time_of_day_change": "新的时辰名（如 子时/清晨/黄昏），仅在时辰变化时填写",
+    "weather_change": {"name":"新的天候名（如 晴/雨/雷暴/大雾）", "desc":"简短描述，如灵气涌动、乌云压顶"},
+    "items_gained": [{"name":"物品名（必填）", "kind":"类别：物品/丹药/法宝/材料/符箓（可选，默认物品）", "grade":"品级（必填），如 黄阶下品/玄阶上品/地阶极品/天阶上品", "desc":"一句话简介，说明用途或来历（必填）"}] 或旧格式字符串数组["物品名"]（仍可解析，但推荐带 kind/grade/desc),
+    "items_lost": ["失去/消耗/交易出去的物品名称"],
+    "techniques_gained": ["获得的功法名称"] 或 [{"name":"功法名","grade":"品级如 地阶上品"}],
+    "systems_gained": ["玩家觉醒/获得的金手指或系统名（如 天道面板/命格任务/签到仙缘/成就殿/气运值）"],
+    "systems_lost": ["玩家失去或崩解的系统名"],
+    "pet_gained": {"name":"灵宠名","type":"灵兽/妖兽/仙禽/古灵","growth":0,"desc":"简短描述"},
+    "pet_lost": true,
+    "pet_updated": {"growth":10},
+    "reputation_change": 数字(声望变化),
+    "lifespan_change": 数字(寿元变化),
+    "justice_change": 数字(行侠仗义之举累积的正义值，正为增加；若玩家做了善举请填正数，如5),
+    "evil_change": 数字(邪行恶举累积的邪恶值，正为增加；若玩家做了恶事请填正数，如5),
+    "npc_affinity_change": {"NPC名字": 好感增减数字(正为亲近、负为疏远，范围约-100~100)；可同时含多个NPC，如 {"苏璃": 10, "玄机子": -8}},
+    "life_skill_changes": [{"name":"生活技能名（如 炼丹/炼器/符箓）","proficiency_change": 数字(熟练度增减，单轮通常 1-12，满 100 即登峰造极),"path":"选定/解锁的进阶之路名(如 丹王道，首次择路或强化时填，否则留空)"}],
+    "location_change": "本回合剧情中若抵达了新地点，必须填写新地点名；若仍在原地，留空即可",
+    "event_flag": "特殊事件标记：breakthrough_success / breakthrough_failed / near_death / death / fortuitous_encounter（奇遇或高光事件） / romance_union（结为道侣） / ascension（苦修飞升） / craft_ascension（以技证道·生活技能飞升） / 或不填。重大剧情转折可不填 flag，但须在 narrative 中充分呈现。",
+    "combat_encounter": "战斗标记：当 narrative 中出现与敌人交战、斗法、厮杀时必填，值为 beast（妖兽） / xiexiu（邪修） / ghost（鬼物） / 或不填。引擎会据此播放像素战斗动画。",
+    "scene": "场景标记：从固定列表选最贴合本回合剧情的场景 slug（mountain_gate 山门 / bamboo_forest 竹林 / sect_hall 宗门大殿 / market 坊市 / secret_realm 洞天秘境 / beast_wilds 妖兽荒原 / snow_peak 雪岭寒潭 / star_sky 星海 / ghost_realm 幽冥鬼域 / cloud_palace 云端仙宫）。每当玩家物理位置变化（见 location_change）或氛围转变时，须同步切换；引擎据此实时更换像素背景图。",
+    "npc": "同框立绘标记：若本回合有重要 NPC 与玩家同框，填其形象 slug（old_m 老翁 / old_f 老妪 / young_m 少男 / young_f 少女），引擎会在场景中立绘其像；无则留空。",
+    "main_plot": {"title":"可选·若主线名号被正式点明/揭示则填","conflict":"可选·中央冲突具体化（如揭示仇家真名、遗藏真相）","note":"本回合主线推进的一句话纪要（必填，便于状态栏追踪 spine）","revealedStage": "数字(可选)·揭示到的阶段","resolved": false},
+    "threads_planted": [{"hint":"本回合埋下的伏笔摘要（须与日后回收时写的文字高度一致，便于引擎配对）"}] 或 ["伏笔摘要1","伏笔摘要2"],
+    "threads_resolved": ["与 threads_planted 中完全一致的伏笔摘要文本（完成回收，引擎据文字配对）"]
+  },
+  "options": ["具体选项1 [风险标签]", "具体选项2 [风险标签]", "具体选项3 [风险标签]"],
+  "memory": "一句简短的剧情记忆，记录本回合重要事实（结识的人物、获得的关键物品、结下的仇怨、到达的地点、未解的伏笔）。无重要事件填空字符串。"
+}
+
+若玩家尝试不可能之事，在narrative中描写失败的狼狈过程，state_changes留空或负面。
+若event_flag为"death"，则角色死亡，游戏结束。
+务必保证JSON合法，所有字符串用双引号。`;
+  },
+
+  // 由世界种子生成的「本界天地」区块，注入系统提示词，确保 AI 剧情贴合同一世界
+  buildWorldBlock(state) {
+    const gen = (state.world && state.world.gen) || null;
+    if (!gen) return "（此界尚未由种子生成，按通用仙侠世界演绎）";
+    const lines = [];
+    lines.push(`· 本界名号：${gen.name}`);
+    lines.push(`· 天地异象：${gen.omen}`);
+    lines.push("· 已知版图（地名·性质·凶险·风貌）：");
+    gen.regions.forEach(r => lines.push(`  - ${r.name}（${r.type}·凶险${r.danger}）：${r.desc}`));
+    lines.push("· 当世宗门势力：");
+    gen.factions.forEach(f => lines.push(`  - ${f.name}（${f.disposition}），根基在${f.base}；${f.sigil}`));
+    lines.push("· 名动一方的人物：");
+    gen.npcs.forEach(n => lines.push(`  - ${n.name}（${n.title}·${n.trait}），常现于${n.where}`));
+    lines.push("· 江湖秘闻（可作剧情伏笔，由你自然引出）：");
+    gen.rumors.forEach(r => lines.push(`  - ${r}`));
+    lines.push("· 暗藏机缘（可让玩家探寻，但须付出努力方可获得）：");
+    gen.treasures.forEach(t => lines.push(`  - ${t.name}：${t.desc}`));
+    lines.push("注意：以上为本界既有的风物与势力，请在此基础上推演剧情，勿凭空抹除或篡改既定点位；玩家可前往上述地域，亦可邂逅上述人物、探寻上述机缘。");
+    return lines.join("\n");
+  },
+
+  // 主线（中央冲突）区块：把贯穿全程的 spine 注入系统提示词，确保 AI 永不"忘了主线"
+  buildMainPlotBlock(state) {
+    const mp = (state.meta && state.meta.mainPlot) || null;
+    if (!mp || !mp.title) {
+      return "（本界暂无既定主线，由你与玩家共建。可参考【本界天地】之秘闻与势力，自然生发出一条贯穿仙途的中央冲突，并尽早立起。）";
+    }
+    const rl = (state.character && state.character.realmLevel) || 1;
+    const total = (mp.beats && mp.beats.length) || 10;
+    const beatIdx = Math.max(0, Math.min(total - 1, (typeof rl === "number" ? rl : 1) - 1));
+    const beat = (mp.beats && mp.beats[beatIdx]) ? mp.beats[beatIdx] : "";
+    let s = "";
+    s += `· 主线名号：${mp.title}\n`;
+    s += `· 中央冲突：${mp.conflict}\n`;
+    s += `· 当前拍位：第 ${beatIdx + 1} / ${total} 拍（对应境界 ${state.character.realm}）\n`;
+    s += `· 本拍目标：${beat}\n`;
+    if (mp.resolved) {
+      s += "· 状态：已于飞升之刻收束（圆满）。后续可续写仙界新篇，但须有'功成圆满'的回响。\n";
+    } else {
+      s += "· 状态：进行中。请在本回合的叙事中，让这条中央冲突以恰当分量向前推进一步——或埋新线、或使矛盾升级、或揭示一角真相、或令相关人物登场；切忌让主线长期悬空、沦为背景板。\n";
+    }
+    return s;
+  },
+
+  // 伏笔（暗线）区块：规则 + 当前未解伏笔清单，驱动"草蛇灰线"
+  buildThreadBlock(state) {
+    const threads = (state.meta && state.meta.threads) || [];
+    const open = threads.filter(t => t.status === "planted");
+    let s = "";
+    s += "- 仙途须有'草蛇灰线'：早段（炼气/筑基及前三十程）即应埋下若干伏笔——未解之谜、诡异征兆、旧人残念、悬而未决的仇怨、似有深意的预言或异物。伏笔让长线剧情有重量与回响。\n";
+    s += "- 每次埋下伏笔，必须同时在 state_changes.threads_planted 登记：[{ \"hint\":\"一句可辨识的伏笔摘要（须与日后回收时写的文字高度一致，便于引擎配对）\" }]（也可直接写字符串数组）。\n";
+    s += "- 当剧情走到恰当时机（揭晓、转折、高光、突破余韵、或大结局），须在 state_changes.threads_resolved 登记对应 hint 文本，完成'回收'。回收时须在 narrative 中写足回响（人物恍然、因果闭合、情感落点），不可草草带过。\n";
+    s += "- 铁律：凡埋下的伏笔，终须回收；不可只埋不收，亦不可凭空'回收'一个从未埋过的伏笔。临近飞升时，所有未解伏笔须尽数回响。\n";
+    if (open.length) {
+      s += `- 当前未解伏笔（${open.length} 条，须伺机回收）：\n`;
+      open.slice(0, 12).forEach(t => { s += `  · ${t.hint}（第 ${t.plantedTurn} 程埋下）\n`; });
+    } else {
+      s += "- 当前无未解伏笔，可据剧情需要新埋。\n";
+    }
+    return s;
+  },
+
+  // 由世界种子 + 当前境界，生成"本回合节奏指令"，作为 AI 的导演
+  // 关键改动：剧情弧由境界(关卡)驱动，而非程数。突破即转折，飞升即大结局。
+  buildPacingBlock(state) {
+    const turn = (state.meta && state.meta.playTurn) || 1;
+    const p = Game.getPacing(turn);
+    let s = `当前程数：第 ${p.turn} 程\n`;
+    s += `当前境界：${state.character.realm}（第 ${p.realmLevel + 1} 大境界）\n`;
+    s += `当前篇章（由境界驱动）：${p.phaseName}（${p.arc === "free" ? "前期·免费体验期" : p.arc === "finale" ? "真正大结局·飞升" : "中后期·波澜渐起"}）\n`;
+    s += `张力等级：${p.tension}/5\n`;
+    s += `导演意图：${p.directorNote}\n`;
+    if (p.finale) {
+      s += "⚠ 玩家已至飞升期，这是仙途真正的'合'之大结局：须让一路伏笔尽数回响、恩怨收束、天地共贺飞升；可自由续写仙界新篇，但本程须有'功成圆满'的收束感，绝不可草草收场或又开无尽新坑。\n";
+    }
+    if (p.breakthroughClimax) {
+      s += "▶ 本回合紧接一次境界突破，请演绎'转/高潮'式的顿悟余韵：天地异象的回响、道心蜕变、旁观者惊叹，让突破的分量被充分感知。\n";
+    }
+    if (p.milestone) {
+      s += `▶ 本回合为篇章节点（${p.phaseName}），请以该篇章的氛围开篇，给玩家进入新一幕的仪式感。\n`;
+    }
+    if (p.highlightDue) {
+      s += "⚠ 本回合须策划一次「高光事件」（见叙事规则第10条高光事件库），制造强记忆点，绝不可平淡收场。\n";
+    }
+    // 主线拍位推进提示：让中央冲突随境界（卷）同步向前
+    const mp = state.meta && state.meta.mainPlot;
+    if (mp && mp.title && !mp.resolved) {
+      const rl = (state.character && state.character.realmLevel) || 1;
+      const total = (mp.beats && mp.beats.length) || 10;
+      const beatIdx = Math.max(0, Math.min(total - 1, (typeof rl === "number" ? rl : 1) - 1));
+      const beat = (mp.beats && mp.beats[beatIdx]) ? mp.beats[beatIdx] : "";
+      s += `▶ 主线推进：本回合须让中央冲突「${mp.title}」向第 ${beatIdx + 1} 拍目标发展：${beat}\n`;
+    }
+    return s;
+  },
+
+  // 由玩家所选叙事节奏档位，生成"篇幅规则"段落，注入系统提示词
+  buildNarrativeModeBlock(state) {
+    if (typeof NARRATIVE_MODES === "undefined") return "";
+    const mode = NARRATIVE_MODES.find(m => m.key === (state && state.narrationMode)) || NARRATIVE_MODES.find(m => m.key === "standard") || NARRATIVE_MODES[0];
+    return mode.rule;
+  },
+
+  // 依据叙事节奏档位与用户上限，计算最终 max_tokens（档位上限与设置上限取较小者，避免截断 JSON）
+  getMaxTokens(state, cfg) {
+    let base = 850;
+    if (typeof NARRATIVE_MODES !== "undefined") {
+      const mode = NARRATIVE_MODES.find(m => m.key === (state && state.narrationMode)) || NARRATIVE_MODES.find(m => m.key === "standard");
+      if (mode) base = mode.maxTokens;
+    }
+    const cap = (cfg && typeof cfg.maxTokens === "number") ? cfg.maxTokens : 1200;
+    return Math.min(base, cap);
+  },
+
+  // 由玩家实际选择生成"风格画像"，注入系统提示词
+  // 风格完全来自行为，不来自性别/出身等身份标签
+  buildPlaystyleBlock(state) {
+    const p = (state.preferences && state.preferences.tags) || null;
+    if (!p) return "（尚无偏好记录，旅途之初）";
+    const labels = {
+      combat:      "好勇斗狠（战斗杀伐）",
+      social:      "圆融交际（谋略人情）",
+      cultivation: "静修悟道（闭关修炼）",
+      exploration: "探秘寻幽（探索奇遇）",
+      craft:       "巧手匠心（炼丹炼器）",
+      romance:     "红鸾心动（情缘羁绊）",
+      scheming:    "机变百出（算计机心）",
+      mercy:       "慈悲为怀（救人济世）",
+    };
+    const ranked = Object.keys(p)
+      .filter(k => p[k] > 0)
+      .sort((a, b) => p[b] - p[a]);
+    if (ranked.length === 0) return "（尚无偏好记录，旅途之初）";
+    const top = ranked.slice(0, 3).map(k => labels[k] || k);
+    return `玩家至今偏好：${top.join("、")}。其余倾向亦会随选择增减。`;
+  },
+
+  // 由 data.js 的 LIFE_SKILLS 渲染「生活技能图谱」注入系统提示词（浏览器中 LIFE_SKILLS 为全局变量）
+  buildLifeSkillGraph() {
+    if (typeof LIFE_SKILLS === "undefined" || !Array.isArray(LIFE_SKILLS)) return "（生活技能数据未载入）";
+    return LIFE_SKILLS.map(s => {
+      const paths = s.paths.map(p => `${p.key}（${p.desc}）`).join("；");
+      return `  - ${s.name}：${s.desc}\n    进阶之路：${paths}`;
+    }).join("\n");
+  },
+
+  // 发送请求（流式）
+  async stream(messages, state, onChunk) {
+    const cfg = this.getConfig();
+    if (!cfg.apiKey) throw new Error("未配置 API Key，请先在设置中填写");
+
+    const systemPrompt = this.buildSystemPrompt(state);
+
+    const body = {
+      model: cfg.model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...messages,
+      ],
+      temperature: cfg.temperature,
+      max_tokens: this.getMaxTokens(state, cfg),
+      response_format: { type: "json_object" },
+      stream: true,
+    };
+    // DeepSeek 在流式末块附带 usage，开启以精准计量 token（预算守护依赖真实 usage）
+    if ((cfg.baseURL || "").includes("deepseek.com")) {
+      body.stream_options = { include_usage: true };
+    }
+
+    const resp = await fetch(cfg.baseURL.replace(/\/$/, "") + "/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${cfg.apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`API请求失败 (${resp.status}): ${errText.slice(0, 200)}`);
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let rawFull = "";
+    let lastDisplay = "";
+    let lastUsage = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data:")) continue;
+        const data = trimmed.slice(5).trim();
+        if (data === "[DONE]") continue;
+        try {
+          const json = JSON.parse(data);
+          if (json.usage) lastUsage = json.usage; // 流式末块返回 token 用量
+          const delta = json.choices?.[0]?.delta?.content || "";
+          if (delta) {
+            rawFull += delta;
+            // 过滤 reasoning 模型的 <think>...</think> 思考过程，避免污染剧情与 JSON
+            const displayFull = rawFull.replace(/<think>[\s\S]*?<\/think>/g, "").trimStart();
+            // 只把 narrative 部分流式展示给玩家，避免原始 JSON 协议数据泄露到剧情区
+            const streamNarrative = this._extractStreamNarrative(displayFull);
+            if (streamNarrative !== lastDisplay) {
+              const displayDelta = streamNarrative.slice(lastDisplay.length);
+              lastDisplay = streamNarrative;
+              if (onChunk) onChunk(displayDelta, streamNarrative);
+            }
+          }
+        } catch (e) { /* skip */ }
+      }
+    }
+    this._reportUsage(cfg.model, lastUsage);
+    return rawFull;
+  },
+
+  // 将真实 token 用量上报给预算守护（TokenBudget）；非浏览器/未定义时安全跳过
+  _reportUsage(model, usage) {
+    if (!usage || !usage.total_tokens) return;
+    try {
+      if (typeof TokenBudget !== "undefined" && TokenBudget.record) TokenBudget.record(model, usage);
+    } catch (e) { /* 计量失败绝不应影响游戏 */ }
+  },
+
+  // 发送请求（非流式，备用）
+  async chat(messages, state) {
+    const cfg = this.getConfig();
+    if (!cfg.apiKey) throw new Error("未配置 API Key，请先在设置中填写");
+
+    const systemPrompt = this.buildSystemPrompt(state);
+
+    const body = {
+      model: cfg.model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...messages,
+      ],
+      temperature: cfg.temperature,
+      max_tokens: this.getMaxTokens(state, cfg),
+      response_format: { type: "json_object" },
+    };
+
+    const resp = await fetch(cfg.baseURL.replace(/\/$/, "") + "/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${cfg.apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`API请求失败 (${resp.status}): ${errText.slice(0, 300)}`);
+    }
+
+    const json = await resp.json();
+    this._reportUsage(cfg.model, json.usage);
+    const content = json.choices?.[0]?.message?.content || "";
+    return content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  },
+
+  // 解析AI返回的结构化JSON
+  parseResponse(rawText) {
+    let text = rawText.trim();
+    // 过滤 reasoning 模型的 <think>...</think> 思考过程
+    text = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    // 去除可能的markdown代码块包裹
+    text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
+    // 1. 尝试直接解析
+    try {
+      const direct = JSON.parse(text);
+      return this._makeResult(direct, rawText);
+    } catch (e) { /* continue */ }
+
+    // 1.5 维修通道：修复常见 AI 笔误（字符串内未转义的换行/回车/制表符、尾随逗号）后再试一次
+    const repaired = this._repairJson(text);
+    if (repaired && repaired !== text) {
+      try {
+        const parsed = JSON.parse(repaired);
+        return this._makeResult(parsed, rawText);
+      } catch (e) { /* continue */ }
+    }
+
+    // 2. 用栈匹配找到最外层 { }（避免narrative内{}干扰）
+    const balancedJson = this._extractBalancedJson(text);
+    if (balancedJson) {
+      try {
+        const parsed = JSON.parse(balancedJson);
+        return this._makeResult(parsed, rawText);
+      } catch (e) { /* continue */ }
+    }
+
+    // 3. 解析失败，尝试挽救：提取第一个 "narrative" 字段内容
+    const narrative = this._extractNarrativeFallback(text) || rawText;
+    return {
+      narrative: narrative,
+      state_changes: {},
+      options: [],
+      optionRisks: [],
+      memory: "",
+      raw: rawText,
+      parseError: true,
+    };
+  },
+
+  _makeResult(parsed, rawText) {
+    this._sanitizeOptions(parsed);
+    // 最终兜底：如果 options 仍为空，再尝试从完整 raw 文本抢救（例如模型截断在 options 中间）
+    if ((!Array.isArray(parsed.options) || parsed.options.length === 0) && rawText) {
+      this._sanitizeOptions({ narrative: rawText, options: parsed.options });
+      if (Array.isArray(parsed.options) && parsed.options.length > 0) {
+        // 抢救到选项后，保持原 narrative 不变（不要替换）
+      }
+    }
+    // 如果仍然为空，生成 3 个通用兜底选项，保证游戏能继续
+    if (!Array.isArray(parsed.options) || parsed.options.length === 0) {
+      parsed.options = this._generateFallbackOptions(parsed.narrative || rawText);
+    }
+    // narrative 绝不可回退为 rawText，否则玩家会直接看到 JSON 协议数据
+    if (!parsed.narrative || !String(parsed.narrative).trim()) {
+      console.error("[AIService] narrative 为空，原始响应：", rawText.slice(0, 800));
+      parsed.narrative = "（本回合剧情推演异常，未收到 narrative 内容。请尝试输入「刷新」重新生成本回合，或联系运营。）";
+    }
+    // 解析选项风险标签（[平安]/[凶险]/[致命]）→ optionRisks，并把标签从选项文本中剥离
+    const riskMap = { "致命": "lethal", "生死攸关": "lethal", "九死一生": "lethal", "凶险": "danger", "有凶险": "danger", "危险": "danger", "平安": "safe", "稳妥": "safe", "安全": "safe" };
+    const cleanOptions = [];
+    const optionRisks = [];
+    (Array.isArray(parsed.options) ? parsed.options : []).forEach(raw => {
+      if (raw && typeof raw === "object") {
+        cleanOptions.push(String(raw.text || ""));
+        optionRisks.push(raw.risk || "safe");
+        return;
+      }
+      const s = String(raw);
+      const m = s.match(/\s*\[([^\]]+)\]\s*$/);
+      if (m) {
+        const tag = m[1].trim();
+        cleanOptions.push(s.slice(0, m.index).trim());
+        optionRisks.push(riskMap[tag] || "safe");
+      } else {
+        cleanOptions.push(s.trim());
+        optionRisks.push("safe");
+      }
+    });
+    parsed.options = cleanOptions;
+    parsed.optionRisks = optionRisks;
+
+    return {
+      narrative: parsed.narrative,
+      state_changes: parsed.state_changes || {},
+      options: parsed.options,
+      optionRisks: parsed.optionRisks,
+      memory: (typeof parsed.memory === "string") ? parsed.memory : "",
+      raw: rawText,
+    };
+  },
+
+  // 兜底清理：若 AI 把 options 块误写入 narrative，尝试提取并剥离
+  _sanitizeOptions(parsed) {
+    if (!parsed || typeof parsed.narrative !== "string") return;
+    let text = parsed.narrative;
+
+    // 方案 A：narrative 末尾出现 "options:" / "选项：" 等显式标记
+    const markerPattern = /(?:\n\s*)+(?:options|选项|可选行动|行动选项)\s*[:：]/i;
+    const markerMatch = text.match(markerPattern);
+    if (markerMatch) {
+      const before = text.slice(0, markerMatch.index).trim();
+      const after = text.slice(markerMatch.index + markerMatch[0].length).trim();
+      const extracted = this._extractOptionLines(after);
+      if (extracted.length) {
+        text = before;
+        this._mergeOptions(parsed, extracted);
+      }
+    }
+
+    // 方案 B：没有显式标记，但 narrative 末尾紧跟 3-5 个列表项（AI 常直接 `- ` 罗列选项）
+    const trailingListPattern = /(?:\n|^)\s*([-—*•·]\s+.+|\d+[.、]\s+.+)(?:\n\s*(?:[-—*•·]\s+.+|\d+[.、]\s+.+)){2,4}\s*$/;
+    const listMatch = text.match(trailingListPattern);
+    if (listMatch) {
+      const listStart = listMatch.index;
+      const before = text.slice(0, listStart).trim();
+      const listText = text.slice(listStart);
+      const extracted = this._extractOptionLines(listText);
+      if (extracted.length >= 3) {
+        text = before;
+        this._mergeOptions(parsed, extracted);
+      }
+    }
+
+    parsed.narrative = text;
+  },
+
+  _extractOptionLines(block) {
+    const extracted = [];
+    block.split(/\n+/).forEach(line => {
+      line = line.trim();
+      if (!line) return;
+      // 去掉列表符号、数字序号、前后引号
+      line = line.replace(/^[-—*•·]\s+/, "").replace(/^\d+[.、]\s+/, "");
+      line = line.replace(/^["'""''`]+|["'""''`]+$/g, "");
+      if (line && line.length > 2) extracted.push(line);
+    });
+    return extracted;
+  },
+
+  _mergeOptions(parsed, extracted) {
+    if (!Array.isArray(parsed.options) || parsed.options.length === 0) {
+      parsed.options = extracted;
+    } else {
+      const set = new Set(parsed.options);
+      extracted.forEach(o => set.add(o));
+      parsed.options = Array.from(set);
+    }
+  },
+
+  // 栈匹配：从文本中提取最外层合法的 JSON 对象
+  _extractBalancedJson(text) {
+    let start = -1;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inString) {
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+      } else {
+        if (ch === '"') {
+          inString = true;
+        } else if (ch === "{") {
+          if (depth === 0) start = i;
+          depth++;
+        } else if (ch === "}") {
+          if (depth > 0) {
+            depth--;
+            if (depth === 0) {
+              return text.slice(start, i + 1);
+            }
+          }
+        }
+      }
+    }
+    return null;
+  },
+
+  // 维修通道：修复 AI 常见的、会导致 JSON.parse 失败的笔误
+  // 1) 字符串值内部出现裸换行/回车/制表符 → 转义为 \n \r \t
+  // 2) 对象/数组内的尾随逗号 → 删除
+  // 注意：已在引号内且已转义的字符不会被重复转义，避免破坏合法 JSON
+  _repairJson(text) {
+    if (typeof text !== "string") return text;
+    let out = "";
+    let inStr = false;
+    let escaped = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (escaped) { out += ch; escaped = false; continue; }
+      if (ch === "\\") { out += ch; escaped = true; continue; }
+      if (ch === '"') { inStr = !inStr; out += ch; continue; }
+      if (inStr) {
+        if (ch === "\n") { out += "\\n"; continue; }
+        if (ch === "\r") { out += "\\r"; continue; }
+        if (ch === "\t") { out += "\\t"; continue; }
+      }
+      out += ch;
+    }
+    // 删除对象/数组内的尾随逗号： ,}  ,]
+    out = out.replace(/,(\s*[}\]])/g, "$1");
+    return out;
+  },
+
+  // 从叙事文本生成 3 个通用兜底选项（抢救失败时保证游戏不卡死）
+  _generateFallbackOptions(narrative) {
+    const n = (narrative || "").trim();
+    if (!n) return ["观察四周", "开口询问", "保持警惕"];
+    // 尽量根据地点/人物/事件生成一点上下文
+    const locMatch = n.match(/(?:身处|位于|在|来到|步入|闯入|抵达|遁入)(?:了|至|进)?["']?([^"'，。\n]{2,8})["']?/);
+    const someone = n.match(/([^\s，。]{1,4})(?:弟子|修士|道人|仙子|长老|前辈|前辈|师兄|师姐|师弟|师妹|阁下|道友|少年|少女|老|者|姑娘|公子|汉子)/);
+    const place = locMatch ? locMatch[1] : "此地";
+    const person = someone ? someone[1] + someone[2] : "附近之人";
+    return [
+      `在${place}仔细搜寻线索`,
+      `与${person}搭话，探听虚实`,
+      "静坐调息，巩固当前状态"
+    ];
+  },
+
+
+  _extractNarrativeFallback(text) {
+    const m = text.match(/"narrative"\s*:\s*"([\s\S]*?)"\s*,\s*"(state_changes|options|memory)"/);
+    if (m) {
+      return m[1]
+        .replace(/\\n/g, "\n")
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, "\\");
+    }
+    return null;
+  },
+
+  // 从流式累积的原始 JSON 中，实时提取 narrative 字段内容用于前端展示，避免把 JSON 协议数据直接塞给玩家
+  _extractStreamNarrative(raw) {
+    let text = raw.replace(/<think>[\s\S]*?<\/think>/g, "").trimStart();
+    if (!text.includes('"narrative"')) return "";
+    // 捕获到下一个已知顶层字段或文本末尾；因 narrative 内的引号均经 JSON 转义，不会误截
+    const m = text.match(/"narrative"\s*:\s*"([\s\S]*?)(?:(?="\s*,\s*"(?:state_changes|options|memory)")|$)/);
+    if (!m) return "";
+    return m[1]
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\r")
+      .replace(/\\t/g, "\t")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\");
+  },
+
+  // 生成修士列传（生平小传），流式输出
+  async generateBiography(state, onChunk) {
+    const cfg = this.getConfig();
+    if (!cfg.apiKey) throw new Error("未配置 API Key，请先在设置中填写");
+
+    const logText = Game.getBiographyLogText();
+    const c = state.character;
+    const alive = state.meta.alive;
+    const systemPrompt = `你是为古典仙侠游戏《浮生仙途》执笔的史官，需为玩家本轮修仙之旅写一篇修士列传。
+
+要求：
+一、笔法半文半白，仿史传体格（可自「某者，某地某灵根之人也」起笔），文气须足，可读性强。
+二、内容须涵盖：名号与灵根出身；初入仙途之缘起；一生中三至五处关键转折（奇遇、苦战、恩怨、破境、证道皆可）；最终结局（须契合玩家当下命运——已陨落则写其陨落与遗响，尚在人间则写其处境与未竟之志，已飞升则写其白日飞升、位列仙班之圆满；以技证道者须点出其凭一艺通天之由）；末以「后世评曰」一句收束。
+三、须严格依据玩家真实经历撰写，不得编造经历中本无之情节；可渲染意境，然事实当忠于记录。
+四、全文约五百至九百字，分二至四段，段与段之间以两个换行分隔。
+五、只输出传记正文，请勿附加任何解释、标题或代码围栏。`;
+
+    const userPrompt = `【修士档案】
+道号：${c.name}
+性别 / 真身：${c.genderName}${c.gender === "bag" ? "（超市购物袋）" : ""}
+灵根：${c.root}（属性 ${c.element}）
+出身：${c.background}
+最终境界：${c.realm}
+声望：${c.reputation}
+寿元：${c.lifespan} / ${c.maxLifespan}
+存殁：${state.meta && state.meta.ascended ? '已白日飞升，位列仙班' : (alive ? '尚在人间，仙途未竟' : '已陨落')}
+所修功法：${c.techniques.length ? c.techniques.join('、') : '无'}
+金手指 / 系统：${c.systems && c.systems.length ? c.systems.join('、') : '无'}
+生活技能：${c.skills && Object.keys(c.skills).length ? Object.keys(c.skills).map(k => `${k} ${c.skills[k].proficiency}/100${c.skills[k].path ? '〔' + c.skills[k].path + '〕' : ''}`).join('、') : '无'}
+随身之物：${c.inventory.length ? c.inventory.map(i => i.name).join('、') : '空'}
+
+${(() => {
+  const _mp = state.meta && state.meta.mainPlot;
+  const _th = (state.meta && state.meta.threads) || [];
+  const _open = _th.filter(t => t.status === "planted").map(t => t.hint);
+  const _done = _th.filter(t => t.status === "resolved").map(t => t.hint);
+  let _s = "";
+  if (_mp && _mp.title) _s += `主线（中央冲突）：${_mp.title}——${_mp.conflict}${_mp.resolved ? "（已于飞升之刻收束）" : "（行进中）"}\n`;
+  if (_open.length) _s += "未解伏笔：" + _open.join("、") + "\n";
+  if (_done.length) _s += "已回收伏笔：" + _done.join("、") + "\n";
+  return _s;
+})()}
+【本次仙途全记录（按时间先后）】
+${logText}
+
+请据此为这位修士立传。`;
+
+    const body = {
+      model: cfg.model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.9,
+      max_tokens: 1200,
+      stream: true,
+    };
+    if ((cfg.baseURL || "").includes("deepseek.com")) {
+      body.stream_options = { include_usage: true };
+    }
+
+    const resp = await fetch(cfg.baseURL.replace(/\/$/, '') + '/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cfg.apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error('API请求失败 (' + resp.status + '): ' + errText.slice(0, 200));
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullText = '';
+    let bioUsage = null;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data:')) continue;
+        const data = trimmed.slice(5).trim();
+        if (data === '[DONE]') continue;
+        try {
+          const json = JSON.parse(data);
+          if (json.usage) bioUsage = json.usage;
+          const delta = json.choices?.[0]?.delta?.content || '';
+          if (delta) {
+            fullText += delta;
+            if (onChunk) onChunk(delta, fullText);
+          }
+        } catch (e) { /* skip */ }
+      }
+    }
+    this._reportUsage(cfg.model, bioUsage);
+    return fullText;
+  },
+};

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>浮生仙途 · AI 仙侠文字RPG</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="theme-pixel.css">
+</head>
+<body class="pixel">
+  <div id="fx-layer"></div>
+
+<!-- ==================== 主菜单 ==================== -->
+<div id="screen-menu" class="screen active">
+  <div class="menu-container">
+    <div class="title-area">
+      <h1 class="game-title">浮生仙途</h1>
+      <p class="game-subtitle">AI 驱动 · 仙侠文字 RPG</p>
+      <p class="game-tagline">大道三千，只取一瓢。生死轮回，因果自承。</p>
+      <div style="margin-top:16px"><span style="display:inline-block;padding:6px 24px;background:rgba(176,69,69,0.15);border:1px solid #b04545;color:#d65555;border-radius:20px;font-size:14px;letter-spacing:3px">首批内测 · 限 5 席</span></div>
+    </div>
+    <div class="menu-buttons">
+      <button id="btn-continue" class="btn btn-primary btn-lg" onclick="UI.show('game')">继续仙途</button>
+      <button class="btn btn-secondary btn-lg" onclick="UI.startNewGame()">踏入仙途（新角色）</button>
+      <button class="btn btn-ghost btn-lg" onclick="UI.show('settings')">设置 / API配置</button>
+      <button class="btn btn-ghost btn-lg" onclick="UI.show('help')">玩法说明</button>
+      <button class="btn btn-ghost btn-lg" onclick="UI.show('beta')">内测通道</button>
+      <button class="btn btn-gold btn-lg" onclick="UI.showSupport()">☕ 上香祈愿</button>
+    </div>
+    <div class="menu-footer">
+      <p>本游戏由 AI 驱动，需自行配置 API Key（支持 DeepSeek / Qwen / OpenAI 等）</p>
+      <p>数据仅存于本地浏览器，不会上传。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 角色创建 ==================== -->
+<div id="screen-create" class="screen">
+  <div class="create-container">
+    <h2 class="section-title">塑造你的修士</h2>
+
+    <div class="form-group">
+      <label class="form-label">道号</label>
+      <div style="display:flex;gap:10px">
+        <input type="text" id="char-name" class="form-input" placeholder="为你的修士命名..." maxlength="12">
+        <button class="btn btn-ghost" onclick="UI.randomName()" style="white-space:nowrap">🎲 随机名</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">选择灵根</label>
+      <div id="root-options" class="card-grid"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">选择出身</label>
+      <div id="bg-options" class="card-grid"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">选择性别</label>
+      <div id="gender-options" class="card-grid"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">叙事节奏 <span class="hint-inline">（决定每回合文本长度：短剧一屏读完 / 电视剧情景交融 / 沉浸世界长篇细描）</span></label>
+      <div id="narration-mode-options" class="card-grid"></div>
+    </div>
+
+    <input type="hidden" id="selected-root" value="0">
+    <input type="hidden" id="selected-bg" value="0">
+    <input type="hidden" id="selected-gender" value="0">
+    <input type="hidden" id="selected-narrative-mode" value="standard">
+
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="UI.show('menu')">返回</button>
+      <button class="btn btn-secondary" onclick="UI.randomizeCharacter()">🎲 全随机</button>
+      <button class="btn btn-primary" onclick="UI.confirmCreate()">开始修仙</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 游戏主界面 ==================== -->
+<div id="screen-game" class="screen">
+  <!-- 手机端：紧凑状态栏（仅小屏可见） -->
+  <div id="mobile-bar" class="mobile-bar">
+    <div class="mobile-bar-stats">
+      <span class="mb-name"></span>
+      <span class="mb-realm"></span>
+      <span class="mb-hp" title="生命"><span class="mb-hp-fill"></span></span>
+      <span class="mb-qi" title="灵力"><span class="mb-qi-fill"></span></span>
+    </div>
+    <button class="mobile-bar-btn" onclick="UI.toggleMobileDrawer()" title="查看完整状态与背包">☰</button>
+  </div>
+
+  <div class="game-layout">
+    <!-- 左侧：状态面板 -->
+    <aside class="panel panel-left">
+      <div id="hero-sprite" class="hero-sprite"></div>
+      <div id="status-panel" class="status-panel"></div>
+      <div class="panel-actions">
+        <button class="btn btn-sm btn-ghost" onclick="UI.show('settings')">⚙</button>
+        <button class="btn btn-sm btn-ghost" onclick="UI.viewBiography()" title="仙途列传">📜</button>
+        <button class="btn btn-sm btn-gold" onclick="UI.showSupport()" title="上香祈愿">☕</button>
+        <button class="btn btn-sm btn-danger" onclick="UI.confirmReincarnate()" title="原地去世，转世投胎">☠</button>
+        <button class="btn btn-sm btn-ghost" onclick="UI.show('menu')">≡</button>
+      </div>
+    </aside>
+
+    <!-- 中间：视觉小说式舞台（背景场景 + 立绘 + 对话框） -->
+    <main class="panel panel-center vn-stage">
+      <div id="realm-scene" class="vn-bg"></div>
+      <div id="vn-actors" class="vn-actors"></div>
+      <div id="battle-stage" class="battle-stage" style="display:none">
+        <div class="battle-floor"></div>
+        <div class="battle-actor battle-hero" id="battle-hero"></div>
+        <div class="battle-fx" id="battle-fx"></div>
+        <div class="battle-actor battle-enemy" id="battle-enemy"></div>
+        <div class="battle-hint" id="battle-hint">战斗触发</div>
+      </div>
+      <div id="milestone-banner" class="milestone-banner"></div>
+      <div id="vn-dialogue" class="vn-dialogue">
+        <div id="story-text" class="story-text"></div>
+        <div id="loading-indicator" class="loading" style="display:none">
+          <span class="loading-dots">天道推演中</span>
+        </div>
+        <div id="action-options" class="action-options"></div>
+        <div id="action-input-area" class="action-input-area" style="display:none">
+          <textarea id="action-input" class="action-input" placeholder="输入你的行动，或选择上方选项... (Enter发送)" rows="2"></textarea>
+          <button class="btn btn-primary btn-send" onclick="UI.sendCustomAction()">行</button>
+          <div class="action-hint">如遇到问题，请在输入框回复：刷新</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- 右侧：背包 -->
+    <aside class="panel panel-right">
+      <div id="inventory-panel" class="inventory-panel"></div>
+    </aside>
+  </div>
+
+  <!-- 手机端：底部抽屉（完整状态 + 背包） -->
+  <div id="mobile-drawer" class="mobile-drawer">
+    <div class="mobile-drawer-handle" onclick="UI.toggleMobileDrawer()"><span></span></div>
+    <div class="mobile-drawer-body" id="mobile-drawer-body"></div>
+  </div>
+
+  <!-- 手机端抽屉遮罩 -->
+  <div id="mobile-overlay" class="mobile-overlay" onclick="UI.closeMobileDrawer()"></div>
+</div>
+
+<!-- ==================== 设置 ==================== -->
+<div id="screen-settings" class="screen">
+  <div class="settings-container">
+    <h2 class="section-title">API 配置</h2>
+    <p class="settings-hint">配置你的 AI 接口。推荐使用 DeepSeek，成本最低（约 ¥1-2/百万token）。Key 仅存于本地浏览器。</p>
+
+    <div class="preset-buttons">
+      <span class="preset-label">快速预设：</span>
+      <button class="btn btn-sm btn-ghost" onclick="UI.applyPreset('deepseek')">DeepSeek</button>
+      <button class="btn btn-sm btn-ghost" onclick="UI.applyPreset('qwen')">通义千问</button>
+      <button class="btn btn-sm btn-ghost" onclick="UI.applyPreset('openai')">OpenAI</button>
+      <button class="btn btn-sm btn-ghost" onclick="UI.applyPreset('siliconflow')">硅基流动</button>
+      <button class="btn btn-sm btn-ghost" onclick="UI.applyPreset('ollama')">本地Ollama</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">API Key</label>
+      <input type="password" id="set-apikey" class="form-input" placeholder="sk-...">
+    </div>
+    <div class="form-group">
+      <label class="form-label">API Base URL</label>
+      <input type="text" id="set-baseurl" class="form-input" placeholder="https://api.deepseek.com/v1">
+    </div>
+    <div class="form-group">
+      <label class="form-label">模型名称</label>
+      <input type="text" id="set-model" class="form-input" placeholder="deepseek-v4-flash">
+    </div>
+    <div class="form-row">
+      <div class="form-group form-half">
+        <label class="form-label">温度 (创造性): <span id="temp-val">0.85</span></label>
+        <input type="range" id="set-temp" class="form-range" min="0" max="2" step="0.05" value="0.85">
+      </div>
+      <div class="form-group form-half">
+        <label class="form-label">最大Token（上限封顶）</label>
+        <input type="number" id="set-maxtok" class="form-input" value="1200">
+      </div>
+    </div>
+
+      <div class="form-group">
+        <label class="form-label">叙事节奏（文本长度）</label>
+        <select id="set-narrative-mode" class="form-input">
+          <option value="standard">电视剧形式 · 快节奏到情景交融</option>
+          <option value="immersive">沉浸世界 · 长篇细描</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">界面风格</label>
+        <label class="pixel-toggle"><input type="checkbox" id="set-pixel" onchange="UI.togglePixel(this.checked)"> 像素风（取消勾选恢复水墨风）</label>
+      </div>
+
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="UI.show('menu')">返回</button>
+      <button class="btn btn-primary" onclick="UI.saveSettings()">保存</button>
+    </div>
+
+    <div class="settings-tips">
+      <h3>获取 API Key 指引</h3>
+      <ul>
+        <li><b>DeepSeek</b>（推荐，最便宜）：platform.deepseek.com 注册即送额度，deepseek-v4-flash 约 ¥1/百万输入token</li>
+        <li><b>通义千问</b>：dashscope.aliyun.com，有免费额度，模型 qwen-plus 或 qwen-turbo</li>
+        <li><b>硅基流动</b>：siliconflow.cn，免费送额度，可跑多种开源模型</li>
+        <li><b>本地 Ollama</b>：完全免费，需先安装 ollama 并拉取模型，适合有显卡的电脑</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 玩法说明 ==================== -->
+<div id="screen-help" class="screen">
+  <div class="help-container">
+    <h2 class="section-title">玩法说明</h2>
+    <div class="help-content">
+      <h3>这游戏怎么玩？</h3>
+      <p>《浮生仙途》是一款 AI 驱动的仙侠文字 RPG。没有固定剧本，你的每一步行动都由 AI 实时演绎。</p>
+
+      <h3>核心机制</h3>
+      <ul>
+        <li><b>境界修炼</b>：炼气 → 筑基 → 金丹 → 元婴 → 化神... 直至飞升。修炼积累进度，满100%可尝试突破。</li>
+        <li><b>灵根系统</b>：金木水火土五行灵根各有特长，另有雷、冰、混沌等稀有异灵根。</li>
+        <li><b>功法神通</b>：可在冒险中获得功法，影响修炼、战斗、炼丹等能力。</li>
+        <li><b>丹药炼制</b>：可搜集药草炼丹，丹药能疗伤、助突破、改资质。</li>
+        <li><b>真实生死</b>：会受伤、会死亡、寿元有限。死亡即终局，无重生。</li>
+        <li><b>因果声望</b>：你的行为影响声望，NPC会根据声望做出不同反应。</li>
+      </ul>
+
+      <h3>如何行动</h3>
+      <ul>
+        <li><b>选择选项</b>：AI每次回复会给出3-4个建议行动</li>
+        <li><b>自由输入</b>：在底部输入框输入任何你想做的事，比如"打坐修炼"、"去坊市买丹药"、"用计骗过守卫"</li>
+        <li>越有创意的行动，越可能触发意想不到的剧情</li>
+      </ul>
+    </div>
+    <button class="btn btn-primary" onclick="UI.show('menu')">返回</button>
+  </div>
+</div>
+
+<!-- ==================== 内测通道 ==================== -->
+<div id="screen-beta" class="screen">
+  <div class="beta-container">
+    <h2 class="section-title">内测通道</h2>
+    <p class="settings-hint">输入你收到的内测号，系统将自动配置，无需自行注册 API。每个内测号限 500 轮交互。</p>
+    <div class="form-group">
+      <label class="form-label">内测号</label>
+      <textarea id="beta-code-input" class="form-input beta-code-textarea" placeholder="在此粘贴内测号..." rows="3"></textarea>
+    </div>
+    <div id="beta-status" class="beta-status"></div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="UI.show('menu')">返回</button>
+      <button class="btn btn-primary" onclick="UI.activateBeta()">激活并进入游戏</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 仙途列传弹窗 ==================== -->
+<div id="biography-modal" class="modal">
+  <div class="modal-card bio-card">
+    <button class="bio-close" onclick="UI.closeBiography()">✕</button>
+    <div class="bio-title">仙途列传</div>
+    <div class="bio-content"></div>
+    <div class="bio-actions" style="display:none">
+      <button class="btn btn-sm btn-ghost bio-copy">📋 复制传记</button>
+      <button class="btn btn-sm btn-secondary bio-restart">重入轮回</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 上香祈愿 / 虚拟香火（不收银钱） ==================== -->
+<div id="support-modal" class="modal" onclick="if(event.target===this)UI.closeSupport()">
+  <div class="modal-card support-card">
+    <button class="bio-close" onclick="UI.closeSupport()">✕</button>
+    <div class="support-heart">🕯</div>
+    <div class="support-title" id="support-title">上香祈愿</div>
+    <div class="support-note" id="support-note"></div>
+
+    <div class="incense-counter">已燃香火 · <span id="incense-count">0</span> 炷</div>
+
+    <div class="incense-options">
+      <button class="incense-btn" onclick="UI.offerIncense(1)">一炷清香<span>+1</span></button>
+      <button class="incense-btn" onclick="UI.offerIncense(3)">三炷清香<span>+3</span></button>
+      <button class="incense-btn incense-btn-rare" onclick="UI.offerIncense(9)">九霄神香<span>+9</span></button>
+    </div>
+
+    <div class="incense-anim" id="incense-anim"></div>
+    <div class="incense-blessing" id="incense-blessing"></div>
+
+    <div class="support-thanks">香火只存于你本地浏览器 · 不联网、不收费、不绑定因果</div>
+  </div>
+</div>
+
+<!-- 世界种子分享功能已下架 -->
+
+<script src="config.js"></script>
+<script src="worldgen.js"></script>
+<script src="data.js"></script>
+<script src="ai.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
