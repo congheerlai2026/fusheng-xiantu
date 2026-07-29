@@ -252,6 +252,10 @@ ${this.buildVarietyBlock(state)}
     lines.push("· 暗藏机缘（可让玩家探寻，但须付出努力方可获得）：");
     gen.treasures.forEach(t => lines.push(`  - ${t.name}：${t.desc}`));
     lines.push("注意：以上为本界既有的风物与势力，请在此基础上推演剧情，勿凭空抹除或篡改既定点位；玩家可前往上述地域，亦可邂逅上述人物、探寻上述机缘。");
+    if (gen.spirit) lines.push(`· 本界灵力值：${gen.spirit}/10（灵力越浓，境界上限越高；但无论高低，世界的精彩与凶险同等，请勿因灵力值高低而厚此薄彼）`);
+    if (gen.realmCapLevel) lines.push(`· 本界境界上限：第 ${gen.realmCapLevel} 大境界（玩家修为不可超越此界天花板，欲破则需另寻机缘/飞升离界）`);
+    if (gen.wish) lines.push(`· 玩家许愿：「${gen.wish}」（请在剧情中自然呼应此愿，作为暗线，但不可喧宾夺主）`);
+    lines.push("· 玩家本质：一道神魂投影，魂穿此界，可为任意形态（人/妖/器/灵/草木……），不拘性别。请以'历练者'视角与之互动，尊重其形态与诉求。");
     return lines.join("\n");
   },
 

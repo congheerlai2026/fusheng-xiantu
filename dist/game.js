@@ -33,14 +33,25 @@ const Game = {
 
   // ============ 初始化新角色 ============
   // seed: 世界种子（字符串）。留空则随机生成——同一种子必得同一方天地。
-  createCharacter(name, rootIndex, bgIndex, genderIndex = 0, seed = null, narrationMode = "standard") {
+  createCharacter(opts) {
+    // 兼容旧调用：createCharacter(name, rootIndex, bgIndex, genderIndex, seed, narrationMode)
+    if (opts && typeof opts !== "object") {
+      opts = { name: arguments[0], rootIndex: arguments[1], bgIndex: arguments[2], genderIndex: arguments[3], seed: arguments[4], narrationMode: arguments[5] };
+    }
+    opts = opts || {};
+    const name = opts.name;
+    const rootIndex = (opts.rootIndex != null) ? opts.rootIndex : Math.floor(Math.random() * SPIRITUAL_ROOTS.length);
+    const bgIndex = (opts.bgIndex != null) ? opts.bgIndex : Math.floor(Math.random() * BACKGROUNDS.length);
+    const genderIndex = (opts.genderIndex != null) ? opts.genderIndex : Math.floor(Math.random() * GENDERS.filter((g) => !g.joke).length);
+    const seed = (opts.seed != null && opts.seed !== "") ? opts.seed : WorldGen.randomSeed();
+    const narrationMode = opts.narrationMode || "standard";
     const root = SPIRITUAL_ROOTS[rootIndex];
     const bg = BACKGROUNDS[bgIndex];
     const gender = GENDERS[genderIndex] || GENDERS[0];
     const realm0 = REALMS[0];
 
-    // 由世界种子确定性生成此界天地
-    const gen = WorldGen.generateWorld(seed);
+    // 由世界种子确定性生成此界天地（许愿可轻度偏置风土）
+    const gen = WorldGen.generateWorld(seed, opts.wish);
 
     // 主线（中央冲突）：从原型库随机择一，并以本界天地（种子）填充占位符，同源同界
     let mainPlot = null;
@@ -71,6 +82,8 @@ const Game = {
         name: name || "无名修士",
         gender: gender.id,
         genderName: gender.name,
+        form: opts.form || "human",   // 魂穿形态：人/妖/器/灵……任意
+        wish: opts.wish || null,        // 玩家许愿
         root: root.name,
         element: root.element,
         affinity: root.affinity,
@@ -116,6 +129,9 @@ const Game = {
         day: 1,
         weather: WEATHERS[0],
         weatherIndex: 0,
+        spirit: gen.spirit,          // 灵力值（驱动境界上限）
+        realmCapLevel: gen.realmCapLevel,
+        wish: gen.wish || null,
         gen: gen,                // 本界天地（确定性生成，随存档保存）
       },
       // 各 NPC 好感度：以人物名为键；开局不预填，仅在剧情中真正结识的人物才入表（met:true）
@@ -123,6 +139,7 @@ const Game = {
       narrationMode: narrationMode || "standard",  // 叙事节奏档位：short / standard / immersive
       meta: {
         createdAt: Date.now(),
+        projectionId: opts.projectionId || ((gen.id) + "-" + Date.now()),
       playTurn: 0,
       alive: true,
       pacing: { calmStreak: 0, peakStreak: 0 },
@@ -698,6 +715,12 @@ const Game = {
       this.advanceTime();
       this.save();
 
+      // 诸天万界·神魔大战余波：可能引发世界毁灭（元循环）
+      const crisis = this.checkWorldCrisis();
+      if (crisis && crisis.destroyed) {
+        this.destroyWorld(crisis.cause);
+      }
+
       return { parsed, eventFlag, deltas };
     } catch (e) {
       // 回滚：撤消已被推入的用户消息和 playTurn 递增
@@ -721,6 +744,7 @@ const Game = {
       history: this.history,
       log: this.log,
     }));
+    this._upsertSoul();
   },
 
   load() {
@@ -744,6 +768,12 @@ const Game = {
       }
       if (!this.state.npcs) this.state.npcs = {};
       if (!this.state.narrationMode) this.state.narrationMode = "standard";
+      // 旧档兼容：补全诸天万界新增字段
+      if (!this.state.world) this.state.world = { seed: "", location: "", gen: null };
+      if (typeof this.state.world.realmCapLevel !== "number") this.state.world.realmCapLevel = (typeof REALMS !== "undefined" && REALMS.length) ? REALMS.length : 9;
+      if (typeof this.state.world.spirit !== "number") this.state.world.spirit = 6;
+      if (!this.state.character.form) this.state.character.form = "human";
+      if (!this.state.meta.projectionId) this.state.meta.projectionId = ((this.state.world.gen && this.state.world.gen.id) || "p") + "-" + Date.now();
       // 旧档兼容：补全主线（中央冲突）与伏笔 ledger
       if (!this.state.meta) this.state.meta = { playTurn: 0, alive: true };
       if (this.state.meta.mainPlot === undefined) this.state.meta.mainPlot = null;
@@ -757,6 +787,90 @@ const Game = {
     } catch (e) {
       return null;
     }
+  },
+
+  // ============ 神魂册（诸天万界·投影轮回）============
+  // 本地注册表：记录所有投影（当前 + 已陨落世界），构成玩家跨世界的"神魂履历"
+  _soulKey: "xianxia_soul",
+  _worldDestroyedCause: null,
+  _worldDestroyedOldName: null,
+  _ensureSoulRegistry() {
+    try {
+      const raw = localStorage.getItem(this._soulKey);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  },
+  _upsertSoul() {
+    if (!this.state || !this.state.meta) return;
+    const s = this.state;
+    const reg = this._ensureSoulRegistry();
+    const entry = {
+      projectionId: s.meta.projectionId,
+      worldName: (s.world.gen && s.world.gen.name) || "未知界",
+      seed: s.world.seed,
+      spirit: s.world.spirit,
+      realmCapLevel: s.world.realmCapLevel,
+      wish: s.world.wish || null,
+      realmReached: s.character.realmLevel,
+      realmName: s.character.realm,
+      form: s.character.form,
+      genderName: s.character.genderName,
+      status: "active",
+      turn: s.meta.playTurn,
+      updatedAt: Date.now(),
+    };
+    const idx = reg.findIndex((e) => e.projectionId === entry.projectionId);
+    if (idx >= 0) reg[idx] = entry; else reg.push(entry);
+    try { localStorage.setItem(this._soulKey, JSON.stringify(reg)); } catch (e) {}
+  },
+  _archiveFallen(projectionId, cause, realmReached) {
+    const reg = this._ensureSoulRegistry();
+    const e = reg.find((x) => x.projectionId === projectionId);
+    if (e) { e.status = "fallen"; e.cause = cause; e.realmReached = realmReached; e.fallenAt = Date.now(); }
+    else { reg.push({ projectionId: projectionId, status: "fallen", cause: cause, realmReached: realmReached, fallenAt: Date.now() }); }
+    try { localStorage.setItem(this._soulKey, JSON.stringify(reg)); } catch (err) {}
+  },
+  // 开启一道新投影（神魂再投诸天万界）
+  newProjection(opts) {
+    opts = opts || {};
+    opts.projectionId = opts.projectionId || (Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36));
+    this.createCharacter(opts);
+    return this.state;
+  },
+  // 世界被神魔大战波及而湮灭：旧界归入神魂册·已陨落，重投新界
+  destroyWorld(cause) {
+    const s = this.state;
+    if (!s) return null;
+    const pid = (s.meta && s.meta.projectionId) || null;
+    const oldName = (s.world.gen && s.world.gen.name) || "此界";
+    const realmReached = (s.character && s.character.realmLevel) || 1;
+    this._archiveFallen(pid, cause, realmReached);
+    this.newProjection({});
+    this._worldDestroyedCause = cause;
+    this._worldDestroyedOldName = oldName;
+    return this.state;
+  },
+  consumeWorldDestroyed() {
+    const c = this._worldDestroyedCause;
+    this._worldDestroyedCause = null;
+    this._worldDestroyedOldName = null;
+    return c || null;
+  },
+  // 诸天万界·神魔大战余波：可能引发世界毁灭（元循环）。实力未足本界巅峰则界毁，投影重投。
+  checkWorldCrisis() {
+    const s = this.state;
+    if (!s || !s.meta.alive) return null;
+    const turn = s.meta.playTurn;
+    if (turn < 12) return null;
+    const cap = (s.world.realmCapLevel) || 9;
+    const lvl = s.character.realmLevel || 1;
+    const chance = 0.022 + (turn - 12) * 0.0014;
+    if (Math.random() > chance) return null;
+    if (lvl < cap) {
+      return { destroyed: true, cause: "神魔大战之余波横跨诸天，灵脉寸断，山河倾覆——此界自此湮灭于轮回。" };
+    }
+    return { destroyed: false, cause: "神魔大战之余波掠过此界，你以万界神魔之姿镇守，山河无恙。" };
   },
 
   hasSave() {
@@ -1317,6 +1431,89 @@ const UI = {
     this.showWorldMap(true); // 开局先生成并展示大地图
   },
 
+  // ============ 诸天万界·两按钮入口 ============
+  startDirectPlay() {
+    if (Game.hasSave()) {
+      if (!confirm("已有仙途，开启新的一道投影将另起炉灶（旧投影归入神魂册）。确定？")) return;
+    }
+    Game.newProjection({});
+    this.showWorldMap(true);
+  },
+
+  openWish() {
+    const modal = document.getElementById("wish-modal");
+    if (modal) modal.style.display = "flex";
+    const ta = document.getElementById("wish-input");
+    if (ta) { ta.value = ""; ta.focus(); }
+  },
+
+  closeWish() {
+    const modal = document.getElementById("wish-modal");
+    if (modal) modal.style.display = "none";
+  },
+
+  submitWish() {
+    const ta = document.getElementById("wish-input");
+    const wish = (ta && ta.value || "").trim();
+    this.closeWish();
+    if (Game.hasSave()) {
+      if (!confirm("已有仙途，许愿将开启新的一道投影（旧投影归入神魂册）。确定？")) return;
+    }
+    // 从许愿文本粗略推断性别（任意形态/性别皆可，推断不到则随机）
+    let genderIndex = null;
+    if (wish) {
+      if (/女|她|姐|妹|妻|姬|妃/.test(wish)) genderIndex = 1;
+      else if (/男|他|哥|弟|夫|君|郎/.test(wish)) genderIndex = 0;
+    }
+    Game.newProjection({ wish: wish || null, genderIndex: genderIndex });
+    this.showWorldMap(true);
+  },
+
+  // ============ 神魂册 ============
+  showSoul() {
+    this.renderSoul();
+    this.show("soul");
+  },
+  renderSoul() {
+    const reg = (Game._ensureSoulRegistry ? Game._ensureSoulRegistry() : []);
+    const body = document.getElementById("soul-body");
+    if (!body) return;
+    if (!reg.length) {
+      body.innerHTML = '<div class="soul-empty">神魂册尚空。开启一道投影，履历自此累加。</div>';
+      return;
+    }
+    const cards = reg.slice().reverse().map((e) => {
+      const fallen = e.status === "fallen";
+      const tag = fallen
+        ? `<span class="soul-tag soul-tag-fallen">已陨落 · ${e.realmReached || 1} 境</span>`
+        : `<span class="soul-tag soul-tag-active">轮回中 · 第 ${e.turn || 0} 程</span>`;
+      const wishLine = e.wish ? `<div class="soul-wish">许愿：${this.escapeHtml(e.wish)}</div>` : "";
+      const causeLine = fallen && e.cause ? `<div class="soul-cause">${this.escapeHtml(e.cause)}</div>` : "";
+      return `<div class="soul-card ${fallen ? "soul-card-fallen" : "soul-card-active"}">
+        <div class="soul-world">${this.escapeHtml(e.worldName || "未知界")}</div>
+        <div class="soul-meta">灵力 ${e.spirit != null ? e.spirit : "?"} · 上限 ${e.realmCapLevel != null ? e.realmCapLevel : "?"} 境 · ${this.escapeHtml(e.form || "人")}·${this.escapeHtml(e.genderName || "")}</div>
+        ${wishLine}
+        ${tag}
+        ${causeLine}
+      </div>`;
+    }).join("");
+    body.innerHTML = cards;
+  },
+
+  // ============ 世界湮灭 → 重投诸天 ============
+  enterReincarnation(cause) {
+    const oldName = Game._worldDestroyedOldName;
+    const storyEl = document.getElementById("story-text");
+    if (storyEl) {
+      storyEl.innerHTML += `<div class="world-destroyed">${this.escapeHtml(cause)}<br>${oldName ? "「" + this.escapeHtml(oldName) + "」" : "此界"}自此湮灭，你的一道投影归于轮回……神魂再投诸天万界，新的仙途已然铺开。</div>`;
+      storyEl.scrollTop = storyEl.scrollHeight;
+    }
+    setTimeout(() => {
+      this.showWorldMap(true);
+      if (this.toastWorldReborn) this.toastWorldReborn();
+    }, 2800);
+  },
+
   // ============ 随机生成 ============
   randomName() {
     const surnames = ["云", "风", "墨", "苏", "叶", "楚", "凌", "白", "洛", "沈", "顾", "萧", "陆", "谢", "秦", "慕容", "上官", "司徒"];
@@ -1827,6 +2024,17 @@ const UI = {
       stage.appendChild(nameEl);
     }
     nameEl.textContent = (enemy && enemy.name) ? enemy.name : "敌人";
+    // 战斗血条（宝可梦式）
+    const hpEl = document.getElementById("battle-hero-hp");
+    if (hpEl) {
+      const c = (Game.state && Game.state.character);
+      const pct = c ? Math.max(0, Math.min(100, Math.round((c.hp / (c.maxHp || 1)) * 100))) : 100;
+      hpEl.style.width = pct + "%";
+    }
+    const eHpEl = document.getElementById("battle-enemy-hp");
+    if (eHpEl) eHpEl.style.width = "100%";
+    const eNameEl = document.getElementById("battle-enemy-hp-name");
+    if (eNameEl) eNameEl.textContent = (enemy && enemy.name) ? enemy.name : "敌";
     // 战斗舞台用当前场景图做背景（图缺失则回退渐变）
     const sceneFile = (this.currentScene && SCENE_LIB[this.currentScene]) ? SCENE_LIB[this.currentScene].file : "";
     stage.style.backgroundImage = sceneFile ? `url("assets/${sceneFile}")` : "";
@@ -2393,6 +2601,9 @@ const UI = {
     try {
       const { parsed, eventFlag, deltas } = await Game.processAction(action);
       this.displayResult(parsed, eventFlag, deltas);
+      // 世界被神魔大战波及湮灭 → 投影重投诸天万界
+      const destroyedCause = Game.consumeWorldDestroyed();
+      if (destroyedCause) this.enterReincarnation(destroyedCause);
     } catch (e) {
       this.showError(e.message);
     }

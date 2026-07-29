@@ -114,13 +114,27 @@ const WorldGen = {
     return s;
   },
 
-  // 由种子确定性生成整个世界
-  generateWorld(seed) {
+  // 由种子确定性生成整个世界（wish 为玩家许愿文本，可轻度偏置风土）
+  generateWorld(seed, wish) {
     const s = (seed == null || seed === "") ? this.randomSeed() : String(seed);
     const rng = this.mulberry32(this.hashSeed(s));
     const pick = (a) => a[Math.floor(rng() * a.length)];
     const ri = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
     const fill = (tpl, map) => tpl.replace(/\$\{(\w+)\}/g, (_, k) => (map[k] != null ? map[k] : ""));
+
+    // 许愿关键词 → 相关地域类型（轻度偏置，不喧宾夺主；精彩程度不因灵力值分级）
+    const wishText = (wish && typeof wish === "string" && wish.trim()) ? wish.trim() : "";
+    const THEME_MAP = { "魔": ["禁地", "试炼"], "妖": ["荒野"], "剑": ["试炼"], "佛": ["宗门"], "仙": ["仙迹", "秘境"], "凡": ["凡俗"], "龙": ["秘境"], "丹": ["宗门"], "毒": ["禁地"], "鬼": ["禁地", "秘境"], "器": ["宗门"], "战": ["试炼"], "海": ["坊市"] };
+    let themedTypes = [];
+    if (wishText) { for (const k in THEME_MAP) { if (wishText.indexOf(k) >= 0) themedTypes = themedTypes.concat(THEME_MAP[k]); } }
+    themedTypes = themedTypes.filter((v, i, a) => a.indexOf(v) === i);
+    const pickType = () => {
+      if (themedTypes.length && rng() < 0.45) {
+        const t = REGION_TYPES.find((x) => themedTypes.indexOf(x.type) >= 0);
+        if (t) return t;
+      }
+      return pick(REGION_TYPES);
+    };
 
     // 1) 界名
     const worldName = pick(WORLD_PREFIX) + pick(WORLD_SUFFIX);
@@ -151,10 +165,10 @@ const WorldGen = {
     };
     const regionCount = ri(14, 16);
     // 第一轮：每个宏观疆域至少 1 个地域，撑起版图骨架
-    MACRO_REGIONS.forEach((m) => regions.push(makeRegion(m.name, pick(REGION_TYPES))));
+    MACRO_REGIONS.forEach((m) => regions.push(makeRegion(m.name, pickType())));
     // 第二轮：随机补足，疆域与类型均随机，丰富世界
     while (regions.length < regionCount) {
-      regions.push(makeRegion(pick(MACRO_REGIONS).name, pick(REGION_TYPES)));
+      regions.push(makeRegion(pick(MACRO_REGIONS).name, pickType()));
     }
     // 保证关键类型存在（起点宗门/凡俗、险地禁地）
     ensureType("宗门");
@@ -220,11 +234,18 @@ const WorldGen = {
     // 7) 天地异象
     const omen = pick(OMENS);
 
+    // 8) 灵力值（驱动境界上限，不驱动精彩程度；无论高低，世界同样精彩凶险）
+    const spirit = ri(3, 9);
+    const realmCapLevel = spirit <= 3 ? 4 : spirit <= 5 ? 6 : spirit <= 7 ? 8 : 10;
+
     return {
       seed: s,
       id: this.hashSeed(s) >>> 0,
       name: worldName,
       omen,
+      spirit,
+      realmCapLevel,
+      wish: wishText,
       macroRegions: MACRO_REGIONS.map((m) => ({ name: m.name, flavor: m.flavor })),
       regions,
       factions,

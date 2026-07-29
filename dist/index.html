@@ -21,10 +21,11 @@
     </div>
     <div class="menu-buttons">
       <button id="btn-continue" class="btn btn-primary btn-lg" onclick="UI.show('game')">继续仙途</button>
-      <button class="btn btn-secondary btn-lg" onclick="UI.startNewGame()">踏入仙途（新角色）</button>
+      <button class="btn btn-play btn-lg" onclick="UI.startDirectPlay()">⚔ 直接玩</button>
+      <button class="btn btn-wish btn-lg" onclick="UI.openWish()">✨ 许愿 · 自定义世界</button>
+      <button class="btn btn-ghost btn-lg" onclick="UI.showSoul()">📖 神魂册</button>
       <button class="btn btn-ghost btn-lg" onclick="UI.show('settings')">设置 / API配置</button>
       <button class="btn btn-ghost btn-lg" onclick="UI.show('help')">玩法说明</button>
-      <button class="btn btn-ghost btn-lg" onclick="UI.show('beta')">内测通道</button>
       <button class="btn btn-gold btn-lg" onclick="UI.showSupport()">☕ 上香祈愿</button>
     </div>
     <div class="menu-footer">
@@ -100,6 +101,7 @@
       <div id="status-panel" class="status-panel"></div>
       <div class="panel-actions">
         <button class="btn btn-sm btn-map" onclick="UI.showWorldMap()" title="大地图">🗺 大地图</button>
+        <button class="btn btn-sm btn-soul" onclick="UI.showSoul()" title="神魂册">📖</button>
         <button class="btn btn-sm btn-ghost" onclick="UI.show('settings')">⚙</button>
         <button class="btn btn-sm btn-ghost" onclick="UI.viewBiography()" title="仙途列传">📜</button>
         <button class="btn btn-sm btn-gold" onclick="UI.showSupport()" title="上香祈愿">☕</button>
@@ -123,6 +125,8 @@
         <div class="battle-fx" id="battle-fx"></div>
         <div class="battle-actor battle-enemy" id="battle-enemy"></div>
         <div class="battle-hint" id="battle-hint">战斗触发</div>
+        <div class="battle-hp battle-hp-hero"><span class="battle-hp-label">你</span><div class="battle-hp-bar"><i id="battle-hero-hp"></i></div></div>
+        <div class="battle-hp battle-hp-enemy"><span class="battle-hp-label" id="battle-enemy-hp-name">敌</span><div class="battle-hp-bar"><i id="battle-enemy-hp"></i></div></div>
       </div>
       <div id="milestone-banner" class="milestone-banner"></div>
       <div id="vn-dialogue" class="vn-dialogue">
@@ -324,6 +328,32 @@
     <div class="incense-blessing" id="incense-blessing"></div>
 
     <div class="support-thanks">香火只存于你本地浏览器 · 不联网、不收费、不绑定因果</div>
+  </div>
+</div>
+
+<!-- ==================== 许愿 ==================== -->
+<div id="wish-modal" class="modal" style="display:none" onclick="if(event.target===this)UI.closeWish()">
+  <div class="modal-card wish-card">
+    <button class="bio-close" onclick="UI.closeWish()">✕</button>
+    <div class="wish-title">✨ 许愿 · 自定义你的世界</div>
+    <div class="wish-note">你是诸天万界中一道神魂投影，魂穿任意世界、可为任意形态。描述你心中所想的世界、想成为的存在、想做的事——AI 将据此为你生成一方天地。</div>
+    <textarea id="wish-input" class="wish-input" rows="5" placeholder="例如：我想去一个魔修横行的乱世，成为一头以战证道的妖狼，一路杀穿宗门……"></textarea>
+    <div class="wish-actions">
+      <button class="btn btn-ghost" onclick="UI.closeWish()">再想想</button>
+      <button class="btn btn-wish" onclick="UI.submitWish()">许下此愿 · 入界</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 神魂册 ==================== -->
+<div id="screen-soul" class="screen">
+  <div class="soul-container">
+    <h2 class="section-title">神魂册 · 诸天万界投影履历</h2>
+    <p class="soul-intro">你是一道分裂的神魂，每一道投影都投入一方天地。世界或被神魔大战波及而湮灭，归入此册；你则重投诸天，再启仙途。唯潜力最盛者，终得时空传承，逆转未知之劫。</p>
+    <div class="soul-body" id="soul-body"></div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="UI.show('menu')">返回</button>
+    </div>
   </div>
 </div>
 
