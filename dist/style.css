@@ -217,9 +217,46 @@ body::before {
 .mdrawer-skill-head .ms-val { color: var(--gold); }
 
 /* 剧情区 */
-.story-text { flex: 1; overflow-y: auto; padding: 30px 40px; }
-.story-content { font-size: 16px; line-height: 2.1; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.story-text { flex: 1; overflow-y: auto; padding: 18px 22px; }
+.story-content { font-size: 17px; line-height: 1.9; color: var(--text); white-space: pre-wrap; word-break: break-word; font-weight: 400; }
 .story-content.streaming { color: var(--gold-bright); }
+
+/* ============================================================
+   视觉小说式舞台（背景氛围 + 立绘 + 底部大对话框）
+   ============================================================ */
+.vn-stage { position: relative; overflow: hidden; background: var(--bg-dark); display: flex; flex-direction: column; }
+.vn-bg {
+  position: relative; flex: 0 0 45%; min-height: 190px; max-height: 380px;
+  background-color: var(--bg-dark);
+  background-size: cover; background-position: center 30%; background-repeat: no-repeat;
+  image-rendering: pixelated;
+  transition: background-image .45s ease, opacity .4s;
+}
+/* 顶部与底部轻微压暗，让场景只做氛围 */
+.vn-bg::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(5,7,12,.45) 0%, rgba(5,7,12,0) 35%, rgba(5,7,12,0) 55%, rgba(5,7,12,.55) 82%, rgba(5,7,12,.92) 100%);
+}
+.vn-bg.no-scene { background-image: linear-gradient(180deg, #1a2740 0%, #0e1626 55%, #0a0f1a 100%); }
+.vn-actors {
+  position: absolute; left: 0; right: 0; top: 0; height: 48%; z-index: 3;
+  pointer-events: none; overflow: hidden;
+}
+.vn-dialogue {
+  position: relative; flex: 1 1 auto; min-height: 0; z-index: 7;
+  overflow-y: auto;
+  background: rgba(13,16,23,.96);
+  border-top: 2px solid var(--gold);
+  box-shadow: 0 -8px 32px rgba(0,0,0,.55);
+  padding: 18px 24px 22px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.vn-dialogue .story-text { flex: 0 1 auto; overflow-y: auto; padding: 0; }
+.vn-dialogue .story-content { font-size: 17px; line-height: 1.9; color: #f7f3e3; }
+.vn-dialogue .action-options { padding: 0; }
+.vn-dialogue .action-input-area { padding: 0; }
+.vn-dialogue .loading { padding: 0; }
 .opening-hint { text-align: center; padding: 60px 20px; color: var(--text-dim); }
 .opening-hint p { margin-bottom: 16px; line-height: 2; }
 .opening-hint .btn { margin-top: 20px; }
@@ -597,14 +634,12 @@ body::before {
   }
   .vn-stage.vn-collapsed .vn-dialogue {
     position: relative;
-    bottom: auto;
-    left: auto; right: auto;
     max-height: none;
     flex: 1;
-    background: transparent;
-    border-top: none;
-    box-shadow: none;
-    padding: 8px 0 0;
+    background: rgba(13,16,23,.96);
+    border-top: 2px solid var(--gold);
+    box-shadow: 0 -6px 24px rgba(0,0,0,.5);
+    padding: 12px 14px;
   }
   .vn-stage.vn-collapsed .vn-toggle-icon {
     transform: rotate(-90deg);
@@ -771,24 +806,27 @@ body::before {
   .modal-card { max-width: 94vw; padding: 24px 20px; max-height: 90vh; }
   .card-grid { grid-template-columns: 1fr; }
 
-  /* 手机端 VN 对话框：固定吸底浮层（独立于 .vn-stage，键盘弹起也不会被顶飞） */
+  /* 手机端场景/立绘区域收窄，把空间让给文字 */
+  .vn-bg { flex: 0 0 36%; min-height: 140px; }
+  .vn-actors { height: 40%; }
+
+  /* 手机端 VN 对话框：在 flex 舞台内占主体，不再固定吸底 */
   .vn-dialogue {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 120;
-    display: flex; flex-direction: column;
-    max-height: 52%;
-    padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px));
-    background: rgba(10,13,20,.9);
+    position: relative;
+    flex: 1 1 auto;
+    max-height: none;
+    padding: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    background: rgba(13,16,23,.96);
     border-top: 2px solid var(--gold);
     box-shadow: 0 -6px 24px rgba(0,0,0,.5);
-    transition: bottom .2s ease;
   }
   .vn-dialogue .story-text {
-    flex: 1 1 auto; min-height: 60px; padding: 0;
+    flex: 1 1 auto; min-height: 80px; padding: 0;
     -webkit-overflow-scrolling: touch;
   }
-  /* 输入区：移动端固定贴底，永远可见（含键盘顶起时由 JS 抬高 bottom） */
+  /* 输入区：移动端贴底可见 */
   .vn-dialogue .action-input-area {
-    position: relative; flex: 0 0 auto; margin-top: 6px;
+    position: relative; flex: 0 0 auto; margin-top: 8px;
     padding: 8px 0 0; gap: 8px;
     border-top: 1px solid var(--border);
   }
@@ -796,9 +834,8 @@ body::before {
   .vn-dialogue .btn-send { padding: 11px 18px; font-size: 15px; flex: 0 0 auto; }
   .vn-dialogue .action-hint { display: none; }
 
-  /* 手机端立绘略放大，强化 gal game 视觉重心（dialogue 顶部在 48%，立绘底边在 50% 以上不重叠，头部避开顶部折叠条） */
-  .vn-actor { bottom: 50%; }
-  .vn-actor.hero, .vn-actor.npc { height: 48%; }
+  /* 手机端立绘贴底放大 */
+  .vn-actor { bottom: 0; height: 90%; }
 
   /* 遮罩（抽屉打开时） */
   .mobile-overlay {
@@ -842,25 +879,24 @@ body::before {
 @keyframes hp-sway    { 0%,100% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.5deg); } }
 @keyframes hp-float   { 0% { transform: translateY(0); opacity:.25; } 50% { transform: translateY(-7px); opacity:.9; } 100% { transform: translateY(0); opacity:.25; } }
 
-/* NPC 立绘（VN 舞台弹出，GAL 形态：仅在 NPC 对话时出现） */
-.vn-actors .vn-actor.npc { position: absolute; right: 3%; bottom: 0; height: 80%; width: auto; pointer-events: none; }
-.vn-actors .vn-actor.npc .npc-portrait { height: 100%; width: auto; filter: drop-shadow(0 8px 18px rgba(0,0,0,.42)); image-rendering: pixelated; shape-rendering: crispEdges; }
+/* 舞台立绘（GAL 形态：人物作为视觉重心，贴底放大） */
+.vn-actors .vn-actor { position: absolute; bottom: 0; height: 92%; width: auto; pointer-events: none; }
+.vn-actors .vn-actor.hero { left: 5%; }
+.vn-actors .vn-actor.npc  { right: 5%; transform: scaleX(-1); }
+.vn-actors .vn-actor .npc-portrait,
+.vn-actors .vn-actor .hero-portrait { height: 100%; width: auto; filter: drop-shadow(0 8px 18px rgba(0,0,0,.42)); image-rendering: pixelated; shape-rendering: crispEdges; }
 .npc-popin { animation: npc-pop .5s cubic-bezier(.2,.85,.3,1) both; }
 @keyframes npc-pop { from { opacity:0; transform: translateY(26px) scale(.95); } to { opacity:1; transform: translateY(0) scale(1); } }
 
-/* NPC 对话时：即使舞台在手机端折叠，也强制展开背景与立绘层（覆盖 vn-collapsed 的 !important 隐藏） */
+/* NPC 对话时：即使舞台在手机端折叠，也强制展开背景与立绘层 */
 .vn-stage.vn-collapsed.npc-active .vn-bg,
 .vn-stage.vn-collapsed.npc-active .vn-actors { display: block !important; }
-/* 并让对话框回到吸底，立绘得以在背景上显示（桌面/移动通用） */
-.vn-stage.vn-collapsed.npc-active .vn-dialogue {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 120;
-  max-height: 52%; flex: none;
-  background: rgba(10,13,20,.9); border-top: 2px solid var(--gold);
-}
 
-/* 手机端：NPC 立绘缩小置于右侧上半，避免遮挡对话；抽屉内主角立绘居中 */
+/* 手机端：立绘贴底放大；抽屉内主角立绘居中 */
 @media (max-width: 640px) {
-  .vn-actors .vn-actor.npc { right: 1%; height: 46%; bottom: 52%; }
+  .vn-actors .vn-actor { height: 92%; }
+  .vn-actors .vn-actor.npc { right: 2%; }
+  .vn-actors .vn-actor.hero { left: 2%; }
   .hero-portrait { max-width: 150px; }
   .mdrawer-hero { text-align: center; margin: 6px 0 12px; }
   .mdrawer-hero .hero-portrait { max-width: 130px; }

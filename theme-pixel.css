@@ -187,36 +187,33 @@ body.pixel .item-type.系统::before { background-image: url("data:image/svg+xml
 body.pixel .item-type.skill::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Crect x='6' y='3' width='4' height='4' fill='%239bb06a'/%3E%3Crect x='7' y='7' width='2' height='6' fill='%238a6a3a'/%3E%3C/svg%3E"); }
 
 /* ============================================================
-   视觉小说式舞台（背景场景 + 立绘 + 底部对话框）
+   视觉小说式舞台（背景氛围 + 立绘视觉重心 + 底部大对话框）
    结构样式全局生效（水墨/像素两种模式通用）；像素装饰仅 body.pixel 下加强
    ============================================================ */
-.vn-stage { position: relative; overflow: hidden; background: #0b0d14; }
+.vn-stage { position: relative; overflow: hidden; background: #0b0d14; display: flex; flex-direction: column; }
 .vn-bg {
-  position: absolute; inset: 0;
+  position: relative; flex: 0 0 42%; min-height: 180px; max-height: 360px;
   background-color: #0b0d14;
-  background-size: cover; background-position: center; background-repeat: no-repeat;
+  background-size: cover; background-position: center 30%; background-repeat: no-repeat;
   image-rendering: pixelated;
   transition: background-image .45s steps(3), opacity .4s;
 }
-/* 底部压暗渐变，保证对话框可读 */
+/* 顶部与底部轻微压暗，让场景只做氛围，不抢对话 */
 .vn-bg::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;
   background:
-    linear-gradient(180deg, rgba(8,10,16,.22) 0%, rgba(8,10,16,0) 26%, rgba(8,10,16,0) 40%, rgba(8,10,16,.50) 72%, rgba(8,10,16,.86) 100%);
+    linear-gradient(180deg, rgba(5,7,12,.42) 0%, rgba(5,7,12,0) 35%, rgba(5,7,12,0) 55%, rgba(5,7,12,.55) 80%, rgba(5,7,12,.9) 100%);
 }
-/* 场景图缺失时：按境界的兜底渐变（由 JS 加 .no-scene） */
-.vn-bg.no-scene {
-  background-image:
-    linear-gradient(180deg, #1a2740 0%, #0e1626 55%, #0a0f1a 100%);
-}
-.vn-actors { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 3; }
+/* 场景图缺失时：按境界的兜底渐变 */
+.vn-bg.no-scene { background-image: linear-gradient(180deg, #1a2740 0%, #0e1626 55%, #0a0f1a 100%); }
+.vn-actors { position: absolute; left: 0; right: 0; top: 0; height: 46%; z-index: 3; pointer-events: none; overflow: hidden; }
 .vn-actor {
-  position: absolute; bottom: 55%;
+  position: absolute; bottom: 0; height: 94%;
   image-rendering: pixelated;
   filter: drop-shadow(2px 2px 0 rgba(0,0,0,.5));
 }
-.vn-actor.hero { left: 7%; height: 42%; }
-.vn-actor.npc  { right: 9%; height: 42%; transform: scaleX(-1); }
+.vn-actor.hero { left: 6%; }
+.vn-actor.npc  { right: 6%; transform: scaleX(-1); }
 .vn-actor img { height: 100%; width: auto; image-rendering: pixelated; animation: hero-breathe 3.2s ease-in-out infinite; }
 
 /* 体系专属角色立绘（程序化 SVG，按修炼体系着色，强化"这是我的角色"） */
@@ -255,15 +252,16 @@ body.pixel .item-type.skill::before { background-image: url("data:image/svg+xml,
   background: rgba(0,0,0,.4); filter: blur(1px);
 }
 .vn-dialogue {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 7;
-  max-height: 54%; overflow-y: auto;
-  background: rgba(10,13,20,.86);
-  border-top: 2px solid #070910;
-  box-shadow: inset 0 2px 0 #2a3146;
-  padding: 12px 16px 14px;
-  display: flex; flex-direction: column; gap: 8px;
+  position: relative; flex: 1 1 auto; min-height: 0; z-index: 7;
+  overflow-y: auto;
+  background: #f7f3e3;
+  border-top: 3px solid #2b2b3a;
+  box-shadow: inset 0 3px 0 #fff, 0 -6px 0 rgba(0,0,0,.18);
+  padding: 18px 22px 20px;
+  display: flex; flex-direction: column; gap: 10px;
 }
 .vn-dialogue .story-text { flex: 0 1 auto; overflow-y: auto; padding: 0; }
+.vn-dialogue .story-content { font-size: 16.5px; line-height: 1.85; color: #2b2b3a; }
 .vn-dialogue .action-options { padding: 0; }
 .vn-dialogue .action-input-area { padding: 0; }
 .vn-dialogue .loading { padding: 0; }
@@ -317,12 +315,13 @@ body.pixel .vn-toggle-icon {
   font-size: 10px;
   color: #5a6a8a;
 }
-/* 折叠状态下对话框：去掉像素框，融入背景 */
+/* 折叠状态下对话框：隐藏场景/立绘，对话框占满并恢复高对比深色底 */
 body.pixel .vn-stage.vn-collapsed .vn-dialogue {
-  background: transparent;
-  border: none;
-  box-shadow: none;
+  background: rgba(13,16,23,.96);
+  border-top: 2px solid var(--gold);
+  box-shadow: 0 -6px 24px rgba(0,0,0,.5);
 }
+body.pixel .vn-stage.vn-collapsed .vn-dialogue .story-content { color: #f7f3e3; }
 
 /* ---------- 像素风开关（设置页） ---------- */
 .pixel-toggle { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; cursor: pointer; }
@@ -677,20 +676,28 @@ body.pixel .btn-block { width: 100%; margin-top: 10px; }
       radial-gradient(ellipse at center, transparent 70%, rgba(0,0,0,0.22) 100%);
   }
 
-  /* 核心 bug：手机上 .vn-dialogue 是深色底，必须强制浅色字，否则会黑底黑字 */
-  body.pixel .vn-dialogue,
+  /* 手机端场景/立绘区域收窄 */
+  body.pixel .vn-bg { flex: 0 0 34%; min-height: 140px; }
+  body.pixel .vn-actors { height: 38%; }
+
+  /* 手机端对话框：奶白底深色字，高对比 */
+  body.pixel .vn-dialogue {
+    background: #f7f3e3;
+    border-top: 3px solid #2b2b3a;
+    box-shadow: inset 0 3px 0 #fff, 0 -6px 0 rgba(0,0,0,.18);
+  }
   body.pixel .vn-dialogue .story-text,
   body.pixel .vn-dialogue .story-content,
   body.pixel .vn-stage.vn-collapsed.npc-active .vn-dialogue .story-content {
-    color: #f7f3e3 !important;
+    color: #2b2b3a;
   }
-  body.pixel .vn-dialogue .user-action { color: #a8f0c8; }
-  body.pixel .vn-dialogue .turn-deltas .delta-item { color: #ffd86b; border-color: rgba(255,216,107,.45); background: rgba(255,216,107,.12); }
-  body.pixel .vn-dialogue .world-destroyed { color: #ffbfbf; background: rgba(122,28,22,.35); border-color: #ff6b6b; }
+  body.pixel .vn-dialogue .user-action { color: #1c5a8a; }
+  body.pixel .vn-dialogue .turn-deltas .delta-item { color: #5a4a2e; border-color: rgba(43,43,58,.25); background: rgba(43,43,58,.1); }
+  body.pixel .vn-dialogue .world-destroyed { color: #7a1c16; background: #f3e0de; border-color: #7a1c16; }
 
   /* 叙事文字加大加行高 */
   body.pixel .story-content { font-size: 16.5px; line-height: 1.85; }
-  body.pixel .vn-dialogue .story-content { font-size: 16px; line-height: 1.8; }
+  body.pixel .vn-dialogue .story-content { font-size: 16px; line-height: 1.85; }
 
   /* 选项按钮：手机上做高对比、大触控、去掉奇怪纹理 */
   body.pixel .action-options { align-items: stretch; padding: 0 10px 8px; gap: 8px; }
@@ -720,8 +727,9 @@ body.pixel .btn-block { width: 100%; margin-top: 10px; }
   body.pixel .mdrawer-hero { text-align: center; margin: 4px 0 12px; }
   body.pixel .mdrawer-hero .hero-portrait { max-width: 140px; margin: 0 auto; }
 
-  /* NPC 弹窗在手机上别遮太多字 */
-  .vn-actors .vn-actor.npc { right: 0; height: 42%; bottom: 50%; }
+  /* 手机端立绘贴底放大 */
+  .vn-actors .vn-actor { bottom: 0; height: 88%; }
+  .vn-actors .vn-actor.npc { right: 0; }
 }
 
 /* ===== 动画大地图：山川河流（像素主题） ===== */
@@ -761,20 +769,8 @@ body.pixel .btn-soul { border: 2px solid #6a4a8a; color: #c9a8e8; }
 body.pixel .btn-soul:hover { background: rgba(106,74,138,.15); }
 body.pixel .menu-buttons { max-width: 360px; margin: 0 auto 60px; }
 
-/* 底部对话框：奶白厚边 + 圆角，宝可梦式文本窗 */
-body.pixel .vn-dialogue {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 7;
-  max-height: 50%; overflow-y: auto;
-  background: #f7f3e3;
-  border: 3px solid #2b2b3a;
-  border-radius: 14px 14px 0 0;
-  border-bottom: none;
-  box-shadow: 0 -3px 0 #fff inset, 5px 0 0 rgba(0,0,0,.18), -5px 0 0 rgba(0,0,0,.18);
-  padding: 16px 18px 18px; margin: 0 10px;
-  color: #2b2b3a;
-  display: flex; flex-direction: column; gap: 8px;
-}
-body.pixel .vn-dialogue .story-text { flex: 0 1 auto; overflow-y: auto; padding: 0; color: #2b2b3a; font-size: 15px; line-height: 1.7; }
+/* 底部对话框：奶白厚边 + 宝可梦式文本窗（结构已由 .vn-dialogue 定义，这里只覆盖文本色） */
+body.pixel .vn-dialogue .story-text { color: #2b2b3a; font-size: 16px; line-height: 1.8; }
 body.pixel .vn-dialogue .story-content { color: #2b2b3a; }
 body.pixel .vn-dialogue .turn-deltas { margin: 4px 0; }
 body.pixel .vn-dialogue .delta-item { background: rgba(43,43,58,.1); color: #5a4a2e; border-color: rgba(43,43,58,.25); }

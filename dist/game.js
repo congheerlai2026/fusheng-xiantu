@@ -2030,27 +2030,27 @@ const UI = {
     this.initMobileKeyboardHandler();
   },
 
-  // 移动端：输入法键盘弹起时，把吸底对话框抬到键盘上方，避免输入框被顶飞/遮挡
+  // 移动端：若对话框是 fixed 吸底，则键盘弹起时抬升；flex 布局下无需处理
   initMobileKeyboardHandler() {
     if (this._mobileKbBound) return;
     this._mobileKbBound = true;
     const input = document.getElementById("action-input");
     if (!input) return;
     const dialogue = document.getElementById("vn-dialogue");
+    const isFixed = () => dialogue && window.getComputedStyle(dialogue).position === "fixed";
     const applyKb = () => {
-      if (!window.visualViewport || !dialogue) return;
+      if (!window.visualViewport || !dialogue || !isFixed()) return;
       const kbTop = window.visualViewport.height; // 视口高度（已排除键盘）
       const winH = window.innerHeight;
       const overlap = Math.max(0, winH - kbTop); // 键盘占用的高度
       dialogue.style.bottom = overlap > 0 ? overlap + "px" : "0px";
     };
     input.addEventListener("focus", () => {
-      // 延迟到键盘动画完成后再抬升
       setTimeout(applyKb, 300);
       if (window.visualViewport) window.visualViewport.addEventListener("resize", applyKb);
     });
     input.addEventListener("blur", () => {
-      if (dialogue) dialogue.style.bottom = "0px";
+      if (dialogue && isFixed()) dialogue.style.bottom = "0px";
       if (window.visualViewport) window.visualViewport.removeEventListener("resize", applyKb);
     });
     if (window.visualViewport) window.visualViewport.addEventListener("resize", () => {
