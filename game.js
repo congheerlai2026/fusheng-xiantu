@@ -2030,27 +2030,27 @@ const UI = {
     this.initMobileKeyboardHandler();
   },
 
-  // 移动端：输入法键盘弹起时，把吸底对话框抬到键盘上方，避免输入框被顶飞/遮挡
+  // 移动端：若对话框是 fixed 吸底，则键盘弹起时抬升；flex 布局下无需处理
   initMobileKeyboardHandler() {
     if (this._mobileKbBound) return;
     this._mobileKbBound = true;
     const input = document.getElementById("action-input");
     if (!input) return;
     const dialogue = document.getElementById("vn-dialogue");
+    const isFixed = () => dialogue && window.getComputedStyle(dialogue).position === "fixed";
     const applyKb = () => {
-      if (!window.visualViewport || !dialogue) return;
+      if (!window.visualViewport || !dialogue || !isFixed()) return;
       const kbTop = window.visualViewport.height; // 视口高度（已排除键盘）
       const winH = window.innerHeight;
       const overlap = Math.max(0, winH - kbTop); // 键盘占用的高度
       dialogue.style.bottom = overlap > 0 ? overlap + "px" : "0px";
     };
     input.addEventListener("focus", () => {
-      // 延迟到键盘动画完成后再抬升
       setTimeout(applyKb, 300);
       if (window.visualViewport) window.visualViewport.addEventListener("resize", applyKb);
     });
     input.addEventListener("blur", () => {
-      if (dialogue) dialogue.style.bottom = "0px";
+      if (dialogue && isFixed()) dialogue.style.bottom = "0px";
       if (window.visualViewport) window.visualViewport.removeEventListener("resize", applyKb);
     });
     if (window.visualViewport) window.visualViewport.addEventListener("resize", () => {
@@ -2321,99 +2321,116 @@ const UI = {
     return map[s] || "sys-default";
   },
 
-  // ============ 程序化 SVG 立绘（零 AI 积分，分层仙侠风，性别/体系参数化） ============
-  // 主角立绘：头身比 + 道袍分层 + 体系配色 + 法器 + 灵气光晕；性别分支（男束发冠 / 女云鬓）
+  // ============ 宝可梦风格像素立绘（零 AI 积分，纯 SVG 块化精灵） ============
+  // 设计：大头身比、粗黑描边、硬边填色、大萌眼、体系高饱和配色
   _heroPortrait() {
     const c = Game.state && Game.state.character;
     if (!c) return "";
-    const sys = (Game.state.world && Game.state.world.cultivationSystem) || "lingen";
     const sysCls = this._systemClass();
     const gender = c.gender === 1 ? "f" : "m";
     const name = this.escapeHtml(c.name || "修士");
-    const skin = "#f1d6bd";
-    let head;
-    if (gender === "f") {
-      head = `<ellipse class="hp-head" cx="110" cy="126" rx="23" ry="26" fill="${skin}"/>
-        <path class="hp-hair" d="M85 122 Q82 92 110 92 Q138 92 135 122 Q131 103 110 103 Q89 103 85 122 Z" fill="#2b2420"/>
-        <path class="hp-hair2" d="M85 122 Q80 152 93 170 L97 150 Q90 132 93 122 Z" fill="#2b2420"/>
-        <path class="hp-hair2" d="M135 122 Q140 152 127 170 L123 150 Q130 132 127 122 Z" fill="#2b2420"/>
-        <circle class="hp-pin" cx="110" cy="95" r="6" fill="var(--pt-accent)"/>
-        <circle class="hp-pin" cx="95" cy="103" r="2.6" fill="var(--pt-accent)"/>
-        <circle class="hp-pin" cx="125" cy="103" r="2.6" fill="var(--pt-accent)"/>`;
-    } else {
-      head = `<ellipse class="hp-head" cx="110" cy="124" rx="22" ry="25" fill="${skin}"/>
-        <path class="hp-hair" d="M87 118 Q84 90 110 90 Q136 90 133 118 Q129 100 110 100 Q91 100 87 118 Z" fill="#241f1b"/>
-        <rect class="hp-crown" x="100" y="83" width="20" height="12" rx="3" fill="var(--pt-accent)"/>
-        <path class="hp-hair2" d="M87 118 Q83 146 95 162 L99 144 Q93 128 95 118 Z" fill="#241f1b"/>
-        <path class="hp-hair2" d="M133 118 Q137 146 125 162 L121 144 Q127 128 125 118 Z" fill="#241f1b"/>`;
-    }
-    const artifacts = {
-      lingen:   `<path class="hp-art" d="M166 150 L176 322" stroke="var(--pt-accent)" stroke-width="4" stroke-linecap="round"/><path d="M160 150 L182 150 L176 136 Z" fill="var(--pt-light)"/>`,
-      xuema:    `<circle class="hp-art" cx="172" cy="205" r="12" fill="var(--pt-accent)"/><circle cx="172" cy="205" r="5" fill="#fff" opacity="0.55"/>`,
-      mingge:   `<g class="hp-art" transform="translate(170,205)"><circle r="14" fill="none" stroke="var(--pt-accent)" stroke-width="2"/><path d="M0 -14 L4 0 L0 14 L-4 0 Z" fill="var(--pt-accent)"/></g>`,
-      daozhong: `<path class="hp-art" d="M156 212 Q176 190 190 212 Q176 234 156 212 Z" fill="var(--pt-accent)" opacity="0.85"/>`,
-      yuansu:   `<circle class="hp-art" cx="174" cy="208" r="11" fill="var(--pt-accent)" opacity="0.8"/><path d="M174 197 L178 208 L174 219 L170 208 Z" fill="#fff" opacity="0.7"/>`,
-      lingshu:  `<rect class="hp-art" x="163" y="192" width="22" height="22" rx="3" fill="none" stroke="var(--pt-accent)" stroke-width="2"/><path d="M163 203 H185 M174 192 V214" stroke="var(--pt-accent)" stroke-width="1.4"/>`,
-      rudao:    `<path class="hp-art" d="M166 150 Q148 232 172 322" stroke="var(--pt-accent)" stroke-width="3" fill="none" stroke-linecap="round"/>`,
-      wudao:    `<rect class="hp-art" x="165" y="202" width="17" height="15" rx="3" fill="var(--pt-accent)"/>`,
+    // 像素块绘制辅助：x,y,w,h,fill
+    const rect = (x, y, w, h, f) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}"/>`;
+    const skin = "#f8dcb8", hair = gender === "f" ? "#3e2f2a" : "#241f1b";
+    const eyeWhite = "#fff", eyePupil = "#1a120e";
+    // 女主：长发+簪子；男主：短发+束冠
+    const headBlocks = gender === "f"
+      ? rect(58,42,44,36,skin) + rect(54,34,52,20,hair) + rect(50,48,8,32,hair) + rect(102,48,8,32,hair)
+        + rect(54,76,52,8,hair) + rect(100,38,12,6,"var(--pt-accent)") + rect(102,34,8,8,"var(--pt-accent)")
+        + rect(66,64,10,12,eyeWhite) + rect(88,64,10,12,eyeWhite) + rect(70,68,4,6,eyePupil) + rect(90,68,4,6,eyePupil)
+        + rect(74,84,16,4,"#d47a7a")
+      : rect(60,44,42,34,skin) + rect(56,36,50,18,hair) + rect(54,50,10,20,hair) + rect(100,50,10,20,hair)
+        + rect(58,68,46,8,hair) + rect(72,34,18,8,"var(--pt-accent)") + rect(76,30,10,8,"var(--pt-accent)")
+        + rect(66,64,10,12,eyeWhite) + rect(88,64,10,12,eyeWhite) + rect(70,68,4,6,eyePupil) + rect(90,68,4,6,eyePupil)
+        + rect(76,84,12,4,"#d47a7a");
+    // 法器：按体系给不同像素造型
+    const sys = (Game.state.world && Game.state.world.cultivationSystem) || "lingen";
+    const artX = 116, artY = 120;
+    const arts = {
+      lingen:   rect(artX,artY,6,52,"var(--pt-light)") + rect(artX-2,artY,10,8,"var(--pt-accent)") + rect(artX,artY+48,6,8,"var(--pt-accent)"),
+      xuema:    rect(artX,artY,16,16,"var(--pt-accent)") + rect(artX+4,artY+4,8,8,"#fff") + rect(artX+6,artY+6,4,4,"var(--pt-dark)"),
+      mingge:   rect(artX,artY,18,18,"none") + `<rect x="${artX}" y="${artY}" width="18" height="18" fill="none" stroke="var(--pt-accent)" stroke-width="3"/>` + rect(artX+7,artY-4,4,26,"var(--pt-accent)") + rect(artX-4,artY+7,26,4,"var(--pt-accent)"),
+      daozhong: rect(artX-2,artY+6,22,10,"var(--pt-accent)") + rect(artX+2,artY,14,22,"var(--pt-light)") + rect(artX+6,artY-4,6,6,"var(--pt-accent)"),
+      yuansu:   rect(artX,artY,16,16,"var(--pt-accent)") + rect(artX+6,artY-6,4,28,"var(--pt-light)") + rect(artX-6,artY+6,28,4,"var(--pt-light)"),
+      lingshu:  rect(artX,artY,18,22,"var(--pt-light)") + rect(artX+2,artY+2,14,18,"var(--pt-main)") + rect(artX+7,artY-2,4,26,"var(--pt-accent)"),
+      rudao:    rect(artX+4,artY-8,6,64,"var(--pt-light)") + rect(artX+2,artY-8,10,8,"var(--pt-accent)") + rect(artX,artY+48,14,6,"var(--pt-accent)"),
+      wudao:    rect(artX,artY,18,14,"var(--pt-accent)") + rect(artX+2,artY+2,14,10,"var(--pt-light)") + rect(artX+6,artY+14,6,10,"var(--pt-dark)"),
     };
-    const artifact = artifacts[sys] || artifacts.lingen;
-    const spark = (x, y, d) => `<circle class="hp-spark" cx="${x}" cy="${y}" r="2.3" fill="var(--pt-accent)" style="animation-delay:${d}s"/>`;
+    const artifact = arts[sys] || arts.lingen;
     return `<div class="hero-portrait ${sysCls} gender-${gender}" title="${name}">
-      <svg class="hp-svg" viewBox="0 0 220 400" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-label="${name}">
-        <defs><radialGradient id="hpAura" cx="50%" cy="36%" r="58%">
-          <stop offset="0%" stop-color="var(--pt-accent)" stop-opacity="0.5"/>
-          <stop offset="100%" stop-color="var(--pt-accent)" stop-opacity="0"/>
-        </radialGradient></defs>
-        <ellipse class="hp-aura" cx="110" cy="150" rx="100" ry="132" fill="url(#hpAura)"/>
-        <path class="hp-cloak" d="M68 200 Q110 252 152 200 L168 362 Q110 384 52 362 Z" fill="var(--pt-dark)"/>
-        <path class="hp-robe" d="M76 178 Q110 162 144 178 L152 332 Q110 352 68 332 Z" fill="var(--pt-main)"/>
-        <path class="hp-inner" d="M98 184 L110 196 L122 184 L118 322 L102 322 Z" fill="var(--pt-light)"/>
-        <rect class="hp-sash" x="72" y="246" width="76" height="15" rx="7" fill="var(--pt-accent)"/>
-        <path class="hp-sleeve-l" d="M76 184 Q52 232 58 304 L80 304 Q78 240 92 200 Z" fill="var(--pt-main)"/>
-        <path class="hp-sleeve-r" d="M144 184 Q168 232 162 304 L140 304 Q142 240 128 200 Z" fill="var(--pt-main)"/>
-        <rect class="hp-neck" x="101" y="148" width="18" height="24" fill="${skin}"/>
-        ${head}
-        <path class="hp-brow" d="M98 121 q6 -3 11 0 M111 121 q6 -3 11 0" stroke="#5b4636" stroke-width="1.5" fill="none"/>
-        <circle class="hp-eye" cx="103" cy="127" r="2.1" fill="#2a2018"/>
-        <circle class="hp-eye" cx="117" cy="127" r="2.1" fill="#2a2018"/>
-        <path class="hp-lip" d="M105 139 q5 3 10 0" stroke="#b5564f" stroke-width="1.5" fill="none"/>
+      <svg class="hp-svg" viewBox="0 0 160 240" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-label="${name}" shape-rendering="crispEdges">
+        <rect x="0" y="0" width="160" height="240" fill="none"/>
+        <!-- 灵气背景 -->
+        <rect x="28" y="22" width="104" height="96" fill="var(--pt-accent)" opacity="0.18" rx="0"/>
+        <rect x="36" y="30" width="88" height="80" fill="var(--pt-accent)" opacity="0.12"/>
+        <!-- 身体/袍子：块化 -->
+        <rect x="50" y="104" width="60" height="76" fill="var(--pt-dark)"/>
+        <rect x="56" y="108" width="48" height="68" fill="var(--pt-main)"/>
+        <rect x="68" y="108" width="24" height="68" fill="var(--pt-light)" opacity="0.5"/>
+        <rect x="62" y="142" width="36" height="10" fill="var(--pt-accent)"/>
+        <!-- 袖子 -->
+        <rect x="34" y="110" width="22" height="48" fill="var(--pt-main)"/>
+        <rect x="104" y="110" width="22" height="48" fill="var(--pt-main)"/>
+        <rect x="30" y="154" width="12" height="12" fill="var(--pt-light)"/>
+        <rect x="118" y="154" width="12" height="12" fill="var(--pt-light)"/>
+        <!-- 脖子 -->
+        <rect x="70" y="96" width="20" height="12" fill="${skin}"/>
+        <!-- 头部 -->
+        ${headBlocks}
+        <!-- 法器 -->
         ${artifact}
-        ${spark(58,120,0)}${spark(172,92,0.6)}${spark(38,200,1.2)}${spark(182,240,1.8)}${spark(95,58,2.4)}
+        <!-- 描边（后叠加，粗黑边） -->
+        <rect x="58" y="42" width="44" height="36" fill="none" stroke="#1a120e" stroke-width="3"/>
+        <rect x="50" y="104" width="60" height="76" fill="none" stroke="#1a120e" stroke-width="3"/>
       </svg>
     </div>`;
   },
 
-  // NPC 立绘库：每种类型参数化 SVG（零积分、可组合变体，比旧 webp 更统一丰富）
+  // NPC 立绘库：宝可梦/Q 版像素精灵（零积分、可组合变体）
   NPC_POOL: {
-    old:      { label:"仙风老者", robe:"#6b6256", accent:"#d9c79a", skin:"#ead2b5", head:`<ellipse cx="100" cy="92" rx="26" ry="28" fill="#ead2b5"/><path d="M72 92 Q70 58 100 58 Q130 58 128 92 Q124 70 100 70 Q76 70 72 92 Z" fill="#e9e9e9"/><rect x="88" y="48" width="24" height="12" rx="3" fill="#cfcfcf"/><path d="M74 116 Q70 150 80 168 M126 116 Q130 150 120 168" stroke="#e9e9e9" stroke-width="4" fill="none"/><path d="M88 104 q12 6 24 0" stroke="#9a9a9a" stroke-width="2" fill="none"/>` },
-    crone:    { label:"白发老妪", robe:"#7a6f7e", accent:"#e6d2e8", skin:"#e9d2bd", head:`<ellipse cx="100" cy="92" rx="25" ry="27" fill="#e9d2bd"/><path d="M74 92 Q72 58 100 58 Q128 58 126 92 Q122 68 100 68 Q78 68 74 92 Z" fill="#e6e6e6"/><path d="M76 96 Q72 130 84 150 M124 96 Q128 130 116 150" stroke="#e6e6e6" stroke-width="5" fill="none"/><path d="M88 104 q12 6 24 0" stroke="#9a9a9a" stroke-width="2" fill="none"/>` },
-    maiden:   { label:"灵秀少女", robe:"#c98bb0", accent:"#ffd6ec", skin:"#f6ddc6", head:`<ellipse cx="100" cy="90" rx="24" ry="27" fill="#f6ddc6"/><path d="M76 90 Q73 56 100 56 Q127 56 124 90 Q120 66 100 66 Q80 66 76 90 Z" fill="#3a2c28"/><circle cx="100" cy="58" r="9" fill="#3a2c28"/><circle cx="100" cy="62" r="3" fill="#ffd6ec"/><path d="M88 96 q12 5 24 0" stroke="#d77fa6" stroke-width="2" fill="none"/>` },
-    youth:    { label:"英气少男", robe:"#5b7aa6", accent:"#bcd6ff", skin:"#f1d6bd", head:`<ellipse cx="100" cy="90" rx="23" ry="26" fill="#f1d6bd"/><path d="M77 88 Q74 56 100 56 Q126 56 123 88 Q119 64 100 64 Q81 64 77 88 Z" fill="#2b2320"/><rect x="90" y="50" width="20" height="10" rx="2" fill="#bcd6ff"/>` },
-    merchant: { label:"商贾",     robe:"#8a6d3b", accent:"#e8c97a", skin:"#eccba6", head:`<ellipse cx="100" cy="92" rx="25" ry="27" fill="#eccba6"/><path d="M75 92 Q73 62 100 62 Q127 62 125 92 Q120 70 100 70 Q80 70 75 92 Z" fill="#2c2620"/><rect x="84" y="54" width="32" height="10" rx="3" fill="#2c2620"/><circle cx="118" cy="86" r="4" fill="#e8c97a"/>` },
-    daoist:   { label:"道士",     robe:"#3f6b5a", accent:"#9fe3c4", skin:"#f1d6bd", head:`<ellipse cx="100" cy="90" rx="23" ry="26" fill="#f1d6bd"/><path d="M77 88 Q74 58 100 58 Q126 58 123 88 Q119 64 100 64 Q81 64 77 88 Z" fill="#222"/><rect x="86" y="52" width="28" height="12" rx="4" fill="#9fe3c4"/>` },
-    yaoxiu:   { label:"妖修化形", robe:"#7a4b86", accent:"#e0a6f0", skin:"#eccba6", head:`<ellipse cx="100" cy="90" rx="23" ry="26" fill="#eccba6"/><path d="M77 88 Q74 56 100 56 Q126 56 123 88 Q119 64 100 64 Q81 64 77 88 Z" fill="#3a2533"/><path d="M82 58 L74 44 L90 56 Z" fill="#3a2533"/><path d="M118 58 L126 44 L110 56 Z" fill="#3a2533"/><circle cx="92" cy="90" r="3" fill="#e0a6f0"/><circle cx="108" cy="90" r="3" fill="#e0a6f0"/>` },
-    xiexiu:   { label:"邪修",     robe:"#3a0d12", accent:"#ff5b5b", skin:"#d8b9a0", head:`<ellipse cx="100" cy="92" rx="24" ry="27" fill="#d8b9a0"/><path d="M74 92 Q72 58 100 58 Q128 58 126 92 Q122 68 100 68 Q78 68 74 92 Z" fill="#160a0c"/><path d="M80 100 q20 8 40 0" stroke="#7a1f2b" stroke-width="2" fill="none"/>` },
-    ghost:    { label:"鬼物",     robe:"#4a5a72", accent:"#cfe0ff", skin:"#cdd6e6", head:`<ellipse cx="100" cy="92" rx="24" ry="27" fill="#cdd6e6" opacity="0.85"/><path d="M76 92 Q74 60 100 60 Q126 60 124 92 Q120 70 100 70 Q80 70 76 92 Z" fill="#9fb0c8" opacity="0.7"/><circle cx="92" cy="90" r="3" fill="#fff"/><circle cx="108" cy="90" r="3" fill="#fff"/>` },
+    old:      { label:"仙风老者", main:"#6d614e", accent:"#e8d5a0", skin:"#f0d5b0", hair:"#e6e6e6",
+      head:`<rect x="58" y="42" width="44" height="38" fill="#f0d5b0"/><rect x="54" y="36" width="52" height="20" fill="#e6e6e6"/><rect x="50" y="50" width="8" height="30" fill="#e6e6e6"/><rect x="102" y="50" width="8" height="30" fill="#e6e6e6"/><rect x="72" y="38" width="16" height="8" fill="#b8b8b8"/><rect x="64" y="66" width="10" height="12" fill="#fff"/><rect x="86" y="66" width="10" height="12" fill="#fff"/><rect x="68" y="70" width="4" height="6" fill="#1a120e"/><rect x="88" y="70" width="4" height="6" fill="#1a120e"/><rect x="72" y="86" width="16" height="3" fill="#9a9a9a"/>` },
+    crone:    { label:"白发老妪", main:"#7a6e7a", accent:"#f0d0f0", skin:"#f0d5b0", hair:"#e6e6e6",
+      head:`<rect x="58" y="44" width="44" height="36" fill="#f0d5b0"/><rect x="54" y="36" width="52" height="22" fill="#e6e6e6"/><rect x="50" y="52" width="8" height="32" fill="#e6e6e6"/><rect x="102" y="52" width="8" height="32" fill="#e6e6e6"/><rect x="64" y="66" width="10" height="12" fill="#fff"/><rect x="86" y="66" width="10" height="12" fill="#fff"/><rect x="68" y="70" width="4" height="6" fill="#1a120e"/><rect x="88" y="70" width="4" height="6" fill="#1a120e"/><rect x="72" y="86" width="16" height="3" fill="#d47a7a"/>` },
+    maiden:   { label:"灵秀少女", main:"#d47aa8", accent:"#ffd0e8", skin:"#fce0c8", hair:"#3e2f2a",
+      head:`<rect x="58" y="42" width="44" height="36" fill="#fce0c8"/><rect x="54" y="32" width="52" height="24" fill="#3e2f2a"/><rect x="50" y="48" width="10" height="34" fill="#3e2f2a"/><rect x="100" y="48" width="10" height="34" fill="#3e2f2a"/><rect x="94" y="36" width="12" height="8" fill="#ffd0e8"/><rect x="64" y="64" width="10" height="12" fill="#fff"/><rect x="86" y="64" width="10" height="12" fill="#fff"/><rect x="68" y="68" width="4" height="6" fill="#1a120e"/><rect x="88" y="68" width="4" height="6" fill="#1a120e"/><rect x="72" y="84" width="16" height="3" fill="#d47a7a"/>` },
+    youth:    { label:"英气少男", main:"#5a84b8", accent:"#c8e0ff", skin:"#f8dcb8", hair:"#241f1b",
+      head:`<rect x="60" y="44" width="42" height="34" fill="#f8dcb8"/><rect x="56" y="36" width="50" height="20" fill="#241f1b"/><rect x="54" y="50" width="10" height="24" fill="#241f1b"/><rect x="100" y="50" width="10" height="24" fill="#241f1b"/><rect x="72" y="34" width="18" height="8" fill="#c8e0ff"/><rect x="64" y="64" width="10" height="12" fill="#fff"/><rect x="86" y="64" width="10" height="12" fill="#fff"/><rect x="68" y="68" width="4" height="6" fill="#1a120e"/><rect x="88" y="68" width="4" height="6" fill="#1a120e"/><rect x="74" y="84" width="14" height="3" fill="#d47a7a"/>` },
+    merchant: { label:"商贾",     main:"#a67c36", accent:"#ffe090", skin:"#f0d0a8", hair:"#2c2620",
+      head:`<rect x="58" y="44" width="44" height="36" fill="#f0d0a8"/><rect x="54" y="38" width="52" height="18" fill="#2c2620"/><rect x="82" y="50" width="20" height="10" fill="#2c2620"/><rect x="80" y="38" width="22" height="8" fill="#ffe090"/><rect x="64" y="66" width="10" height="12" fill="#fff"/><rect x="86" y="66" width="10" height="12" fill="#fff"/><rect x="68" y="70" width="4" height="6" fill="#1a120e"/><rect x="88" y="70" width="4" height="6" fill="#1a120e"/><rect x="70" y="86" width="20" height="3" fill="#9a6a3a"/>` },
+    daoist:   { label:"道士",     main:"#4a8068", accent:"#a8f0c8", skin:"#f8dcb8", hair:"#222",
+      head:`<rect x="60" y="44" width="42" height="34" fill="#f8dcb8"/><rect x="56" y="36" width="50" height="18" fill="#222"/><rect x="54" y="50" width="10" height="24" fill="#222"/><rect x="100" y="50" width="10" height="24" fill="#222"/><rect x="70" y="34" width="22" height="8" fill="#a8f0c8"/><rect x="64" y="64" width="10" height="12" fill="#fff"/><rect x="86" y="64" width="10" height="12" fill="#fff"/><rect x="68" y="68" width="4" height="6" fill="#1a120e"/><rect x="88" y="68" width="4" height="6" fill="#1a120e"/><rect x="72" y="84" width="16" height="3" fill="#4a8068"/>` },
+    yaoxiu:   { label:"妖修化形", main:"#8a5298", accent:"#f0a8ff", skin:"#f0d0b8", hair:"#3a2533",
+      head:`<rect x="58" y="44" width="44" height="36" fill="#f0d0b8"/><rect x="54" y="34" width="52" height="22" fill="#3a2533"/><rect x="48" y="46" width="10" height="14" fill="#3a2533"/><rect x="102" y="46" width="10" height="14" fill="#3a2533"/><rect x="66" y="64" width="12" height="12" fill="#f0a8ff"/><rect x="88" y="64" width="12" height="12" fill="#f0a8ff"/><rect x="70" y="68" width="4" height="6" fill="#1a120e"/><rect x="90" y="68" width="4" height="6" fill="#1a120e"/><rect x="72" y="84" width="16" height="3" fill="#a06090"/>` },
+    xiexiu:   { label:"邪修",     main:"#4a1018", accent:"#ff5b5b", skin:"#e0b898", hair:"#160a0c",
+      head:`<rect x="58" y="44" width="44" height="36" fill="#e0b898"/><rect x="54" y="34" width="52" height="22" fill="#160a0c"/><rect x="50" y="48" width="10" height="28" fill="#160a0c"/><rect x="102" y="48" width="10" height="28" fill="#160a0c"/><rect x="64" y="64" width="10" height="12" fill="#ffd0d0"/><rect x="86" y="64" width="10" height="12" fill="#ffd0d0"/><rect x="68" y="68" width="4" height="6" fill="#7a1f2b"/><rect x="88" y="68" width="4" height="6" fill="#7a1f2b"/><rect x="70" y="86" width="20" height="3" fill="#7a1f2b"/>` },
+    ghost:    { label:"鬼物",     main:"#5a6a88", accent:"#cfe0ff", skin:"#d8e0f0", hair:"#9fb0c8",
+      head:`<rect x="58" y="44" width="44" height="36" fill="#d8e0f0" opacity="0.9"/><rect x="54" y="36" width="52" height="18" fill="#9fb0c8" opacity="0.8"/><rect x="50" y="50" width="10" height="28" fill="#9fb0c8" opacity="0.8"/><rect x="102" y="50" width="10" height="28" fill="#9fb0c8" opacity="0.8"/><rect x="68" y="66" width="8" height="8" fill="#fff"/><rect x="88" y="66" width="8" height="8" fill="#fff"/><rect x="72" y="86" width="16" height="3" fill="#8fa0c0"/>` },
   },
 
   _npcPortrait(kind) {
     const def = this.NPC_POOL[kind] || this.NPC_POOL.youth;
-    const robe = def.robe, accent = def.accent, skin = def.skin, head = def.head;
+    const rect = (x,y,w,h,f,o=1) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}" opacity="${o}"/>`;
     return `<div class="npc-portrait npc-${kind}">
-      <svg viewBox="0 0 200 300" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-label="${def.label}">
-        <defs><radialGradient id="npcAura-${kind}" cx="50%" cy="34%" r="60%">
-          <stop offset="0%" stop-color="${accent}" stop-opacity="0.42"/>
-          <stop offset="100%" stop-color="${accent}" stop-opacity="0"/>
-        </radialGradient></defs>
-        <ellipse cx="100" cy="120" rx="88" ry="110" fill="url(#npcAura-${kind})"/>
-        <path d="M58 150 Q100 196 142 150 L156 290 Q100 308 44 290 Z" fill="${robe}"/>
-        <path d="M82 156 L100 168 L118 156 L114 286 L86 286 Z" fill="${accent}" opacity="0.28"/>
-        <rect x="54" y="208" width="92" height="13" rx="6" fill="${accent}" opacity="0.8"/>
-        <path d="M58 156 Q36 200 42 270 L62 270 Q60 210 74 172 Z" fill="${robe}"/>
-        <path d="M142 156 Q164 200 158 270 L138 270 Q140 210 126 172 Z" fill="${robe}"/>
-        <rect x="91" y="116" width="18" height="22" fill="${skin}"/>
-        ${head}
+      <svg viewBox="0 0 160 240" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-label="${def.label}" shape-rendering="crispEdges">
+        <rect x="0" y="0" width="160" height="240" fill="none"/>
+        <!-- 灵气背景 -->
+        <rect x="28" y="22" width="104" height="96" fill="${def.accent}" opacity="0.16"/>
+        <rect x="36" y="30" width="88" height="80" fill="${def.accent}" opacity="0.10"/>
+        <!-- 身体 -->
+        <rect x="50" y="104" width="60" height="76" fill="${def.main}"/>
+        <rect x="56" y="108" width="48" height="68" fill="${def.accent}" opacity="0.35"/>
+        <rect x="62" y="142" width="36" height="10" fill="${def.accent}"/>
+        <!-- 袖子 -->
+        <rect x="34" y="110" width="22" height="48" fill="${def.main}"/>
+        <rect x="104" y="110" width="22" height="48" fill="${def.main}"/>
+        <!-- 脖子 -->
+        <rect x="70" y="96" width="20" height="12" fill="${def.skin}"/>
+        <!-- 头部 -->
+        ${def.head}
+        <!-- 粗描边 -->
+        <rect x="58" y="42" width="44" height="36" fill="none" stroke="#1a120e" stroke-width="3"/>
+        <rect x="50" y="104" width="60" height="76" fill="none" stroke="#1a120e" stroke-width="3"/>
       </svg>
     </div>`;
   },
