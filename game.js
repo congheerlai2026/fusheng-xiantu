@@ -2321,18 +2321,100 @@ const UI = {
     return map[s] || "sys-default";
   },
 
-  // 体系专属角色立绘：程序化 SVG 剪影 + 体系配色 + 体系标记字
-  _heroEmblemHtml() {
+  // ============ 程序化 SVG 立绘（零 AI 积分，分层仙侠风，性别/体系参数化） ============
+  // 主角立绘：头身比 + 道袍分层 + 体系配色 + 法器 + 灵气光晕；性别分支（男束发冠 / 女云鬓）
+  _heroPortrait() {
     const c = Game.state && Game.state.character;
     if (!c) return "";
-    const sys = (Game.state.world && Game.state.world.cultivationSystemName) || "灵根";
-    const glyph = (sys || "灵").slice(0, 1);
+    const sys = (Game.state.world && Game.state.world.cultivationSystem) || "lingen";
     const sysCls = this._systemClass();
-    const name = this.escapeHtml(c.name);
-    return `<div class="hero-emblem ${sysCls}" title="${name}">
-      <div class="he-aura"></div>
-      <div class="he-body"><div class="he-head"></div><div class="he-glyph">${this.escapeHtml(glyph)}</div></div>
-      <div class="he-base"></div>
+    const gender = c.gender === 1 ? "f" : "m";
+    const name = this.escapeHtml(c.name || "修士");
+    const skin = "#f1d6bd";
+    let head;
+    if (gender === "f") {
+      head = `<ellipse class="hp-head" cx="110" cy="126" rx="23" ry="26" fill="${skin}"/>
+        <path class="hp-hair" d="M85 122 Q82 92 110 92 Q138 92 135 122 Q131 103 110 103 Q89 103 85 122 Z" fill="#2b2420"/>
+        <path class="hp-hair2" d="M85 122 Q80 152 93 170 L97 150 Q90 132 93 122 Z" fill="#2b2420"/>
+        <path class="hp-hair2" d="M135 122 Q140 152 127 170 L123 150 Q130 132 127 122 Z" fill="#2b2420"/>
+        <circle class="hp-pin" cx="110" cy="95" r="6" fill="var(--pt-accent)"/>
+        <circle class="hp-pin" cx="95" cy="103" r="2.6" fill="var(--pt-accent)"/>
+        <circle class="hp-pin" cx="125" cy="103" r="2.6" fill="var(--pt-accent)"/>`;
+    } else {
+      head = `<ellipse class="hp-head" cx="110" cy="124" rx="22" ry="25" fill="${skin}"/>
+        <path class="hp-hair" d="M87 118 Q84 90 110 90 Q136 90 133 118 Q129 100 110 100 Q91 100 87 118 Z" fill="#241f1b"/>
+        <rect class="hp-crown" x="100" y="83" width="20" height="12" rx="3" fill="var(--pt-accent)"/>
+        <path class="hp-hair2" d="M87 118 Q83 146 95 162 L99 144 Q93 128 95 118 Z" fill="#241f1b"/>
+        <path class="hp-hair2" d="M133 118 Q137 146 125 162 L121 144 Q127 128 125 118 Z" fill="#241f1b"/>`;
+    }
+    const artifacts = {
+      lingen:   `<path class="hp-art" d="M166 150 L176 322" stroke="var(--pt-accent)" stroke-width="4" stroke-linecap="round"/><path d="M160 150 L182 150 L176 136 Z" fill="var(--pt-light)"/>`,
+      xuema:    `<circle class="hp-art" cx="172" cy="205" r="12" fill="var(--pt-accent)"/><circle cx="172" cy="205" r="5" fill="#fff" opacity="0.55"/>`,
+      mingge:   `<g class="hp-art" transform="translate(170,205)"><circle r="14" fill="none" stroke="var(--pt-accent)" stroke-width="2"/><path d="M0 -14 L4 0 L0 14 L-4 0 Z" fill="var(--pt-accent)"/></g>`,
+      daozhong: `<path class="hp-art" d="M156 212 Q176 190 190 212 Q176 234 156 212 Z" fill="var(--pt-accent)" opacity="0.85"/>`,
+      yuansu:   `<circle class="hp-art" cx="174" cy="208" r="11" fill="var(--pt-accent)" opacity="0.8"/><path d="M174 197 L178 208 L174 219 L170 208 Z" fill="#fff" opacity="0.7"/>`,
+      lingshu:  `<rect class="hp-art" x="163" y="192" width="22" height="22" rx="3" fill="none" stroke="var(--pt-accent)" stroke-width="2"/><path d="M163 203 H185 M174 192 V214" stroke="var(--pt-accent)" stroke-width="1.4"/>`,
+      rudao:    `<path class="hp-art" d="M166 150 Q148 232 172 322" stroke="var(--pt-accent)" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+      wudao:    `<rect class="hp-art" x="165" y="202" width="17" height="15" rx="3" fill="var(--pt-accent)"/>`,
+    };
+    const artifact = artifacts[sys] || artifacts.lingen;
+    const spark = (x, y, d) => `<circle class="hp-spark" cx="${x}" cy="${y}" r="2.3" fill="var(--pt-accent)" style="animation-delay:${d}s"/>`;
+    return `<div class="hero-portrait ${sysCls} gender-${gender}" title="${name}">
+      <svg class="hp-svg" viewBox="0 0 220 400" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-label="${name}">
+        <defs><radialGradient id="hpAura" cx="50%" cy="36%" r="58%">
+          <stop offset="0%" stop-color="var(--pt-accent)" stop-opacity="0.5"/>
+          <stop offset="100%" stop-color="var(--pt-accent)" stop-opacity="0"/>
+        </radialGradient></defs>
+        <ellipse class="hp-aura" cx="110" cy="150" rx="100" ry="132" fill="url(#hpAura)"/>
+        <path class="hp-cloak" d="M68 200 Q110 252 152 200 L168 362 Q110 384 52 362 Z" fill="var(--pt-dark)"/>
+        <path class="hp-robe" d="M76 178 Q110 162 144 178 L152 332 Q110 352 68 332 Z" fill="var(--pt-main)"/>
+        <path class="hp-inner" d="M98 184 L110 196 L122 184 L118 322 L102 322 Z" fill="var(--pt-light)"/>
+        <rect class="hp-sash" x="72" y="246" width="76" height="15" rx="7" fill="var(--pt-accent)"/>
+        <path class="hp-sleeve-l" d="M76 184 Q52 232 58 304 L80 304 Q78 240 92 200 Z" fill="var(--pt-main)"/>
+        <path class="hp-sleeve-r" d="M144 184 Q168 232 162 304 L140 304 Q142 240 128 200 Z" fill="var(--pt-main)"/>
+        <rect class="hp-neck" x="101" y="148" width="18" height="24" fill="${skin}"/>
+        ${head}
+        <path class="hp-brow" d="M98 121 q6 -3 11 0 M111 121 q6 -3 11 0" stroke="#5b4636" stroke-width="1.5" fill="none"/>
+        <circle class="hp-eye" cx="103" cy="127" r="2.1" fill="#2a2018"/>
+        <circle class="hp-eye" cx="117" cy="127" r="2.1" fill="#2a2018"/>
+        <path class="hp-lip" d="M105 139 q5 3 10 0" stroke="#b5564f" stroke-width="1.5" fill="none"/>
+        ${artifact}
+        ${spark(58,120,0)}${spark(172,92,0.6)}${spark(38,200,1.2)}${spark(182,240,1.8)}${spark(95,58,2.4)}
+      </svg>
+    </div>`;
+  },
+
+  // NPC 立绘库：每种类型参数化 SVG（零积分、可组合变体，比旧 webp 更统一丰富）
+  NPC_POOL: {
+    old:      { label:"仙风老者", robe:"#6b6256", accent:"#d9c79a", skin:"#ead2b5", head:`<ellipse cx="100" cy="92" rx="26" ry="28" fill="#ead2b5"/><path d="M72 92 Q70 58 100 58 Q130 58 128 92 Q124 70 100 70 Q76 70 72 92 Z" fill="#e9e9e9"/><rect x="88" y="48" width="24" height="12" rx="3" fill="#cfcfcf"/><path d="M74 116 Q70 150 80 168 M126 116 Q130 150 120 168" stroke="#e9e9e9" stroke-width="4" fill="none"/><path d="M88 104 q12 6 24 0" stroke="#9a9a9a" stroke-width="2" fill="none"/>` },
+    crone:    { label:"白发老妪", robe:"#7a6f7e", accent:"#e6d2e8", skin:"#e9d2bd", head:`<ellipse cx="100" cy="92" rx="25" ry="27" fill="#e9d2bd"/><path d="M74 92 Q72 58 100 58 Q128 58 126 92 Q122 68 100 68 Q78 68 74 92 Z" fill="#e6e6e6"/><path d="M76 96 Q72 130 84 150 M124 96 Q128 130 116 150" stroke="#e6e6e6" stroke-width="5" fill="none"/><path d="M88 104 q12 6 24 0" stroke="#9a9a9a" stroke-width="2" fill="none"/>` },
+    maiden:   { label:"灵秀少女", robe:"#c98bb0", accent:"#ffd6ec", skin:"#f6ddc6", head:`<ellipse cx="100" cy="90" rx="24" ry="27" fill="#f6ddc6"/><path d="M76 90 Q73 56 100 56 Q127 56 124 90 Q120 66 100 66 Q80 66 76 90 Z" fill="#3a2c28"/><circle cx="100" cy="58" r="9" fill="#3a2c28"/><circle cx="100" cy="62" r="3" fill="#ffd6ec"/><path d="M88 96 q12 5 24 0" stroke="#d77fa6" stroke-width="2" fill="none"/>` },
+    youth:    { label:"英气少男", robe:"#5b7aa6", accent:"#bcd6ff", skin:"#f1d6bd", head:`<ellipse cx="100" cy="90" rx="23" ry="26" fill="#f1d6bd"/><path d="M77 88 Q74 56 100 56 Q126 56 123 88 Q119 64 100 64 Q81 64 77 88 Z" fill="#2b2320"/><rect x="90" y="50" width="20" height="10" rx="2" fill="#bcd6ff"/>` },
+    merchant: { label:"商贾",     robe:"#8a6d3b", accent:"#e8c97a", skin:"#eccba6", head:`<ellipse cx="100" cy="92" rx="25" ry="27" fill="#eccba6"/><path d="M75 92 Q73 62 100 62 Q127 62 125 92 Q120 70 100 70 Q80 70 75 92 Z" fill="#2c2620"/><rect x="84" y="54" width="32" height="10" rx="3" fill="#2c2620"/><circle cx="118" cy="86" r="4" fill="#e8c97a"/>` },
+    daoist:   { label:"道士",     robe:"#3f6b5a", accent:"#9fe3c4", skin:"#f1d6bd", head:`<ellipse cx="100" cy="90" rx="23" ry="26" fill="#f1d6bd"/><path d="M77 88 Q74 58 100 58 Q126 58 123 88 Q119 64 100 64 Q81 64 77 88 Z" fill="#222"/><rect x="86" y="52" width="28" height="12" rx="4" fill="#9fe3c4"/>` },
+    yaoxiu:   { label:"妖修化形", robe:"#7a4b86", accent:"#e0a6f0", skin:"#eccba6", head:`<ellipse cx="100" cy="90" rx="23" ry="26" fill="#eccba6"/><path d="M77 88 Q74 56 100 56 Q126 56 123 88 Q119 64 100 64 Q81 64 77 88 Z" fill="#3a2533"/><path d="M82 58 L74 44 L90 56 Z" fill="#3a2533"/><path d="M118 58 L126 44 L110 56 Z" fill="#3a2533"/><circle cx="92" cy="90" r="3" fill="#e0a6f0"/><circle cx="108" cy="90" r="3" fill="#e0a6f0"/>` },
+    xiexiu:   { label:"邪修",     robe:"#3a0d12", accent:"#ff5b5b", skin:"#d8b9a0", head:`<ellipse cx="100" cy="92" rx="24" ry="27" fill="#d8b9a0"/><path d="M74 92 Q72 58 100 58 Q128 58 126 92 Q122 68 100 68 Q78 68 74 92 Z" fill="#160a0c"/><path d="M80 100 q20 8 40 0" stroke="#7a1f2b" stroke-width="2" fill="none"/>` },
+    ghost:    { label:"鬼物",     robe:"#4a5a72", accent:"#cfe0ff", skin:"#cdd6e6", head:`<ellipse cx="100" cy="92" rx="24" ry="27" fill="#cdd6e6" opacity="0.85"/><path d="M76 92 Q74 60 100 60 Q126 60 124 92 Q120 70 100 70 Q80 70 76 92 Z" fill="#9fb0c8" opacity="0.7"/><circle cx="92" cy="90" r="3" fill="#fff"/><circle cx="108" cy="90" r="3" fill="#fff"/>` },
+  },
+
+  _npcPortrait(kind) {
+    const def = this.NPC_POOL[kind] || this.NPC_POOL.youth;
+    const robe = def.robe, accent = def.accent, skin = def.skin, head = def.head;
+    return `<div class="npc-portrait npc-${kind}">
+      <svg viewBox="0 0 200 300" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-label="${def.label}">
+        <defs><radialGradient id="npcAura-${kind}" cx="50%" cy="34%" r="60%">
+          <stop offset="0%" stop-color="${accent}" stop-opacity="0.42"/>
+          <stop offset="100%" stop-color="${accent}" stop-opacity="0"/>
+        </radialGradient></defs>
+        <ellipse cx="100" cy="120" rx="88" ry="110" fill="url(#npcAura-${kind})"/>
+        <path d="M58 150 Q100 196 142 150 L156 290 Q100 308 44 290 Z" fill="${robe}"/>
+        <path d="M82 156 L100 168 L118 156 L114 286 L86 286 Z" fill="${accent}" opacity="0.28"/>
+        <rect x="54" y="208" width="92" height="13" rx="6" fill="${accent}" opacity="0.8"/>
+        <path d="M58 156 Q36 200 42 270 L62 270 Q60 210 74 172 Z" fill="${robe}"/>
+        <path d="M142 156 Q164 200 158 270 L138 270 Q140 210 126 172 Z" fill="${robe}"/>
+        <rect x="91" y="116" width="18" height="22" fill="${skin}"/>
+        ${head}
+      </svg>
     </div>`;
   },
 
@@ -2340,26 +2422,32 @@ const UI = {
     if (typeof document === "undefined") return;
     const el = document.getElementById("hero-sprite");
     if (!el || !Game.state || !Game.state.character) return;
-    el.innerHTML = this._heroEmblemHtml();
+    el.innerHTML = this._heroPortrait();
   },
 
   // 场景中立绘层：主角（依体系配色）+ 同框 NPC（依 AI 的 npc 标记）
   updateActorSprite() {
     if (typeof document === "undefined") return;
     const el = document.getElementById("vn-actors");
+    const stage = document.querySelector(".vn-stage");
     if (!el || !Game.state || !Game.state.character) return;
-    const sysCls = this._systemClass();
-    let html = `<div class="vn-actor hero ${sysCls}">${this._heroEmblemHtml()}</div>`;
+    // GAL 模式：中央舞台不常驻主角立绘；仅当 NPC 对话时弹出 NPC 立绘（带淡入）
+    let html = "";
     if (this.currentNpc) {
-      const npcImg = this.npcImageFor(this.currentNpc);
-      if (npcImg) html += `<img src="${npcImg}" alt="同框" class="vn-actor npc" onerror="this.style.display='none'">`;
+      const npcHtml = this._npcPortrait(this.currentNpc);
+      if (npcHtml) html += `<div class="vn-actor npc npc-popin">${npcHtml}</div>`;
     }
     el.innerHTML = html;
+    if (stage) stage.classList.toggle("npc-active", !!this.currentNpc);
   },
 
   npcImageFor(t) {
-    const map = { old_m: "assets/npc_old_m.webp", old_f: "assets/npc_old_f.webp", young_m: "assets/npc_young_m.svg", young_f: "assets/npc_young_f.svg" };
-    return map[t] || "";
+    // AI 输出标记 → 新立绘库 kind（向后兼容 old_m/old_f/young_m/young_f）
+    const map = { old_m: "old", old_f: "crone", young_m: "youth", young_f: "maiden",
+                  old: "old", crone: "crone", maiden: "maiden", youth: "youth",
+                  merchant: "merchant", daoist: "daoist", yaoxiu: "yaoxiu", xiexiu: "xiexiu", ghost: "ghost" };
+    const kind = map[t] || t;
+    return this.NPC_POOL[kind] ? kind : "";
   },
 
   // ============ 敌人多样性系统（妖兽/邪修/鬼物各有多种，随机抽取且防连重复） ============
@@ -2847,7 +2935,9 @@ const UI = {
         <button class="btn btn-block btn-map" onclick="UI.showWorldMap()">🗺 展开大地图</button>
       </div>`;
 
-    body.innerHTML = progressHtml + npcHtml + skillHtml + invHtml + worldHtml;
+    // 抽屉顶部：主角立绘（手机端"呼出状态栏才看到人物形象"）
+    const heroHtml = `<div class="mdrawer-hero">${this._heroPortrait()}</div>`;
+    body.innerHTML = heroHtml + progressHtml + npcHtml + skillHtml + invHtml + worldHtml;
   },
 
   // 切换底部抽屉
@@ -3032,7 +3122,10 @@ const UI = {
 
     // 场景与立绘切换：AI 指定的场景优先；npc 字段存在即更新同框立绘
     if (parsed && parsed.scene && SCENE_LIB[parsed.scene]) this.setScene(parsed.scene);
-    if (parsed && parsed.npc !== undefined) this.currentNpc = this.npcImageFor(parsed.npc) ? parsed.npc : "";
+    if (parsed && parsed.npc !== undefined) {
+      const kind = this.npcImageFor(parsed.npc);
+      this.currentNpc = kind || "";
+    }
 
     this.renderStatus();
     this.renderInventory();

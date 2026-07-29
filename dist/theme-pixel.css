@@ -837,3 +837,19 @@ body.pixel .guest-banner {
 }
 body.pixel .guest-banner a { color: #fff; text-decoration: underline; cursor: pointer; }
 
+/* ============ 立绘系统·像素主题覆盖 ============ */
+body.pixel .hero-portrait .hp-svg { image-rendering: pixelated; shape-rendering: crispEdges; filter: drop-shadow(0 4px 0 rgba(0,0,0,.45)); }
+body.pixel .hp-aura { opacity: .9; }
+body.pixel .npc-portrait svg { image-rendering: pixelated; shape-rendering: crispEdges; }
+body.pixel .vn-actors .vn-actor.npc .npc-portrait { filter: drop-shadow(0 4px 0 rgba(0,0,0,.45)); }
+/* 像素主题：体系配色（暗底高饱和，内袍转暗色更协调） */
+body.pixel .sys-lingen   { --pt-main:#2f8f6b; --pt-accent:#7fe3b0; --pt-dark:#163f30; --pt-light:#1b2a25; }
+body.pixel .sys-xuema    { --pt-main:#9e2b3a; --pt-accent:#ff6b7a; --pt-dark:#3f0d13; --pt-light:#2a1618; }
+body.pixel .sys-mingge   { --pt-main:#7a5bb0; --pt-accent:#d9b3ff; --pt-dark:#2a1d40; --pt-light:#211a2e; }
+body.pixel .sys-daozhong { --pt-main:#c79a3a; --pt-accent:#ffd97a; --pt-dark:#5a3f10; --pt-light:#2a2416; }
+body.pixel .sys-yuansu   { --pt-main:#2f6fb0; --pt-accent:#7ab8ff; --pt-dark:#102a40; --pt-light:#16222e; }
+body.pixel .sys-lingshu  { --pt-main:#3a5fb0; --pt-accent:#8fb3ff; --pt-dark:#162340; --pt-light:#16202e; }
+body.pixel .sys-rudao    { --pt-main:#b0b0b8; --pt-accent:#ffffff; --pt-dark:#3a3a40; --pt-light:#222228; }
+body.pixel .sys-wudao    { --pt-main:#3a3f4a; --pt-accent:#9aa3b0; --pt-dark:#121419; --pt-light:#1c2026; }
+body.pixel .sys-default  { --pt-main:#5b7a8f; --pt-accent:#a8c8da; --pt-dark:#22333f; --pt-light:#1a242a; }
+
