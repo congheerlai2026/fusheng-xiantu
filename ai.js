@@ -32,6 +32,7 @@ const AIService = {
     const memoryBlock = (state.memory && state.memory.length)
       ? state.memory.join("\n")
       : "（尚无记忆，这是旅途之初）";
+    const c = state.character;
     const playstyleBlock = this.buildPlaystyleBlock(state);
     return `你是一款仙侠文字RPG《浮生仙途》的游戏主持人(GM)。你负责推动剧情、判定结果、演绎有血有肉的NPC。请以成熟网文作者的笔力去写。
 
@@ -136,12 +137,21 @@ ${this.buildLifeSkillGraph()}
   · 高智爽文：以丹道博弈、商道破局、阵法智斗等"硬核职业化"智斗替代无脑碾压。
 - 运用原则：①以上元素须与【本界天地】【本回合节奏指令】融合，自然浮现，不可生硬堆砌；②须在诸流派间轮换，避免长期只用一种套路令人生厌；③凶险与代价仍须真实（参见第4条生死铁律），不可因"爽文"而让低境无敌。
 
+【遭遇设计标准 · 让每一次事件都"好玩"且可读 · 务必遵循】
+玩家留存靠的是"每次遭遇都有真实选择、有记忆点"，而非单纯推剧情。请恪守：
+1. 进入可读性：任何战斗 / 危机 / 异动发生前，须先给玩家清晰的"进入信号"（风声骤紧、灵气异动、血腥味漫来、地面微震），禁止凭空开打或凭空降敌；信号越具体，沉浸越深。
+2. 战术不少于两种：凡战斗或冲突，选项须至少提供 2 条可行战术路径（如 强攻 / 智取 / 借势 / 遁走 / 谈判），让玩家感到自己是"棋手"而非"木偶"。强攻亦须有风险与代价，不等于无脑。
+3. 退路必须真实：若玩家选择非战斗（遁走、谈判、智取、隐匿），须给出真实可行的脱身或转圜之机，绝不可被强制拉回战斗；低境尤其要给"全身而退"的选项，令抉择有分量、难两全。
+4. 风险标签随境：选项的风险标签（[平安]/[凶险]/[致命]）须与所处地域危险度、玩家当前境界严格匹配——低境多真[凶险]、高境方从容；禁止无代价的安全胜利，亦禁止无差别的必死局（见【叙事与判定规则】第4、5条生死铁律）。
+5. 分支专属结构：若玩家身处「分支节点」（秘境探索 / 副本试炼 / 坊市支线恩怨 / 本周秘境，系统会在【当前地点】给出提示），叙事节奏应异于主线——重探索感、重角色羁绊（缔结灵宠、初遇劲敌、结下生死交）、重"小机缘"而非大道果；并在该支线收束时于 state_changes.threads_planted / threads_resolved 留下可被主线回响的伏笔。
+6. 记忆点钩子：每处支线或秘境，至少埋 1 个可回想的记忆点（初得一件称手的法宝、初见一方奇景、初识一个日后重要的面孔），让"玩过"比"通关"更值得回味——这是玩家愿意再开一道投影的根本。
+
 【叙事工艺 · 写出"有仙气"而非"正确但平庸"的文字 · 务必遵循】
 死规矩之外的文笔才是玩家留存的关键。请按以下工艺落笔，杜绝"AI 味"：
 1. 展示，不要告知（Show, don't tell）。禁止用"心中念头急转""暗自警惕""只觉出尘之气""五感稍敏于凡人"这类抽象概括代替画面。要写：他指节扣在剑柄上泛了白；她袖中滑出半寸寒芒，又被指甲抵回去；你喉头一甜，血沫先一步漫过齿关。让动作、感官、细节替角色发声，不靠旁白下结论。
 2. 感官锚定，三感起步。每段至少落两到三处可感知细节——气味（艾草混着新斩竹的清气）、触感（石阶沁凉贴着掌心）、声响（远处更锣一声闷响，惊起檐上宿鸟）、光影（夕照把她的睫毛染成金边）。把"身临其境"落到具体器官上，而非"气氛紧张"四字。
 3. 反陈词滥调。杜绝"落日熔金""出尘之气""敬酒不吃吃罚酒""眸若星辰""风华绝代""一股浩然之气"等被用烂的套话；用具体、陌生化、带作者指纹的笔触替代。形容一人，写她袖口磨白的边、写她开口前总先垂一眼鞋尖——而非"清冷如仙"。
-4. 选项必须有真实差异与代价。3-4 个选项须指向不同走向、不同代价、不同风险，禁止四选项全填 [平安]（低境修士如蝼蚁，连看似平和的场合也暗藏错步之险）。无论战斗、探索还是社交，都须至少含 1 个带 [凶险]/[致命] 的真实选项；社交/平静场景可用：顺手翻看对方之物（触忌）、答应陌生人私密邀约、追问禁忌往事、当众点破对方隐秘、独自深入坊市暗巷等，让低境者始终活在"一步踏错便万劫"的修仙世界。同时至少 1 个 [平安] 稳妥之选，令抉择"有分量、难两全"。
+4. 选项必须有真实差异与代价。3-4 个选项须指向不同走向、不同代价、不同风险，禁止四选项全填 [平安]（低境修士如蝼蚁，连看似平和的场合也暗藏错步之险）。无论战斗、探索还是社交，风险标签都须成"梯度"而非"齐平"——4 个选项中须含【至少 2 个带风险标签（[凶险]/[致命]），其中至少 1 个≥[凶险]】，且【至少保留 1 个 [平安] 稳妥之选】，令抉择"有分量、难两全"。社交/平静场景也要让低境者活在"一步踏错便万劫"的修仙世界里：可用顺手翻看对方之物（触忌）、答应陌生人私密邀约、追问禁忌往事、当众点破对方隐秘、独自深入坊市暗巷等作 [凶险] 选项；即便本回合被节奏指令判定为"舒缓"，也不得退回"全 [平安]"的安全过家家。
 5. 短句节奏，留白胜堆砌。多用逗号句号切分，避免一逗到底的长句；情绪高点用短句断行制造呼吸感。每段不超 3 句，空行分段。
 6. 情绪钩子收尾。每回合末尾留一个未解的张力或悬念（一缕不对劲的灵气、对方眼底一闪的算计、怀中玉简忽然发烫），让读者想点下一回合。
 7. 建立辨识度文风。在"流畅现代网文白话"基础上，敢用一两处精准的古意词与通感（如"钟声是凉的""灵气是有重量的""剑意比雪还薄"），让文字被记住，而非正确却无味。
@@ -257,6 +267,11 @@ ${this.buildVarietyBlock(state)}
     lines.push("注意：以上为本界既有的风物与势力，请在此基础上推演剧情，勿凭空抹除或篡改既定点位；玩家可前往上述地域，亦可邂逅上述人物、探寻上述机缘。");
     if (gen.spirit) lines.push(`· 本界灵力值：${gen.spirit}/10（灵力越浓，境界上限越高；但无论高低，世界的精彩与凶险同等，请勿因灵力值高低而厚此薄彼）`);
     if (gen.realmCapLevel) lines.push(`· 本界境界上限：第 ${gen.realmCapLevel} 大境界（玩家修为不可超越此界天花板，欲破则需另寻机缘/飞升离界）`);
+    // 神魂轮回·重生叙事：若玩家是"上一界陨落后重投此界"，须在开局让这份轮回感被看见
+    const re = (state.meta && state.meta.reincarnation) || null;
+    if (re && re.oldWorld) {
+      lines.push(`· 【神魂轮回·重生】玩家的前一道神魂投影已于「${re.oldWorld}」${re.realmReached ? "修至第 " + re.realmReached + " 大境界" : ""}时折损，旧界归入神魂册·已陨落。此番再投此界，是前尘未了的续章。若为本局开局首回合，请在开场自然带出"旧界余烬/前世残忆"的回响（如：梦中残留的旧界景象、掌心旧伤痕、对某个再也回不去之地的一丝牵念），让轮回有重量；但不要长篇倒叙，点到即收。前世积攒的因果力（${re.inheritCredit || 0}）已随神魂带入此界。`);
+    }
     const sysObj = (typeof CULTIVATION_SYSTEMS !== "undefined" && CULTIVATION_SYSTEMS.find) ? CULTIVATION_SYSTEMS.find(s => s.id === gen.cultivationSystem) : null;
     if (sysObj) lines.push(`· 本界修行体系：${sysObj.name}——${sysObj.desc}（诸天万界体系各异：有的世界称灵根，有的称血脉、命格、道种、元素亲和、灵枢、儒道或武道；其核心皆是对天地灵力的契合。）`);
     if (gen.wish) lines.push(`· 玩家许愿：「${gen.wish}」（请在剧情中自然呼应此愿，作为暗线，但不可喧宾夺主）`);
@@ -337,10 +352,19 @@ ${this.buildVarietyBlock(state)}
     if (p.forceCalm) {
       s += `⚠ 节奏强制·本回：连续高张已 ${p.peakStreak} 回合，本回宜放缓节奏，给玩家喘息、回味与[平安]选项，养势后再起波澜。\n`;
     }
-    // 区域危险度调制：让地图的危险梯度真正影响张力与可选风险
-    const _loc = (typeof LOCATIONS !== "undefined") ? LOCATIONS.find(l => l.name === (state.world && state.world.location)) : null;
+    // 新手记忆点脚本：按程数窗口注入的轻量引导（首次触发后自动清除）
+    if (state.meta && state.meta.memoryPointHint) {
+      s += `▶ 新手记忆点：${state.meta.memoryPointHint}\n`;
+    }
+    // 区域危险度调制：让地图的危险梯度真正影响张力与可选风险。
+    // 兼容两套地点来源：生成世界的地域（gen.regions，本界独有地名，优先）与静态 LOCATIONS（仅当地名恰好匹配时）。
+    const _locName = (state.world && state.world.location) || "";
+    const _gen = (state.world && state.world.gen);
+    let _loc = null;
+    if (_gen && _gen.regions) _loc = _gen.regions.find(r => r.name === _locName) || null;
+    if (!_loc && typeof LOCATIONS !== "undefined") _loc = LOCATIONS.find(l => l.name === _locName) || null;
     if (_loc) {
-      s += `当前所处：${_loc.name}（危险度 ${_loc.danger}/10，类型 ${_loc.type}）。叙事张力与提供的选项风险须与之严格匹配：危险度高则氛围紧张压抑、多[凶险]/[致命]选项；危险度低则平和安稳、多[平安]选项。\n`;
+      s += `当前所处：${_loc.name}（危险度 ${_loc.danger}/10，类型 ${_loc.type}）。叙事张力与提供的选项风险须与之严格匹配：危险度高则氛围紧张压抑、多[凶险]/[致命]选项；危险度低则平和安稳、仍须保留真实错步之险（参见【叙事工艺】第4条风险梯度），多[平安]选项但不可全[平安]。\n`;
     }
     // 主线拍位推进提示：让中央冲突随境界（卷）同步向前
     const mp = state.meta && state.meta.mainPlot;
@@ -366,14 +390,43 @@ ${this.buildVarietyBlock(state)}
   },
 
   // 区域感官简报：把当前地点的氛围/气味/声响注入提示词，让 AI 写出有地点质感的文字
+  // 兼容两套地点来源：① 生成世界的地域（gen.regions，含本界独有地名+sensory）；② 静态 LOCATIONS（仅当地名恰好匹配时）。
+  // 关键：生成世界用的是本界独有地名，几乎不会命中静态 LOCATIONS——故必须优先读 gen.regions 的 sensory，否则地点质感整场丢失。
   buildLocationBrief(state) {
-    if (typeof LOCATIONS === "undefined" || !LOCATIONS.length) return "";
     const loc = (state && state.world && state.world.location) || "";
-    const entry = LOCATIONS.find(l => l.name === loc);
-    if (!entry || !entry.sensory) return "";
-    return `【当前所在 · ${entry.name}（${entry.type} · 凶险度${entry.danger}/10）】\n` +
-      `环境质感（仅作灵感种子，切勿逐字抄入 narrative）：${entry.sensory}\n` +
-      `请在描写中自然融此地的气息、声响与光影，使玩家"身临其境"。⚠ 严禁把上面"环境质感"原句照抄进 narrative——须化用为属于本回合的新描写：换角度、换感官、叠加角色当下的动作与情绪，写出你自己的句子。离开此地时，须同步切换氛围与 state_changes.scene。`;
+    const gen = (state && state.world && state.world.gen);
+    let entry = null;
+    if (gen && gen.regions) entry = gen.regions.find(r => r.name === loc) || null;       // 生成世界地域（优先）
+    if (!entry && typeof LOCATIONS !== "undefined") entry = LOCATIONS.find(l => l.name === loc) || null; // 静态回退
+    if (!entry) {
+      // 即便两处都查不到，也保留分支节点提示（若有），避免分支叙事退化为主线
+      return this._buildBranchNote(state, loc);
+    }
+    const danger = (entry.danger != null) ? entry.danger : 0;
+    const type = entry.type || "未知之地";
+    const sensory = entry.sensory || entry.desc || "";
+    let base = `【当前所在 · ${entry.name}（${type} · 凶险度${danger}/10）】\n`;
+    if (sensory) {
+      base += `环境质感（仅作灵感种子，切勿逐字抄入 narrative）：${sensory}\n` +
+        `请在描写中自然融此地的气息、声响与光影，使玩家"身临其境"。⚠ 严禁把上面"环境质感"原句照抄进 narrative——须化用为属于本回合的新描写：换角度、换感官、叠加角色当下的动作与情绪，写出你自己的句子。离开此地时，须同步切换氛围与 state_changes.scene。`;
+    } else {
+      base += `（此地为${type}，请在描写中自然呈现其氛围与凶险，使玩家身临其境。）`;
+    }
+    const branchNote = this._buildBranchNote(state, loc, gen);
+    const out = (base + branchNote).trim();
+    return out || "";
+  },
+
+  // 分支节点提示（抽成独立函数，供 buildLocationBrief 在查不到 entry 时也能调用）
+  _buildBranchNote(state, loc, gen) {
+    const g = gen || (state && state.world && state.world.gen);
+    if (!g || !g.regions) return "";
+    const r = g.regions.find(x => x.name === loc);
+    if (r && r.branch) {
+      const map2 = { secret: "秘境探索", trial: "副本试炼", sidequest: "坊市支线恩怨", weekly: "本周限时秘境" };
+      return `\n· 当前所处为「${map2[r.branch] || r.type}」分支节点（可选历练，非主线必经）。请遵循【遭遇设计标准】第5条：重探索感、重角色羁绊与"小机缘"，在收束时于 state_changes.threads_planted / threads_resolved 留下可回响主线的伏笔；并至少埋 1 个记忆点（初得称手法宝 / 初见奇景 / 初识重要面孔）。`;
+    }
+    return "";
   },
 
   // 判断是否为"推理模型"：此类模型会把 reasoning（思考）token 计入 max_tokens 预算，
@@ -455,6 +508,58 @@ ${this.buildVarietyBlock(state)}
     }).join("\n");
   },
 
+  // ============ 带超时 + 自动重试的 fetch（解决高峰期永久转圈） ============
+  // 失败分类：超时/网络抖动/5xx/429 可重试；401/400/403 等不可重试（直接抛错给上层翻译）
+  async _fetchJson(url, headers, bodyStr) {
+    const TIMEOUT_MS = 25000;       // 单次请求 25s 超时，避免高峰永久卡死
+    const MAX_RETRY = 2;            // 最多重试 2 次（共 3 次尝试）
+    let lastErr = null;
+    for (let attempt = 0; attempt <= MAX_RETRY; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      try {
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: headers,
+          body: bodyStr,
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        // 可重试类：429 限流 / 500+ 服务抖动
+        if (resp.status === 429 || resp.status >= 500) {
+          const retryAfter = resp.headers.get("retry-after");
+          const wait = retryAfter ? (parseInt(retryAfter, 10) * 1000) : (800 * Math.pow(2, attempt) + Math.random() * 400);
+          if (attempt < MAX_RETRY) { lastErr = new Error(`API暂不可用(${resp.status})，稍后重试…`); await new Promise(r => setTimeout(r, Math.min(wait, 4000))); continue; }
+          const errText = await resp.text().catch(() => "");
+          throw new Error(`API请求失败 (${resp.status}): ${errText.slice(0, 200)}`);
+        }
+        // 不可重试类：401/403 鉴权错 / 400 参数错 —— 原样抛出，由上层翻译
+        if (!resp.ok) {
+          const errText = await resp.text().catch(() => "");
+          throw new Error(`API请求失败 (${resp.status}): ${errText.slice(0, 200)}`);
+        }
+        return resp;
+      } catch (e) {
+        clearTimeout(timer);
+        // AbortController 触发 = 超时
+        if (e && e.name === "AbortError") {
+          lastErr = new Error("网络超时（25秒未响应）");
+          if (attempt < MAX_RETRY) { await new Promise(r => setTimeout(r, 600 * (attempt + 1))); continue; }
+          throw new Error("网络超时（25秒未响应），请检查网络或稍后再试");
+        }
+        // 其他网络错误（断网/跨域/解析失败）
+        if (e instanceof TypeError || (e && /Failed to fetch|NetworkError|load failed/i.test(e.message || ""))) {
+          lastErr = new Error("网络连接失败");
+          if (attempt < MAX_RETRY) { await new Promise(r => setTimeout(r, 600 * (attempt + 1))); continue; }
+          throw new Error("网络连接失败，请检查网络后重试");
+        }
+        // 其他（含 401/400/403 原样错误）直接抛出
+        throw e;
+      }
+    }
+    throw lastErr || new Error("请求失败");
+  },
+
   // 发送请求（流式）
   async stream(messages, state, onChunk) {
     const cfg = this.getConfig();
@@ -478,19 +583,14 @@ ${this.buildVarietyBlock(state)}
       body.stream_options = { include_usage: true };
     }
 
-    const resp = await fetch(cfg.baseURL.replace(/\/$/, "") + "/chat/completions", {
-      method: "POST",
-      headers: {
+    const resp = await this._fetchJson(
+      cfg.baseURL.replace(/\/$/, "") + "/chat/completions",
+      {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${cfg.apiKey}`,
       },
-      body: JSON.stringify(body),
-    });
-
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(`API请求失败 (${resp.status}): ${errText.slice(0, 200)}`);
-    }
+      JSON.stringify(body)
+    );
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -560,19 +660,14 @@ ${this.buildVarietyBlock(state)}
       response_format: { type: "json_object" },
     };
 
-    const resp = await fetch(cfg.baseURL.replace(/\/$/, "") + "/chat/completions", {
-      method: "POST",
-      headers: {
+    const resp = await this._fetchJson(
+      cfg.baseURL.replace(/\/$/, "") + "/chat/completions",
+      {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${cfg.apiKey}`,
       },
-      body: JSON.stringify(body),
-    });
-
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(`API请求失败 (${resp.status}): ${errText.slice(0, 300)}`);
-    }
+      JSON.stringify(body)
+    );
 
     const json = await resp.json();
     this._reportUsage(cfg.model, json.usage);
@@ -613,7 +708,7 @@ ${this.buildVarietyBlock(state)}
     }
 
     // 3. 解析失败，尝试挽救：提取第一个 "narrative" 字段内容
-    const narrative = this._extractNarrativeFallback(text) || rawText;
+    const narrative = this._extractNarrativeFallback(text) || "本回合推演异常，请输入「刷新」重生成";
     return {
       narrative: narrative,
       state_changes: {},
