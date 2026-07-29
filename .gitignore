@@ -7,3 +7,9 @@ node_modules/
 
 # 本地发布目录（曾为嵌套git仓库导致Pages构建失败），不入库
 deploy-public/
+
+# 工作区/分析产物（非游戏源码，勿入库）
+.workbuddy/
+outputs/
+overview_*.md
+浮生仙途*.md
