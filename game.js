@@ -130,6 +130,9 @@ const Game = {
         // 关键：这是【永久属性】，始终随 character 进入系统提示词，绝不依赖易失的 memory 滑窗，
         // 因此 AI 不会像忘记剧情记忆那样忘记玩家的系统。
         systems: [],
+        // 因果（剑来式规则内核）：因果力=行之积累的威能(助破境避险)，因果债=欠下的因与诺(负累，过重招灾)
+        causeCredit: Math.max(0, Math.floor(opts.inheritCredit || 0)),
+        causeDebt: 0,
       },
       world: {
         seed: gen.seed,
@@ -374,6 +377,21 @@ const Game = {
       const v = c.evil - before;
       if (v !== 0) deltas.push(`邪恶 ${v > 0 ? "+" : ""}${v}`);
     }
+    // 因果力 / 因果债（剑来式规则内核）：单次增量钳制 ±20，下限 0 不可为负
+    if (ch.cause_credit_change !== undefined) {
+      const inc = Math.max(-20, Math.min(20, Number(ch.cause_credit_change) || 0));
+      const before = c.causeCredit;
+      c.causeCredit = Math.max(0, c.causeCredit + inc);
+      const v = c.causeCredit - before;
+      if (v !== 0) deltas.push(`因果力 ${v > 0 ? "+" : ""}${v}`);
+    }
+    if (ch.cause_debt_change !== undefined) {
+      const inc = Math.max(-20, Math.min(20, Number(ch.cause_debt_change) || 0));
+      const before = c.causeDebt;
+      c.causeDebt = Math.max(0, c.causeDebt + inc);
+      const v = c.causeDebt - before;
+      if (v !== 0) deltas.push(`因果债 ${v > 0 ? "+" : ""}${v}`);
+    }
     // NPC 好感度变更：支持对象 {名字: 增减} 或数组 [{name, change}]
     const npcChanges = ch.npc_affinity_change;
     if (npcChanges) {
@@ -598,7 +616,9 @@ const Game = {
     const base = (BT_BASE && BT_BASE[nextRealm.level] != null) ? BT_BASE[nextRealm.level] : 0.5;
     const compMod = (c.comprehension - 6) * 0.02;
     const spiritMod = (((this.state.world && this.state.world.spirit) || 5) - 5) * 0.015;
-    const successRate = Math.max(0.05, Math.min(0.95, base + compMod + spiritMod));
+    // 因果反哺突破：因果力助成、因果债碍道
+    const causeMod = Math.min(0.10, (c.causeCredit || 0) * 0.0008) - Math.min(0.15, (c.causeDebt || 0) * 0.002);
+    const successRate = Math.max(0.03, Math.min(0.96, base + compMod + spiritMod + causeMod));
     const success = Math.random() < successRate;
 
     if (success) {
@@ -792,6 +812,8 @@ const Game = {
       if (!this.state.character.cultivationSystem) this.state.character.cultivationSystem = "灵根";
       if (!this.state.world.cultivationSystemName) this.state.world.cultivationSystemName = this.state.character.cultivationSystem || "灵根";
       if (!this.state.meta.projectionId) this.state.meta.projectionId = ((this.state.world.gen && this.state.world.gen.id) || "p") + "-" + Date.now();
+      if (this.state.character.causeCredit == null) this.state.character.causeCredit = 0;
+      if (this.state.character.causeDebt == null) this.state.character.causeDebt = 0;
       // 旧档兼容：补全主线（中央冲突）与伏笔 ledger
       if (!this.state.meta) this.state.meta = { playTurn: 0, alive: true };
       if (this.state.meta.mainPlot === undefined) this.state.meta.mainPlot = null;
@@ -834,6 +856,7 @@ const Game = {
       realmName: s.character.realm,
       form: s.character.form,
       genderName: s.character.genderName,
+      causeCredit: s.character.causeCredit || 0,
       status: "active",
       turn: s.meta.playTurn,
       updatedAt: Date.now(),
@@ -863,10 +886,13 @@ const Game = {
     const pid = (s.meta && s.meta.projectionId) || null;
     const oldName = (s.world.gen && s.world.gen.name) || "此界";
     const realmReached = (s.character && s.character.realmLevel) || 1;
+    const credit = (s.character && s.character.causeCredit) || 0;
+    const inheritCredit = Math.floor(credit * 0.3);
     this._archiveFallen(pid, cause, realmReached);
-    this.newProjection({});
+    this.newProjection({ inheritCredit: inheritCredit });
     this._worldDestroyedCause = cause;
     this._worldDestroyedOldName = oldName;
+    this._inheritedCredit = inheritCredit;
     return this.state;
   },
   consumeWorldDestroyed() {
@@ -1509,7 +1535,7 @@ const UI = {
       const causeLine = fallen && e.cause ? `<div class="soul-cause">${this.escapeHtml(e.cause)}</div>` : "";
       return `<div class="soul-card ${fallen ? "soul-card-fallen" : "soul-card-active"}">
         <div class="soul-world">${this.escapeHtml(e.worldName || "未知界")}</div>
-        <div class="soul-meta">灵力 ${e.spirit != null ? e.spirit : "?"} · 上限 ${e.realmCapLevel != null ? e.realmCapLevel : "?"} 境 · ${this.escapeHtml(e.form || "人")}·${this.escapeHtml(e.genderName || "")}</div>
+        <div class="soul-meta">灵力 ${e.spirit != null ? e.spirit : "?"} · 上限 ${e.realmCapLevel != null ? e.realmCapLevel : "?"} 境 · ${this.escapeHtml(e.form || "人")}·${this.escapeHtml(e.genderName || "")} · 因果力 ${e.causeCredit || 0}</div>
         ${wishLine}
         ${tag}
         ${causeLine}
@@ -1523,8 +1549,10 @@ const UI = {
     const oldName = Game._worldDestroyedOldName;
     const storyEl = document.getElementById("story-text");
     if (storyEl) {
-      storyEl.innerHTML += `<div class="world-destroyed">${this.escapeHtml(cause)}<br>${oldName ? "「" + this.escapeHtml(oldName) + "」" : "此界"}自此湮灭，你的一道投影归于轮回……神魂再投诸天万界，新的仙途已然铺开。</div>`;
+      const inheritNote = (Game._inheritedCredit > 0) ? `<br>承前世因果力 ${Game._inheritedCredit}，化作此身底蕴——最佳投影之资，悄然累积。` : "";
+      storyEl.innerHTML += `<div class="world-destroyed">${this.escapeHtml(cause)}<br>${oldName ? "「" + this.escapeHtml(oldName) + "」" : "此界"}自此湮灭，你的一道投影归于轮回……神魂再投诸天万界，新的仙途已然铺开。${inheritNote}</div>`;
       storyEl.scrollTop = storyEl.scrollHeight;
+      Game._inheritedCredit = 0;
     }
     setTimeout(() => {
       this.showWorldMap(true);
@@ -1639,6 +1667,8 @@ const UI = {
         else if (j >= 10 && e >= 10) label = "亦正亦邪";
         return `<div class="stat-row"><span>正邪</span><span class="stat-val">${label}</span></div>`;
       })()}
+      <div class="stat-row"><span>因果力</span><span class="stat-val cause-credit-val">${c.causeCredit || 0}</span></div>
+      <div class="stat-row"><span>因果债</span><span class="stat-val cause-debt-val">${c.causeDebt || 0}</span></div>
       <hr class="divider">
       <div class="stat-row"><span>所在</span><span class="stat-val">${w.location}</span></div>
       <div class="stat-row"><span>时辰</span><span class="stat-val">${w.timeOfDay} · 第${w.day}日</span></div>
@@ -2292,6 +2322,8 @@ const UI = {
           <div class="mdrawer-stat-item"><span class="ms-label">声望</span><span class="ms-val">${c.reputation >= 0 ? "+" : ""}${c.reputation}</span></div>
           <div class="mdrawer-stat-item"><span class="ms-label">正义</span><span class="ms-good">${c.justice}</span></div>
           <div class="mdrawer-stat-item"><span class="ms-label">邪恶</span><span class="ms-evil">${c.evil}</span></div>
+          <div class="mdrawer-stat-item"><span class="ms-label">因果力</span><span class="ms-val">${c.causeCredit || 0}</span></div>
+          <div class="mdrawer-stat-item"><span class="ms-label">因果债</span><span class="ms-val">${c.causeDebt || 0}</span></div>
           <div class="mdrawer-stat-item"><span class="ms-label">正邪</span><span class="ms-val">${getAlign()}</span></div>
           <div class="mdrawer-stat-item"><span class="ms-label">${c.pet ? "灵宠" : "灵宠"}</span><span class="ms-val">${c.pet ? c.pet.name + (c.pet.type ? " · " + c.pet.type : "") : "暂无"}</span></div>
         </div>
