@@ -738,8 +738,9 @@ body::before {
     padding-left: 14px; padding-right: 14px;
   }
   .story-text { padding-top: 10px; -webkit-overflow-scrolling: touch; }
+  .story-content { font-size: 16px; line-height: 1.8; }
   .action-input-area { padding-bottom: 16px; gap: 8px; }
-  .action-input { padding: 10px 12px; font-size: 13px; }
+  .action-input { padding: 10px 12px; font-size: 14px; }
 
   /* 菜单 / 创建页：小屏可竖直滚动，避免底部按钮被裁切 */
   .menu-container, .create-container {
@@ -833,7 +834,7 @@ body::before {
 
 /* 主角立绘（状态栏 hero-sprite / 手机抽屉） */
 .hero-portrait { width: 100%; max-width: 200px; margin: 0 auto 6px; }
-.hero-portrait .hp-svg { width: 100%; height: auto; display: block; filter: drop-shadow(0 6px 14px rgba(0,0,0,.35)); }
+.hero-portrait .hp-svg { width: 100%; height: auto; display: block; filter: drop-shadow(0 6px 14px rgba(0,0,0,.35)); image-rendering: pixelated; shape-rendering: crispEdges; }
 .hp-aura  { transform-box: fill-box; transform-origin: center; animation: hp-breathe 4.5s ease-in-out infinite; }
 .hp-cloak { transform-box: fill-box; transform-origin: top center; animation: hp-sway 7s ease-in-out infinite; }
 .hp-spark { transform-box: fill-box; animation: hp-float 3.6s ease-in-out infinite; }
@@ -843,7 +844,7 @@ body::before {
 
 /* NPC 立绘（VN 舞台弹出，GAL 形态：仅在 NPC 对话时出现） */
 .vn-actors .vn-actor.npc { position: absolute; right: 3%; bottom: 0; height: 80%; width: auto; pointer-events: none; }
-.vn-actors .vn-actor.npc .npc-portrait { height: 100%; width: auto; filter: drop-shadow(0 8px 18px rgba(0,0,0,.42)); }
+.vn-actors .vn-actor.npc .npc-portrait { height: 100%; width: auto; filter: drop-shadow(0 8px 18px rgba(0,0,0,.42)); image-rendering: pixelated; shape-rendering: crispEdges; }
 .npc-popin { animation: npc-pop .5s cubic-bezier(.2,.85,.3,1) both; }
 @keyframes npc-pop { from { opacity:0; transform: translateY(26px) scale(.95); } to { opacity:1; transform: translateY(0) scale(1); } }
 

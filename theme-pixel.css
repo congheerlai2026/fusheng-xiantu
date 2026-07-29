@@ -666,6 +666,64 @@ body.pixel .btn-block { width: 100%; margin-top: 10px; }
   body.pixel .map-footer .btn-primary { width: 100%; }
 }
 
+/* ============================================================
+   移动端可读性急救 + 宝可梦立绘适配
+   ============================================================ */
+@media (max-width: 640px) {
+  /* 扫描线在手机上太强，会压暗文字、让按钮看起来像有条纹；大幅减弱 */
+  body.pixel::after {
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.06) 0 1px, transparent 1px 4px),
+      radial-gradient(ellipse at center, transparent 70%, rgba(0,0,0,0.22) 100%);
+  }
+
+  /* 核心 bug：手机上 .vn-dialogue 是深色底，必须强制浅色字，否则会黑底黑字 */
+  body.pixel .vn-dialogue,
+  body.pixel .vn-dialogue .story-text,
+  body.pixel .vn-dialogue .story-content,
+  body.pixel .vn-stage.vn-collapsed.npc-active .vn-dialogue .story-content {
+    color: #f7f3e3 !important;
+  }
+  body.pixel .vn-dialogue .user-action { color: #a8f0c8; }
+  body.pixel .vn-dialogue .turn-deltas .delta-item { color: #ffd86b; border-color: rgba(255,216,107,.45); background: rgba(255,216,107,.12); }
+  body.pixel .vn-dialogue .world-destroyed { color: #ffbfbf; background: rgba(122,28,22,.35); border-color: #ff6b6b; }
+
+  /* 叙事文字加大加行高 */
+  body.pixel .story-content { font-size: 16.5px; line-height: 1.85; }
+  body.pixel .vn-dialogue .story-content { font-size: 16px; line-height: 1.8; }
+
+  /* 选项按钮：手机上做高对比、大触控、去掉奇怪纹理 */
+  body.pixel .action-options { align-items: stretch; padding: 0 10px 8px; gap: 8px; }
+  body.pixel .btn-option {
+    max-width: none; width: 100%;
+    padding: 14px 14px 14px 36px;
+    font-size: 15.5px; line-height: 1.45;
+    min-height: 52px;
+    background: #fbf7ea; color: #1f1f2a;
+    border: 2px solid #2b2b3a;
+    box-shadow: 3px 3px 0 rgba(0,0,0,.25);
+    border-radius: 10px;
+  }
+  body.pixel .btn-option::before { left: 14px; font-size: 11px; color: #e8443a; }
+  body.pixel .btn-option .opt-risk { color: #b03030; font-weight: 700; }
+  body.pixel .btn-option:hover { transform: translate(-1px,-1px); }
+
+  /* 输入框与发送按钮不挤 */
+  body.pixel .vn-dialogue .action-input-area { padding: 8px 0 0; }
+  body.pixel .vn-dialogue .action-input { font-size: 15.5px; padding: 12px 14px; }
+  body.pixel .vn-dialogue .btn-send { padding: 12px 20px; font-size: 15px; }
+
+  /* 立绘：侧边栏/抽屉内适配新 viewBox */
+  body.pixel #hero-sprite { height: 132px; }
+  body.pixel #hero-sprite .hero-portrait { width: auto; height: 100%; max-height: 124px; margin: 0 auto; }
+  body.pixel #hero-sprite .hp-svg { height: 100%; width: auto; }
+  body.pixel .mdrawer-hero { text-align: center; margin: 4px 0 12px; }
+  body.pixel .mdrawer-hero .hero-portrait { max-width: 140px; margin: 0 auto; }
+
+  /* NPC 弹窗在手机上别遮太多字 */
+  .vn-actors .vn-actor.npc { right: 0; height: 42%; bottom: 50%; }
+}
+
 /* ===== 动画大地图：山川河流（像素主题） ===== */
 body.pixel .world-svg { display: block; width: 100%; height: 100%; }
 body.pixel .sky-top { stop-color: #1d2c44; }
