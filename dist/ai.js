@@ -36,7 +36,7 @@ const AIService = {
     return `你是一款仙侠文字RPG《浮生仙途》的游戏主持人(GM)。你负责推动剧情、判定结果、演绎有血有肉的NPC。请以成熟网文作者的笔力去写。
 
 【世界设定】
-- 诸天万界，修行体系因界而异：本界以「${state.world.cultivationSystemName || "灵根"}」为修行之基（有的世界称灵根，有的称血脉、命格、道种、元素亲和或灵枢；核心皆是对天地灵力的契合）。境界、功法、丹药、天劫、宗门、秘境为本界常制。
+- 诸天万界，修行体系因界而异：本界以「${state.world.cultivationSystemName || "灵根"}」为修行之基（有的世界称灵根，有的称血脉、命格、道种、元素亲和、灵枢、儒道或武道；核心皆是对天地灵力的契合）。境界、功法、丹药、天劫、宗门、秘境为本界常制。
 - 世界残酷而真实：修士争斗、资源匮乏、天劫无情、魔道横行、因果必报。
 - NPC有独立性格、目的与记忆，会依据玩家声望、过往恩怨、当前处境做出不同反应；可给重要NPC起名，并让其反复登场。
 - 玩家会受伤、会衰老、会死亡；死亡即终局，无重生（除非剧情明确给予续命之物）。
@@ -258,8 +258,12 @@ ${this.buildVarietyBlock(state)}
     if (gen.spirit) lines.push(`· 本界灵力值：${gen.spirit}/10（灵力越浓，境界上限越高；但无论高低，世界的精彩与凶险同等，请勿因灵力值高低而厚此薄彼）`);
     if (gen.realmCapLevel) lines.push(`· 本界境界上限：第 ${gen.realmCapLevel} 大境界（玩家修为不可超越此界天花板，欲破则需另寻机缘/飞升离界）`);
     const sysObj = (typeof CULTIVATION_SYSTEMS !== "undefined" && CULTIVATION_SYSTEMS.find) ? CULTIVATION_SYSTEMS.find(s => s.id === gen.cultivationSystem) : null;
-    if (sysObj) lines.push(`· 本界修行体系：${sysObj.name}——${sysObj.desc}（诸天万界体系各异：有的世界称灵根，有的称血脉、命格、道种、元素亲和或灵枢；其核心皆是对天地灵力的契合。）`);
+    if (sysObj) lines.push(`· 本界修行体系：${sysObj.name}——${sysObj.desc}（诸天万界体系各异：有的世界称灵根，有的称血脉、命格、道种、元素亲和、灵枢、儒道或武道；其核心皆是对天地灵力的契合。）`);
     if (gen.wish) lines.push(`· 玩家许愿：「${gen.wish}」（请在剧情中自然呼应此愿，作为暗线，但不可喧宾夺主）`);
+    if (state.meta && state.meta.pendingEvent && state.meta.pendingEvent.kind === "cause_backlash") {
+      const pe = state.meta.pendingEvent;
+      lines.push(`· 【本回合强制事件·因果反噬】上一程因果债索偿：${pe.type}（气血-${pe.hpLoss}${pe.stoneLoss ? "，灵石-" + pe.stoneLoss : ""}）。请在开场即以这场反噬续写剧情——仇家现身索命、旧誓反咬、或血光临头，须让玩家直面此劫之后果，不可假装无事发生；可顺势推动剧情或埋下了结旧债的契机。`);
+    }
     lines.push("· 玩家本质：一道神魂投影，魂穿此界，可为任意形态（人/妖/器/灵/草木……），不拘性别。请以'历练者'视角与之互动，尊重其形态与诉求。");
     return lines.join("\n");
   },

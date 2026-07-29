@@ -24,6 +24,7 @@
       <button class="btn btn-play btn-lg" onclick="UI.startDirectPlay()">⚔ 直接玩</button>
       <button class="btn btn-wish btn-lg" onclick="UI.openWish()">✨ 许愿 · 自定义世界</button>
       <button class="btn btn-ghost btn-lg" onclick="UI.showSoul()">📖 神魂册</button>
+      <button class="btn btn-ghost btn-lg" onclick="UI.showRank()">⚖ 因果力榜</button>
       <button class="btn btn-ghost btn-lg" onclick="UI.show('settings')">设置 / API配置</button>
       <button class="btn btn-ghost btn-lg" onclick="UI.show('help')">玩法说明</button>
       <button class="btn btn-gold btn-lg" onclick="UI.showSupport()">☕ 上香祈愿</button>
@@ -102,6 +103,7 @@
       <div class="panel-actions">
         <button class="btn btn-sm btn-map" onclick="UI.showWorldMap()" title="大地图">🗺 大地图</button>
         <button class="btn btn-sm btn-soul" onclick="UI.showSoul()" title="神魂册">📖</button>
+        <button class="btn btn-sm btn-rank" onclick="UI.showRank()" title="因果力榜">⚖</button>
         <button class="btn btn-sm btn-ghost" onclick="UI.show('settings')">⚙</button>
         <button class="btn btn-sm btn-ghost" onclick="UI.viewBiography()" title="仙途列传">📜</button>
         <button class="btn btn-sm btn-gold" onclick="UI.showSupport()" title="上香祈愿">☕</button>
@@ -338,6 +340,7 @@
     <div class="wish-title">✨ 许愿 · 自定义你的世界</div>
     <div class="wish-note">你是诸天万界中一道神魂投影，魂穿任意世界、可为任意形态。描述你心中所想的世界、想成为的存在、想做的事——AI 将据此为你生成一方天地。</div>
     <textarea id="wish-input" class="wish-input" rows="5" placeholder="例如：我想去一个魔修横行的乱世，成为一头以战证道的妖狼，一路杀穿宗门……"></textarea>
+    <div class="wish-feedback" id="wish-feedback">提示：许愿可偏置本界体系——提及「妖/狼/血脉/龙」→血脉界，「剑道/证道/以战证道」→道种界，「儒/道理/文」→儒道界，「武/体修/肉身」→武道界，「元素/炎/雷」→元素亲和界，「灵枢/机括」→灵枢界；不提则随诸天万界随机化生。</div>
     <div class="wish-actions">
       <button class="btn btn-ghost" onclick="UI.closeWish()">再想想</button>
       <button class="btn btn-wish" onclick="UI.submitWish()">许下此愿 · 入界</button>
@@ -351,6 +354,18 @@
     <h2 class="section-title">神魂册 · 诸天万界投影履历</h2>
     <p class="soul-intro">你是一道分裂的神魂，每一道投影都投入一方天地。世界或被神魔大战波及而湮灭，归入此册；你则重投诸天，再启仙途。唯潜力最盛者，终得时空传承，逆转未知之劫。</p>
     <div class="soul-body" id="soul-body"></div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="UI.show('menu')">返回</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 因果力榜 ==================== -->
+<div id="screen-rank" class="screen">
+  <div class="soul-container">
+    <h2 class="section-title">因果力榜 · 诸天万界投影排行</h2>
+    <p class="soul-intro">神魂册中所有投影按其因果力与修道时长排名。因果力者，往昔所行所积之威能也；修道时长者，一道投影存续之久也。本机榜为跨玩家总榜之本地占位。</p>
+    <div class="soul-body" id="rank-body"></div>
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="UI.show('menu')">返回</button>
     </div>

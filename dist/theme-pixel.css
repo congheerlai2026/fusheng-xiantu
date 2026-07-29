@@ -717,3 +717,30 @@ body.pixel .soul-tag-fallen { background: rgba(122,28,22,.2); color: #e88a82; }
 body.pixel .soul-cause { color: #d08a82; font-size: 12px; margin-top: 8px; line-height: 1.6; }
 body.pixel .cause-credit-val { color: #2e8b57; font-weight: 500; }
 body.pixel .cause-debt-val { color: #a32d2d; font-weight: 500; }
+
+/* ---- 因果力榜 ---- */
+body.pixel .btn-rank { border: 2px solid #b08a3a; color: #e8c878; }
+body.pixel .btn-rank:hover { background: rgba(176,138,58,.15); }
+body.pixel .rank-section-title { color: var(--gold-bright); font-size: 16px; letter-spacing: 2px; margin: 22px 0 12px; border-left: 3px solid var(--gold-bright); padding-left: 10px; }
+body.pixel .rank-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+body.pixel .rank-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 2px solid #3a3a4a; border-radius: 10px; background: rgba(20,20,30,.4); }
+body.pixel .rank-card-active { border-color: var(--gold-bright); }
+body.pixel .rank-card-fallen { border-color: #7a1c16; opacity: .9; }
+body.pixel .rank-no { font-size: 22px; font-weight: 700; color: var(--gold-bright); min-width: 28px; text-align: center; }
+body.pixel .rank-main { flex: 1; min-width: 0; }
+body.pixel .rank-world { color: var(--text); font-size: 15px; letter-spacing: 1px; }
+body.pixel .rank-meta { color: var(--text-dim); font-size: 12px; line-height: 1.5; margin-top: 3px; }
+body.pixel .rank-metric { text-align: right; font-size: 18px; font-weight: 700; color: var(--jade); white-space: nowrap; }
+body.pixel .rank-metric-label { display: block; font-size: 10px; font-weight: 400; color: var(--text-dim); letter-spacing: 1px; }
+body.pixel .rank-note { color: var(--text-dim); font-size: 12px; margin-top: 20px; line-height: 1.7; font-style: italic; }
+
+/* ---- 许愿偏置提示 ---- */
+body.pixel .wish-feedback { color: var(--text-dim); font-size: 12px; line-height: 1.8; margin-top: 10px; padding: 10px 12px; border: 1px dashed #6a5a3a; border-radius: 8px; background: rgba(176,138,58,.08); }
+
+/* ---- 因果反噬横幅 ---- */
+body.pixel .cause-backlash { margin: 12px 0; padding: 12px 16px; border: 2px solid #a32d2d; border-radius: 10px; background: rgba(163,45,45,.16); color: #f0b4b0; font-size: 14px; line-height: 1.7; animation: backlashFlash .5s ease; }
+@keyframes backlashFlash { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ---- 全局提示气泡 ---- */
+body.pixel .game-toast { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%) translateY(20px); background: rgba(20,16,12,.94); border: 2px solid var(--gold-bright); color: var(--gold-bright); padding: 10px 22px; border-radius: 24px; font-size: 14px; letter-spacing: 1px; opacity: 0; transition: all .35s ease; z-index: 9999; pointer-events: none; }
+body.pixel .game-toast-show { opacity: 1; transform: translateX(-50%) translateY(0); }

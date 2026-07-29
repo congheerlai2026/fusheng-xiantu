@@ -237,12 +237,23 @@ const WorldGen = {
     // 7.5) 修炼体系（每界独有之"方言"：灵根/血脉/命格/道种/元素亲和/灵枢……核心皆为灵力）
     const SYS_LIST = (typeof CULTIVATION_SYSTEMS !== "undefined" && CULTIVATION_SYSTEMS.length) ? CULTIVATION_SYSTEMS : null;
     const SYS_IDS = SYS_LIST ? SYS_LIST.map(s => s.id) : ["lingen"];
-    const SYSTEM_BIAS = { "血脉": "xuema", "龙": "xuema", "凤": "xuema", "命格": "mingge", "星": "mingge", "道种": "daozhong", "剑道": "daozhong", "元素": "yuansu", "法师": "yuansu", "灵枢": "lingshu", "机": "lingshu", "械": "lingshu", "科技": "lingshu" };
+    // 许愿关键词 → 体系（精确偏置；按"身份定义"在前、"道路"在后排序，使「以战证道的妖狼」锁定血脉界而非道种界）
+    const SYSTEM_BIAS = {
+      "妖": "xuema", "狼": "xuema", "妖兽": "xuema", "兽": "xuema", "血脉": "xuema", "龙": "xuema", "凤": "xuema", "麒麟": "xuema", "玄武": "xuema", "朱雀": "xuema", "白虎": "xuema",
+      "机": "lingshu", "械": "lingshu", "科技": "lingshu", "灵枢": "lingshu", "机关": "lingshu",
+      "儒": "rudao", "道理": "rudao", "文": "rudao", "圣人": "rudao", "礼": "rudao", "浩然": "rudao", "书院": "rudao",
+      "武": "wudao", "体修": "wudao", "武夫": "wudao", "肉身": "wudao", "锻体": "wudao", "拳": "wudao", "气血": "wudao",
+      "元素": "yuansu", "法师": "yuansu", "炎": "yuansu", "雷": "yuansu", "霜": "yuansu", "冰": "yuansu", "风": "yuansu",
+      "命格": "mingge", "星": "mingge", "天机": "mingge", "紫微": "mingge",
+      "证道": "daozhong", "道种": "daozhong", "剑道": "daozhong", "剑修": "daozhong", "以战证道": "daozhong", "剑": "daozhong",
+      "灵根": "lingen", "五行": "lingen", "修仙": "lingen", "仙": "lingen",
+    };
     let sysId = "lingen";
+    let wishMatched = false;
     if (wishText) {
-      for (const k in SYSTEM_BIAS) { if (wishText.indexOf(k) >= 0) { sysId = SYSTEM_BIAS[k]; break; } }
+      for (const k in SYSTEM_BIAS) { if (wishText.indexOf(k) >= 0) { sysId = SYSTEM_BIAS[k]; wishMatched = true; break; } }
     }
-    if (sysId === "lingen" && SYS_IDS.length > 1 && rng() < 0.55) {
+    if (!wishMatched && SYS_IDS.length > 1 && rng() < 0.55) {
       // 无许愿偏置时，过半世界并非经典灵根界，以体现诸天万界之异
       sysId = SYS_IDS[Math.floor(rng() * SYS_IDS.length)];
     }

@@ -718,6 +718,8 @@ const Game = {
       const betaIdx = localStorage.getItem('beta_user_index');
       if (betaIdx) BetaCode.incrementUsage(parseInt(betaIdx));
       const { flag: eventFlag, deltas } = this.applyChanges(parsed.state_changes);
+      // 上一程的强制事件（如因果反噬）已被本次 AI 调用消费，清除标记
+      this.state.meta.pendingEvent = null;
 
       // 节奏控制器：累计近回合"平淡/高张"连续数，供 buildPacingBlock 强制张弛
       const _isPeak = ['breakthrough_success','breakthrough_failed','romance_union','fortuitous_encounter','death','near_death','ascension','craft_ascension'].includes(eventFlag)
@@ -755,6 +757,13 @@ const Game = {
       const crisis = this.checkWorldCrisis();
       if (crisis && crisis.destroyed) {
         this.destroyWorld(crisis.cause);
+      }
+
+      // 因果债过重招灾：旧债索偿，化作强制反噬事件
+      const backlash = this.checkCauseBacklash();
+      if (backlash && backlash.triggered) {
+        const died = this.applyBacklash(backlash);
+        if (died) return { parsed, eventFlag: "death", deltas };
       }
 
       return { parsed, eventFlag, deltas };
@@ -859,6 +868,8 @@ const Game = {
       causeCredit: s.character.causeCredit || 0,
       status: "active",
       turn: s.meta.playTurn,
+      createdAt: s.meta.createdAt || Date.now(),
+      endedAt: null,
       updatedAt: Date.now(),
     };
     const idx = reg.findIndex((e) => e.projectionId === entry.projectionId);
@@ -868,7 +879,7 @@ const Game = {
   _archiveFallen(projectionId, cause, realmReached) {
     const reg = this._ensureSoulRegistry();
     const e = reg.find((x) => x.projectionId === projectionId);
-    if (e) { e.status = "fallen"; e.cause = cause; e.realmReached = realmReached; e.fallenAt = Date.now(); }
+    if (e) { e.status = "fallen"; e.cause = cause; e.realmReached = realmReached; e.fallenAt = Date.now(); e.endedAt = Date.now(); }
     else { reg.push({ projectionId: projectionId, status: "fallen", cause: cause, realmReached: realmReached, fallenAt: Date.now() }); }
     try { localStorage.setItem(this._soulKey, JSON.stringify(reg)); } catch (err) {}
   },
@@ -915,6 +926,66 @@ const Game = {
       return { destroyed: true, cause: "神魔大战之余波横跨诸天，灵脉寸断，山河倾覆——此界自此湮灭于轮回。" };
     }
     return { destroyed: false, cause: "神魔大战之余波掠过此界，你以万界神魔之姿镇守，山河无恙。" };
+  },
+
+  // 诸天万界·因果债过重招灾：因果债积逾阈值，按超出幅度概率触发反噬/仇家事件
+  checkCauseBacklash() {
+    const s = this.state;
+    if (!s || !s.meta.alive) return null;
+    const c = s.character;
+    const debt = c.causeDebt || 0;
+    const THRESHOLD = 40;
+    if (debt < THRESHOLD) return null;
+    const turn = s.meta.playTurn;
+    const last = (s.meta.lastBacklashTurn != null) ? s.meta.lastBacklashTurn : -99;
+    if (turn - last < 3) return null; // 冷却，避免连续刷屏
+    const over = debt - THRESHOLD;
+    const chance = Math.min(0.4, 0.05 + over * 0.015);
+    if (Math.random() > chance) return null;
+    const types = ["仇家寻仇", "因果反噬", "血光之灾", "旧誓反噬", "背信反噬"];
+    const type = types[debt % types.length];
+    const hpLoss = Math.min(40, 8 + Math.floor(over / 3));
+    const stoneLoss = Math.min(2000, Math.floor(over * 15));
+    s.meta.lastBacklashTurn = turn;
+    return { triggered: true, type, hpLoss, stoneLoss, debt };
+  },
+  applyBacklash(b) {
+    const c = this.state.character;
+    c.hp = Math.max(0, c.hp - b.hpLoss);
+    let died = false;
+    if (c.hp <= 0) { died = true; this.handleDeath("因果债索偿，旧怨缠身，气血耗尽而殒"); }
+    c.spiritualStones = Math.max(0, c.spiritualStones - b.stoneLoss);
+    const text = `⚡ 因果反噬·${b.type}：旧债索偿，气血-${b.hpLoss}${b.stoneLoss ? "，灵石-" + b.stoneLoss : ""}。此劫非战之过，乃往昔所欠之因果临头。`;
+    this.state.meta.pendingEvent = { kind: "cause_backlash", type: b.type, hpLoss: b.hpLoss, stoneLoss: b.stoneLoss, text };
+    this.state.memory = this.state.memory || [];
+    this.state.memory.push(text);
+    this.log.push({ role: "assistant", text, flag: "cause_backlash", deltas: ["气血 -" + b.hpLoss] });
+    const storyEl = (typeof document !== "undefined") ? document.getElementById("story-text") : null;
+    if (storyEl) {
+      const d = document.createElement("div");
+      d.className = "cause-backlash";
+      d.textContent = text;
+      storyEl.appendChild(d);
+      storyEl.scrollTop = storyEl.scrollHeight;
+    }
+    this.save();
+    return died;
+  },
+  // 神魂册本地榜：因果力榜 + 修道时长榜（跨玩家榜的本地占位，待 Path B 服务端）
+  getSoulRankings() {
+    const reg = (this._ensureSoulRegistry ? this._ensureSoulRegistry() : []);
+    const now = Date.now();
+    const enriched = reg.map(e => {
+      const created = e.createdAt || e.updatedAt || 0;
+      const ended = e.endedAt || (e.status === "active" ? (e.updatedAt || now) : now);
+      const durMs = Math.max(0, ended - created);
+      const days = Math.floor(durMs / 86400000);
+      const hours = Math.floor(durMs / 3600000);
+      return Object.assign({}, e, { durationHours: hours, durLabel: days > 0 ? days + " 日" : (hours > 0 ? hours + " 时" : "片刻") });
+    });
+    const byCause = enriched.slice().sort((a, b) => (b.causeCredit || 0) - (a.causeCredit || 0));
+    const byDuration = enriched.slice().sort((a, b) => (b.durationHours || 0) - (a.durationHours || 0));
+    return { byCause, byDuration };
   },
 
   hasSave() {
@@ -1510,6 +1581,8 @@ const UI = {
       else if (/男|他|哥|弟|夫|君|郎/.test(wish)) genderIndex = 0;
     }
     Game.newProjection({ wish: wish || null, genderIndex: genderIndex });
+    const sysName = (Game.state.world && Game.state.world.cultivationSystemName) || "灵根";
+    this.flashToast(`命中之界 · 修炼体系：${sysName}`);
     this.showWorldMap(true);
   },
 
@@ -1542,6 +1615,45 @@ const UI = {
       </div>`;
     }).join("");
     body.innerHTML = cards;
+  },
+
+  showRank() {
+    this.renderRank();
+    this.show("rank");
+  },
+  renderRank() {
+    const reg = (Game.getSoulRankings ? Game.getSoulRankings() : { byCause: [], byDuration: [] });
+    const body = document.getElementById("rank-body");
+    if (!body) return;
+    const esc = (t) => this.escapeHtml(t || "");
+    const card = (e, rank, metric, metricLabel) => {
+      const fallen = e.status === "fallen";
+      return `<div class="rank-card ${fallen ? "rank-card-fallen" : "rank-card-active"}">
+        <div class="rank-no">${rank}</div>
+        <div class="rank-main">
+          <div class="rank-world">${esc(e.worldName)}</div>
+          <div class="rank-meta">${e.realmCapLevel != null ? e.realmCapLevel + "境" : "?"} · ${esc(e.form || "人")}·${esc(e.genderName)} · 第 ${e.turn || 0} 程${e.wish ? " · 愿：" + esc(e.wish) : ""}</div>
+        </div>
+        <div class="rank-metric">${metric}<span class="rank-metric-label">${metricLabel}</span></div>
+      </div>`;
+    };
+    const causeHtml = reg.byCause.length
+      ? reg.byCause.map((e, i) => card(e, i + 1, (e.causeCredit || 0), "因果力")).join("")
+      : '<div class="soul-empty">尚无投影履历，开启一道投影即可登榜。</div>';
+    const durHtml = reg.byDuration.length
+      ? reg.byDuration.map((e, i) => card(e, i + 1, e.durLabel, "修道时长")).join("")
+      : '<div class="soul-empty">尚无投影履历。</div>';
+    body.innerHTML = `<div class="rank-section-title">⚖ 因果力榜（本机）</div><div class="rank-list">${causeHtml}</div>`
+      + `<div class="rank-section-title">⏳ 修道时长榜（本机）</div><div class="rank-list">${durHtml}</div>`
+      + `<div class="rank-note">＊本机榜按神魂册履历排名。跨玩家因果力总榜需服务端支撑，当前为本地占位。</div>`;
+  },
+  flashToast(msg) {
+    const d = document.createElement("div");
+    d.className = "game-toast";
+    d.textContent = msg;
+    document.body.appendChild(d);
+    setTimeout(() => { d.classList.add("game-toast-show"); }, 10);
+    setTimeout(() => { d.classList.remove("game-toast-show"); setTimeout(() => d.remove(), 400); }, 2600);
   },
 
   // ============ 世界湮灭 → 重投诸天 ============
