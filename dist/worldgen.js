@@ -234,6 +234,19 @@ const WorldGen = {
     // 7) 天地异象
     const omen = pick(OMENS);
 
+    // 7.5) 修炼体系（每界独有之"方言"：灵根/血脉/命格/道种/元素亲和/灵枢……核心皆为灵力）
+    const SYS_LIST = (typeof CULTIVATION_SYSTEMS !== "undefined" && CULTIVATION_SYSTEMS.length) ? CULTIVATION_SYSTEMS : null;
+    const SYS_IDS = SYS_LIST ? SYS_LIST.map(s => s.id) : ["lingen"];
+    const SYSTEM_BIAS = { "血脉": "xuema", "龙": "xuema", "凤": "xuema", "命格": "mingge", "星": "mingge", "道种": "daozhong", "剑道": "daozhong", "元素": "yuansu", "法师": "yuansu", "灵枢": "lingshu", "机": "lingshu", "械": "lingshu", "科技": "lingshu" };
+    let sysId = "lingen";
+    if (wishText) {
+      for (const k in SYSTEM_BIAS) { if (wishText.indexOf(k) >= 0) { sysId = SYSTEM_BIAS[k]; break; } }
+    }
+    if (sysId === "lingen" && SYS_IDS.length > 1 && rng() < 0.55) {
+      // 无许愿偏置时，过半世界并非经典灵根界，以体现诸天万界之异
+      sysId = SYS_IDS[Math.floor(rng() * SYS_IDS.length)];
+    }
+
     // 8) 灵力值（驱动境界上限，不驱动精彩程度；无论高低，世界同样精彩凶险）
     const spirit = ri(3, 9);
     const realmCapLevel = spirit <= 3 ? 4 : spirit <= 5 ? 6 : spirit <= 7 ? 8 : 10;
@@ -245,6 +258,7 @@ const WorldGen = {
       omen,
       spirit,
       realmCapLevel,
+      cultivationSystem: sysId,
       wish: wishText,
       macroRegions: MACRO_REGIONS.map((m) => ({ name: m.name, flavor: m.flavor })),
       regions,

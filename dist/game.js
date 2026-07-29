@@ -40,18 +40,26 @@ const Game = {
     }
     opts = opts || {};
     const name = opts.name;
-    const rootIndex = (opts.rootIndex != null) ? opts.rootIndex : Math.floor(Math.random() * SPIRITUAL_ROOTS.length);
+    const rootIndex = (opts.rootIndex != null) ? opts.rootIndex : null;
     const bgIndex = (opts.bgIndex != null) ? opts.bgIndex : Math.floor(Math.random() * BACKGROUNDS.length);
     const genderIndex = (opts.genderIndex != null) ? opts.genderIndex : Math.floor(Math.random() * GENDERS.filter((g) => !g.joke).length);
     const seed = (opts.seed != null && opts.seed !== "") ? opts.seed : WorldGen.randomSeed();
     const narrationMode = opts.narrationMode || "standard";
-    const root = SPIRITUAL_ROOTS[rootIndex];
     const bg = BACKGROUNDS[bgIndex];
     const gender = GENDERS[genderIndex] || GENDERS[0];
     const realm0 = REALMS[0];
 
     // 由世界种子确定性生成此界天地（许愿可轻度偏置风土）
     const gen = WorldGen.generateWorld(seed, opts.wish);
+
+    // 本界修炼体系（诸天万界各有其"方言"）：灵根/血脉/命格/道种/元素亲和/灵枢……
+    const cultSystem = (typeof CULTIVATION_SYSTEMS !== "undefined" && CULTIVATION_SYSTEMS.find)
+      ? (CULTIVATION_SYSTEMS.find((s) => s.id === gen.cultivationSystem) || CULTIVATION_SYSTEMS[0])
+      : null;
+    const traitList = cultSystem ? cultSystem.traits : (typeof SPIRITUAL_ROOTS !== "undefined" ? SPIRITUAL_ROOTS : [{ name: "灵根", element: "", affinity: { 攻击: 1, 防御: 1, 修炼: 1 } }]);
+    const traitIndex = (rootIndex != null && rootIndex < traitList.length) ? rootIndex : Math.floor(Math.random() * traitList.length);
+    const root = traitList[traitIndex];
+    const cultivationSystemName = cultSystem ? cultSystem.name : "灵根";
 
     // 主线（中央冲突）：从原型库随机择一，并以本界天地（种子）填充占位符，同源同界
     let mainPlot = null;
@@ -84,8 +92,9 @@ const Game = {
         genderName: gender.name,
         form: opts.form || "human",   // 魂穿形态：人/妖/器/灵……任意
         wish: opts.wish || null,        // 玩家许愿
+        cultivationSystem: cultivationSystemName, // 本界修行体系之名（灵根/血脉/命格…）
         root: root.name,
-        element: root.element,
+        element: root.element || "",
         affinity: root.affinity,
         background: bg.name,
         // 修为
@@ -131,6 +140,8 @@ const Game = {
         weatherIndex: 0,
         spirit: gen.spirit,          // 灵力值（驱动境界上限）
         realmCapLevel: gen.realmCapLevel,
+        cultivationSystem: gen.cultivationSystem || "lingen",
+        cultivationSystemName: cultivationSystemName,
         wish: gen.wish || null,
         gen: gen,                // 本界天地（确定性生成，随存档保存）
       },
@@ -274,8 +285,9 @@ const Game = {
       if (v !== 0) deltas.push(`灵力 ${v > 0 ? "+" : ""}${v}`);
     }
     if (ch.hp !== undefined) {
+      const inc = Math.max(-40, Math.min(40, Number(ch.hp) || 0)); // 单次气血增量钳制
       const before = c.hp;
-      c.hp = clamp(c.hp + ch.hp, 0, c.maxHp);
+      c.hp = clamp(c.hp + inc, 0, c.maxHp);
       const v = c.hp - before;
       if (v <= 0 && c.hp <= 0) { this.handleDeath(); return { flag: "death", deltas }; }
       if (v !== 0) deltas.push(`气血 ${v > 0 ? "+" : ""}${v}`);
@@ -289,8 +301,9 @@ const Game = {
       if (v !== 0) deltas.push(`灵石 ${v > 0 ? "+" : ""}${v}`);
     }
     if (ch.realm_progress !== undefined) {
+      const inc = Math.max(-5, Math.min(12, Number(ch.realm_progress) || 0)); // 单次增量钳制，防一回合摸顶
       const before = c.realmProgress;
-      c.realmProgress = clamp(c.realmProgress + ch.realm_progress, 0, 100);
+      c.realmProgress = clamp(c.realmProgress + inc, 0, 100);
       const v = c.realmProgress - before;
       if (c.realmProgress >= 100) {
         const bf = this.handleBreakthrough();
@@ -580,9 +593,12 @@ const Game = {
     const c = this.state.character;
     if (c.realmLevel >= REALMS.length) return "max_realm";
     const nextRealm = REALMS[c.realmLevel];
-    const diff = nextRealm.breakthroughDiff;
-    // 悟性加成
-    const successRate = Math.min(0.95, diff + (c.comprehension - 6) * 0.02);
+    // 基础成功率随境界递减（新手易、老手难）；悟性越高越易；灵力越浓本界越易进境
+    const BT_BASE = (typeof BREAKTHROUGH_BASE !== "undefined") ? BREAKTHROUGH_BASE : null;
+    const base = (BT_BASE && BT_BASE[nextRealm.level] != null) ? BT_BASE[nextRealm.level] : 0.5;
+    const compMod = (c.comprehension - 6) * 0.02;
+    const spiritMod = (((this.state.world && this.state.world.spirit) || 5) - 5) * 0.015;
+    const successRate = Math.max(0.05, Math.min(0.95, base + compMod + spiritMod));
     const success = Math.random() < successRate;
 
     if (success) {
@@ -773,6 +789,8 @@ const Game = {
       if (typeof this.state.world.realmCapLevel !== "number") this.state.world.realmCapLevel = (typeof REALMS !== "undefined" && REALMS.length) ? REALMS.length : 9;
       if (typeof this.state.world.spirit !== "number") this.state.world.spirit = 6;
       if (!this.state.character.form) this.state.character.form = "human";
+      if (!this.state.character.cultivationSystem) this.state.character.cultivationSystem = "灵根";
+      if (!this.state.world.cultivationSystemName) this.state.world.cultivationSystemName = this.state.character.cultivationSystem || "灵根";
       if (!this.state.meta.projectionId) this.state.meta.projectionId = ((this.state.world.gen && this.state.world.gen.id) || "p") + "-" + Date.now();
       // 旧档兼容：补全主线（中央冲突）与伏笔 ledger
       if (!this.state.meta) this.state.meta = { playTurn: 0, alive: true };
@@ -1602,7 +1620,7 @@ const UI = {
     const w = Game.state.world;
     document.getElementById("status-panel").innerHTML = `
       <div class="char-name">${c.name}</div>
-      <div class="char-root">${(c.genderName || (GENDERS.find(g => g.id === c.gender) || {}).name || "修士")} · ${c.root} · ${c.background}</div>
+      <div class="char-root">${(c.genderName || (GENDERS.find(g => g.id === c.gender) || {}).name || "修士")} · ${(c.cultivationSystem || "灵根")}·${c.root} · ${c.background}</div>
       <div class="stat-row"><span>境界</span><span class="stat-val">${c.realm}</span></div>
       <div class="progress-bar"><div class="progress-fill" style="width:${c.realmProgress}%"></div></div>
       <div class="stat-row"><span>灵力</span><span class="stat-val">${c.qi}/${c.maxQi}</span></div>

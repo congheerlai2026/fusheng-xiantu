@@ -17,6 +17,11 @@ const REALMS = [
   { name: "飞升期", level: 10,desc: "白日飞升，肉身化圣，超脱轮回",       maxQi: Infinity,breakthroughDiff: 1.0  },
 ];
 
+// ---- 突破基础成功率（随境界递减：新手易、老手难）----
+// 键 = 正在冲击的境界 level（2=炼气→筑基 … 10=大乘→飞升）
+// 设计原则：早期高、后期低，契合"难度随幕递增"。
+const BREAKTHROUGH_BASE = { 2: 0.85, 3: 0.75, 4: 0.62, 5: 0.50, 6: 0.40, 7: 0.32, 8: 0.25, 9: 0.15, 10: 0.06 };
+
 // ---- 五行灵根 ----
 const SPIRITUAL_ROOTS = [
   { name: "金灵根", element: "金", desc: "锋锐刚猛，善攻伐，剑修之根",       affinity: { 攻击: 1.3, 防御: 1.0, 修炼: 1.0 } },
@@ -27,6 +32,94 @@ const SPIRITUAL_ROOTS = [
   { name: "雷灵根", element: "雷", desc: "天威煌煌，至刚至速，万中无一",     affinity: { 攻击: 1.4, 防御: 0.9, 修炼: 1.1 }, rare: true },
   { name: "冰灵根", element: "冰", desc: "至寒至寂，善封印控场，杀伐暗藏",   affinity: { 攻击: 1.15,防御: 1.15,修炼: 1.0 }, rare: true },
   { name: "混沌灵根", element: "混沌", desc: "五行俱全，万法皆通，亿中无一", affinity: { 攻击: 1.2, 防御: 1.2, 修炼: 1.3 }, rare: true },
+];
+
+// ---- 诸天万界·修炼体系（每界独有之"方言"）----
+// 核心皆为"天地灵力"的契合；但不同世界以不同名相称其修行之基。
+// 灵根只是其中之一；血脉、命格、道种、元素亲和、灵枢等皆可为本界体系。
+// 每个体系自带一套"资质/特质"列表（traits），供角色生成时抽取。
+const CULTIVATION_SYSTEMS = [
+  {
+    id: "lingen",
+    name: "灵根",
+    desc: "以先天灵根引动天地灵气，五行及变异灵根为修行之基。",
+    traits: SPIRITUAL_ROOTS,
+  },
+  {
+    id: "xuema",
+    name: "血脉",
+    desc: "以血脉承袭先祖之力，觉醒血脉者天赋异禀，然血脉有纯净驳杂之分。",
+    traits: [
+      { name: "真龙血脉", element: "龙", desc: "承上古真龙之血，肉身强横，威压天生", affinity: { 攻击: 1.35, 防御: 1.2, 修炼: 1.0 }, rare: true },
+      { name: "凤凰血脉", element: "凰", desc: "浴火重生，神识与治愈之力卓绝", affinity: { 攻击: 1.1, 防御: 1.0, 修炼: 1.25 }, rare: true },
+      { name: "玄武血脉", element: "龟", desc: "负天之壳，防御与寿元冠绝", affinity: { 攻击: 0.9, 防御: 1.5, 修炼: 1.05 } },
+      { name: "朱雀血脉", element: "雀", desc: "焚天之炎，攻伐凌厉", affinity: { 攻击: 1.4, 防御: 0.9, 修炼: 1.0 }, rare: true },
+      { name: "白虎血脉", element: "虎", desc: "杀伐之主，战意磅礴", affinity: { 攻击: 1.45, 防御: 1.0, 修炼: 0.95 } },
+      { name: "麒麟血脉", element: "麟", desc: "祥瑞之兽，全才而均衡", affinity: { 攻击: 1.1, 防御: 1.1, 修炼: 1.2 }, rare: true },
+      { name: "凡血之躯", element: "凡", desc: "无显赫血脉，唯仗自身苦修", affinity: { 攻击: 1.0, 防御: 1.0, 修炼: 1.0 } },
+      { name: "混血杂裔", element: "混", desc: "数脉交杂，资质驳而不纯，变数亦大", affinity: { 攻击: 1.05, 防御: 1.05, 修炼: 1.05 } },
+    ],
+  },
+  {
+    id: "mingge",
+    name: "命格",
+    desc: "以先天命格定修行之途，星盘落处，命数迥异。",
+    traits: [
+      { name: "紫微命", element: "帝", desc: "紫微临命，领袖之格，气运昌隆", affinity: { 攻击: 1.05, 防御: 1.1, 修炼: 1.2 }, rare: true },
+      { name: "贪狼命", element: "桃花", desc: "贪狼入命，机智权变，桃花与机缘并随", affinity: { 攻击: 1.15, 防御: 0.95, 修炼: 1.15 } },
+      { name: "七杀命", element: "杀", desc: "七杀在命，杀伐决断，攻战无前", affinity: { 攻击: 1.4, 防御: 0.95, 修炼: 0.95 } },
+      { name: "破军命", element: "破", desc: "破军在命，破旧立新，敢为天下先", affinity: { 攻击: 1.2, 防御: 1.0, 修炼: 1.1 } },
+      { name: "天机命", element: "机", desc: "天机深藏，推演如神，悟性超群", affinity: { 攻击: 0.95, 防御: 1.05, 修炼: 1.35 }, rare: true },
+      { name: "孤辰命", element: "孤", desc: "孤辰照命，独立独行，少助亦少累", affinity: { 攻击: 1.1, 防御: 1.1, 修炼: 1.05 } },
+      { name: "福德命", element: "福", desc: "福德护身，逢凶化吉，安稳修行", affinity: { 攻击: 0.95, 防御: 1.15, 修炼: 1.1 } },
+      { name: "平凡命", element: "常", desc: "命格平平，全凭自身造化", affinity: { 攻击: 1.0, 防御: 1.0, 修炼: 1.0 } },
+    ],
+  },
+  {
+    id: "daozhong",
+    name: "道种",
+    desc: "以一道为种，种于心田，专精制胜，万法归一道途。",
+    traits: [
+      { name: "剑种", element: "剑", desc: "剑心种下，一剑光寒十九洲", affinity: { 攻击: 1.45, 防御: 0.9, 修炼: 1.05 } },
+      { name: "丹种", element: "丹", desc: "丹道为种，炼丹通神", affinity: { 攻击: 0.9, 防御: 1.05, 修炼: 1.3 } },
+      { name: "阵种", element: "阵", desc: "阵法为种，困敌于方寸", affinity: { 攻击: 1.0, 防御: 1.4, 修炼: 1.0 } },
+      { name: "符种", element: "符", desc: "符箓为种，万符听令", affinity: { 攻击: 1.2, 防御: 1.1, 修炼: 1.05 } },
+      { name: "器种", element: "器", desc: "器道为种，炼器成圣", affinity: { 攻击: 1.25, 防御: 1.15, 修炼: 1.0 } },
+      { name: "情种", element: "情", desc: "以情入道，至情至性", affinity: { 攻击: 0.95, 防御: 1.0, 修炼: 1.25 } },
+      { name: "杀种", element: "杀", desc: "杀伐证道，以战养战", affinity: { 攻击: 1.5, 防御: 0.85, 修炼: 0.95 } },
+      { name: "无名种", element: "无", desc: "道种未明，尚需自觅其途", affinity: { 攻击: 1.0, 防御: 1.0, 修炼: 1.0 } },
+    ],
+  },
+  {
+    id: "yuansu",
+    name: "元素亲和",
+    desc: "以对天地元素的先天亲和力修行，元素即是道。",
+    traits: [
+      { name: "炎之亲和", element: "炎", desc: "炽炎为引，焚尽诸邪", affinity: { 攻击: 1.4, 防御: 0.9, 修炼: 1.05 } },
+      { name: "霜之亲和", element: "霜", desc: "寒霜为引，封敌于瞬", affinity: { 攻击: 1.1, 防御: 1.2, 修炼: 1.05 } },
+      { name: "雷之亲和", element: "雷", desc: "雷霆为引，至速至刚", affinity: { 攻击: 1.45, 防御: 0.9, 修炼: 1.1 }, rare: true },
+      { name: "风之亲和", element: "风", desc: "长风为引，飘忽难测", affinity: { 攻击: 1.2, 防御: 1.0, 修炼: 1.1 } },
+      { name: "岩之亲和", element: "岩", desc: "厚土为引，坚不可摧", affinity: { 攻击: 0.95, 防御: 1.45, 修炼: 1.0 } },
+      { name: "光之亲和", element: "光", desc: "光明为引，普照涤秽", affinity: { 攻击: 1.1, 防御: 1.1, 修炼: 1.2 } },
+      { name: "暗之亲和", element: "暗", desc: "幽暗为引，诡谲莫测", affinity: { 攻击: 1.3, 防御: 1.0, 修炼: 1.05 } },
+      { name: "均衡亲和", element: "均", desc: "诸元素无偏，平稳前行", affinity: { 攻击: 1.0, 防御: 1.0, 修炼: 1.0 } },
+    ],
+  },
+  {
+    id: "lingshu",
+    name: "灵枢",
+    desc: "以灵枢共鸣天地机括，器与灵合，别开生面。",
+    traits: [
+      { name: "金枢", element: "金", desc: "灵枢属金，锋锐无匹", affinity: { 攻击: 1.35, 防御: 1.0, 修炼: 1.0 } },
+      { name: "木枢", element: "木", desc: "灵枢属木，生生不息", affinity: { 攻击: 0.9, 防御: 1.1, 修炼: 1.2 } },
+      { name: "水枢", element: "水", desc: "灵枢属水，至柔化刚", affinity: { 攻击: 1.0, 防御: 1.1, 修炼: 1.05 } },
+      { name: "火枢", element: "火", desc: "灵枢属火，熯天炽地", affinity: { 攻击: 1.35, 防御: 0.85, 修炼: 0.95 } },
+      { name: "土枢", element: "土", desc: "灵枢属土，厚重如山", affinity: { 攻击: 0.95, 防御: 1.3, 修炼: 1.05 } },
+      { name: "星枢", element: "星", desc: "灵枢应星，玄妙难测", affinity: { 攻击: 1.1, 防御: 1.1, 修炼: 1.2 }, rare: true },
+      { name: "虚枢", element: "虚", desc: "灵枢入虚，虚实相生", affinity: { 攻击: 1.15, 防御: 1.05, 修炼: 1.15 } },
+      { name: "浑枢", element: "浑", desc: "灵枢未分，浑然一体", affinity: { 攻击: 1.0, 防御: 1.0, 修炼: 1.0 } },
+    ],
+  },
 ];
 
 // ---- 功法神通 ----
@@ -199,5 +292,5 @@ const CRAFT_DAO = {
 
 // 导出
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { REALMS, SPIRITUAL_ROOTS, TECHNIQUES, PILLS, LOCATIONS, BACKGROUNDS, GENDERS, TIMES_OF_DAY, WEATHERS, LIFE_SKILLS, CRAFT_DAO };
+  module.exports = { REALMS, SPIRITUAL_ROOTS, CULTIVATION_SYSTEMS, BREAKTHROUGH_BASE, TECHNIQUES, PILLS, LOCATIONS, BACKGROUNDS, GENDERS, TIMES_OF_DAY, WEATHERS, LIFE_SKILLS, CRAFT_DAO };
 }
