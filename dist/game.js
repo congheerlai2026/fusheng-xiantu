@@ -67,13 +67,18 @@ const Game = {
       const arche = MAIN_PLOT_ARCHETYPES[Math.floor(Math.random() * MAIN_PLOT_ARCHETYPES.length)];
       const pick = (arr, fb) => (arr && arr.length) ? arr[Math.floor(Math.random() * arr.length)] : fb;
       const faction = pick(gen.factions, { name: "某个古老宗门" }).name;
+      // 锚定：{rumor} 优先取本界一条真·江湖秘闻（让"世界传闻"即"主线素材"，两条话本合流）；
+      // 若本界未生成秘闻，再退化成一句通用秘闻。
       const rumor = pick(gen.rumors, "一桩被岁月掩埋的秘闻");
       const npc = pick(gen.npcs, { name: "一位神秘前辈" }).name;
+      // {realm} 在主线文案里指的是"本界某处地域/地名"（如《XX秘典》），并非修炼境界；
+      // 故取一个真实生成的地域名，而非 realm0.name（炼气期之类会语义错乱）。
+      const regionName = pick(gen.regions, { name: "本界" }).name;
       const fill = (s) => String(s)
         .replace(/\{faction\}/g, faction)
         .replace(/\{rumor\}/g, rumor)
         .replace(/\{npc\}/g, npc)
-        .replace(/\{realm\}/g, realm0.name);
+        .replace(/\{realm\}/g, regionName);
       mainPlot = {
         archetype: arche.id,
         title: arche.title,
@@ -246,6 +251,94 @@ const Game = {
     };
   },
 
+  // ============ 仙途图谱（关卡脉络 · 境界即关卡） ============
+  // 把"关键路径 = 境界阶梯"与"可选分支 = 秘境/试炼/支线/周秘"整理成给玩家看的结构，
+  // 用于仙途图谱弹窗与大地图高亮。让玩家始终知道"我在哪、下一步去哪、有哪些支线可玩"。
+  getPathInfo() {
+    const c = (this.state && this.state.character);
+    const gen = (this.state && this.state.world && this.state.world.gen);
+    if (!c) return null;
+    const rlRaw = (typeof c.realmLevel === "number") ? c.realmLevel : 1;            // 1 基
+    const maxRl = (typeof REALMS !== "undefined") ? REALMS.length : 10;
+    const targetRl = Math.min(maxRl, rlRaw + 1);
+
+    // 关键路径 = 境界阶梯（炼气→…→飞升），标记 已过/当前/下一步
+    const ladder = (typeof REALMS !== "undefined" ? REALMS : []).map((r, i) => {
+      const lv = i + 1;
+      return {
+        level: lv,
+        name: r.name,
+        done: lv < rlRaw,
+        current: lv === rlRaw,
+        next: lv === rlRaw + 1,
+      };
+    });
+
+    const pacing = this.getPacing(this.state.meta ? this.state.meta.playTurn : 1);
+
+    // 可选分支节点（秘境/试炼/支线）——来自 worldgen 标记
+    const branches = [];
+    if (gen && gen.regions) {
+      gen.regions.forEach((r) => {
+        if (r.branch === "secret" || r.branch === "trial" || r.branch === "sidequest") {
+          branches.push({
+            name: r.name, type: r.type, branch: r.branch, danger: r.danger,
+            timed: r.timed || 0, desc: r.desc, macro: r.macro,
+          });
+        }
+      });
+    }
+    // 本周秘境：基于种子确定性生成（整周稳定，过期再候轮回）
+    let weekly = null;
+    if (gen && typeof WorldGen !== "undefined") {
+      try {
+        weekly = WorldGen.weeklySecretRealm(gen.seed);
+        branches.push({
+          name: weekly.name, type: "秘境", branch: "weekly", danger: weekly.danger,
+          timed: weekly.timed, desc: weekly.desc, macro: weekly.macro, weekLabel: weekly.weekLabel,
+        });
+      } catch (e) { /* 周秘生成失败不影响主流程 */ }
+    }
+
+    const nextRealmName = (targetRl <= maxRl) ? REALMS[targetRl - 1].name : null;
+    const stepsToNext = Math.max(0, targetRl - rlRaw);
+
+    return {
+      realmLevel: rlRaw,
+      realmName: c.realm,
+      nextRealmName,
+      stepsToNext,
+      actName: pacing.phaseName,
+      actKey: pacing.phase,
+      finale: pacing.finale,
+      ladder,
+      branches,
+      weeklyName: weekly ? weekly.name : null,
+    };
+  },
+
+  // ============ 新手前期记忆点脚本（前 30 程强留存） ============
+  // 按程数窗口注入轻量引导，制造早期强记忆点（初遇灵宠/初探秘境/初遇劲敌）。
+  // 每个记忆点只触发一次；不在窗口内则清除提示，避免重复。
+  _maybeInjectMemoryPoint() {
+    if (!this.state || !this.state.meta) return;
+    const turn = this.state.meta.playTurn; // 此值已在 processAction 中自增为本回合
+    const fired = this.state.meta.firedMemoryPoints || (this.state.meta.firedMemoryPoints = {});
+    const POINTS = [
+      { key: "first_pet", from: 5, to: 9, hint: "新手记忆点·初遇灵宠：本回合或近几回合内，须安排一次灵宠 / 灵兽的邂逅或缔结契机（羁绊初结），作为玩家早期最暖的记忆点——可遇于秘境、坊市，或危难相救之际。" },
+      { key: "first_secret", from: 11, to: 16, hint: "新手记忆点·初探秘境：须自然引导玩家踏入一处秘境 / 灵穴探幽，给予探索感与初期小机缘（勿过早给大道果，重在'发现'的惊喜）。" },
+      { key: "first_rival", from: 19, to: 25, hint: "新手记忆点·初遇劲敌：须引入一名与玩家棋逢对手、日后可成宿敌或挚友的 NPC，埋下长期羁绊钩子（留名、留悬念、留未了之争）。" },
+    ];
+    for (const p of POINTS) {
+      if (turn >= p.from && turn <= p.to && !fired[p.key]) {
+        fired[p.key] = true;
+        this.state.meta.memoryPointHint = p.hint;
+        return;
+      }
+    }
+    this.state.meta.memoryPointHint = null; // 不在窗口内，清除上回合提示
+  },
+
   // ============ 应用状态变更 ============
   applyChanges(changes) {
     const c = this.state.character;
@@ -317,9 +410,9 @@ const Game = {
     }
     if (ch.realm_level_change !== undefined && typeof ch.realm_level_change === "number" && ch.realm_level_change !== 0) {
       const oldLevel = c.realmLevel;
-      c.realmLevel = clamp(c.realmLevel + ch.realm_level_change, 0, REALMS.length - 1);
+      c.realmLevel = clamp(c.realmLevel + ch.realm_level_change, 1, REALMS.length);
       if (c.realmLevel !== oldLevel) {
-        c.realm = REALMS[c.realmLevel].name;
+        c.realm = REALMS[Math.max(0, c.realmLevel - 1)].name;
         c.realmProgress = 0;
         deltas.push(`境界变为 ${c.realm}`);
       }
@@ -706,7 +799,20 @@ const Game = {
     this.state.meta.playTurn++;
 
     try {
+      // 游客离线模式：跳过真实 API，走本地脚本化剧情，零摩擦试玩（不写存档/神魂册）
+      if (this._guestMode) {
+        const node = GuestMode_next(action);
+        const parsed = node;
+        const { flag: eventFlag, deltas } = this.applyChanges(parsed.state_changes || {});
+        if (!isOpening) this.log.push({ role: "user", text: action });
+        this.log.push({ role: "assistant", text: parsed.narrative, options: parsed.options, optionRisks: parsed.optionRisks || [], flag: eventFlag, deltas });
+        this.advanceTime();
+        return { parsed, eventFlag, deltas };
+      }
+
       let fullText = "";
+      // 新手记忆点脚本：按程数窗口注入轻量引导（仅在对应回合触发一次）
+      this._maybeInjectMemoryPoint();
       const result = await AIService.stream(
         this.history,
         this.state,
@@ -748,7 +854,7 @@ const Game = {
       if (!isOpening) {
         this.log.push({ role: "user", text: action });
       }
-      this.log.push({ role: "assistant", text: parsed.narrative, options: parsed.options, flag: eventFlag, deltas });
+      this.log.push({ role: "assistant", text: parsed.narrative, options: parsed.options, optionRisks: parsed.optionRisks || [], flag: eventFlag, deltas });
 
       this.advanceTime();
       this.save();
@@ -820,11 +926,11 @@ const Game = {
       if (!this.state.character.form) this.state.character.form = "human";
       if (!this.state.character.cultivationSystem) this.state.character.cultivationSystem = "灵根";
       if (!this.state.world.cultivationSystemName) this.state.world.cultivationSystemName = this.state.character.cultivationSystem || "灵根";
+      if (!this.state.meta) this.state.meta = { playTurn: 0, alive: true };
       if (!this.state.meta.projectionId) this.state.meta.projectionId = ((this.state.world.gen && this.state.world.gen.id) || "p") + "-" + Date.now();
       if (this.state.character.causeCredit == null) this.state.character.causeCredit = 0;
       if (this.state.character.causeDebt == null) this.state.character.causeDebt = 0;
       // 旧档兼容：补全主线（中央冲突）与伏笔 ledger
-      if (!this.state.meta) this.state.meta = { playTurn: 0, alive: true };
       if (this.state.meta.mainPlot === undefined) this.state.meta.mainPlot = null;
       if (!this.state.meta.threads) this.state.meta.threads = [];
       // 旧档兼容：给已有 NPC 补 met 标记。预填且好感仍为 0 的视为"未谋面"隐藏；真正结识过（好感被改动过）的保留
@@ -871,6 +977,19 @@ const Game = {
       createdAt: s.meta.createdAt || Date.now(),
       endedAt: null,
       updatedAt: Date.now(),
+      // 跨投影里程碑成就（神魂册勋章，纯荣誉、不卖无敌）
+      achievements: (() => {
+        const RL = (typeof REALMS !== "undefined") ? REALMS.length : 10;
+        const L = s.character.realmLevel || 1;
+        const T = s.meta.playTurn || 0;
+        const C = s.character.causeCredit || 0;
+        const a = [];
+        if (L >= 2) a.push("仙途初成");
+        if (T >= 100) a.push("百程不辍");
+        if (C >= 1000) a.push("千因积善");
+        if (L >= RL) a.push("白日飞升");
+        return a;
+      })(),
     };
     const idx = reg.findIndex((e) => e.projectionId === entry.projectionId);
     if (idx >= 0) reg[idx] = entry; else reg.push(entry);
@@ -884,10 +1003,14 @@ const Game = {
     try { localStorage.setItem(this._soulKey, JSON.stringify(reg)); } catch (err) {}
   },
   // 开启一道新投影（神魂再投诸天万界）
+  // opts.reincarnation：{ oldWorld, realmReached, cause, inheritCredit } —— 由 destroyWorld 传入，供首回合"重生叙事"使用
   newProjection(opts) {
     opts = opts || {};
     opts.projectionId = opts.projectionId || (Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36));
     this.createCharacter(opts);
+    if (opts.reincarnation) this.state.meta.reincarnation = opts.reincarnation;
+    this._guestMode = !!opts.guest;
+    this._guestStep = 0;
     return this.state;
   },
   // 世界被神魔大战波及而湮灭：旧界归入神魂册·已陨落，重投新界
@@ -900,7 +1023,15 @@ const Game = {
     const credit = (s.character && s.character.causeCredit) || 0;
     const inheritCredit = Math.floor(credit * 0.3);
     this._archiveFallen(pid, cause, realmReached);
-    this.newProjection({ inheritCredit: inheritCredit });
+    this.newProjection({
+      inheritCredit: inheritCredit,
+      reincarnation: {
+        oldWorld: oldName,
+        realmReached: realmReached,
+        cause: cause,
+        inheritCredit: inheritCredit,
+      },
+    });
     this._worldDestroyedCause = cause;
     this._worldDestroyedOldName = oldName;
     this._inheritedCredit = inheritCredit;
@@ -1290,6 +1421,46 @@ const REALM_SCENE = {
 };
 
 // ============================================================
+//  游客离线试玩（无需 API Key）：本地脚本化剧情，让新玩家零摩擦感受玩法循环
+//  仅作体验入口，不写存档、不参与神魂册/排行；进入游戏后顶部有"配置Key解锁完整AI"提示
+// ============================================================
+const GUEST_SCRIPT = [
+  {
+    narrative: "你自一阵清梦中转醒。窗外是青峦叠嶂，山门「玄霄宗」三字被晨雾洇得半湿。你记得自己应是来此求道的散修，随身唯有半卷残破功诀。廊下扫地的老者瞥你一眼，未言，只把扫帚往偏殿一指——那里飘出淡淡药香。",
+    options: ["前往偏殿，看看那药香从何而来 [平安]", "向扫地老者拱手行礼，打听宗门规矩 [平安]", "先在山门广场打坐，稳固初入此界的气息 [平安]", "翻看怀中残卷，试着记诵其中口诀 [平安]"],
+    state_changes: {},
+  },
+  {
+    narrative: "偏殿内，一名青衣弟子正守着丹炉。炉中赤焰温吞，一缕青烟笔直升起，竟在半空凝成个小小丹丸虚影。他见你进来，挑眉道：「师弟也是来蹭丹火的？这炉『培元丹』还需半刻，你若愿替我看火，便分你一粒。」",
+    options: ["爽快答应替他看火，结识这位青衣弟子 [平安]", "好奇问他这丹丸有何用处 [平安]", "婉拒，转而问宗门后山可有灵脉可采 [平安]", "不动声色，记下丹炉火候的诀窍 [平安]"],
+    state_changes: { items_gained: [{ name: "培元丹", kind: "丹药", desc: "温养灵气的下品丹丸", grade: "下品" }], npc_affinity_change: { "青衣弟子·陆昭": 8 } },
+  },
+  {
+    narrative: "半个时辰后丹成。陆昭抛来一粒温润丹丸，你自己也趁热打坐运转功诀，竟觉丹田一暖，灵力隐隐增长。殿外忽传来钟鸣——竟是宗门开放「试炼林」猎妖，胜者可入藏经阁择一门真传。陆昭眨眼：「想去？我替你报名。」",
+    options: ["随陆昭去试炼林，猎妖夺真传 [凶险]", "先服下培元丹，巩固修为再前往 [平安]", "打听试炼林里都有些什么妖兽 [平安]", "向陆昭讨教一门入门身法再上路 [平安]"],
+    state_changes: { realm_progress: 12, qi: 20, items_lost: ["培元丹"] },
+  },
+  {
+    narrative: "试炼林外雾气森森。你刚踏进林口，草丛便一阵窸窣——一头赤鳞小蟒昂首吐信，独目泛着幽光。它并不急着扑来，只是缓缓游近，似在掂量你的斤两。林间风过，吹落几片红叶，正落在你剑前。",
+    options: ["拔剑示警，先发制人 [凶险]", "以灵力探查这蟒的修为深浅 [平安]", "且退半步，观察它的行动规律 [平安]", "抛出一枚培元丹为饵，引它分神 [平安]"],
+    state_changes: { combat_encounter: true },
+  },
+  {
+    narrative: "一番缠斗，你借红叶蔽眼、剑走偏锋，终将赤鳞小蟒逼退入草。虽未取其性命，却摸清了荒野妖兽的凶悍与机变。陆昭在不远处抚掌而笑：「有点意思。藏经阁的真传，你够格去挑了。」远处山巅，云海翻涌，隐约有仙宫轮廓。",
+    options: ["随陆昭直奔藏经阁，择取真传功法 [平安]", "先就地调息，恢复方才激斗的消耗 [平安]", "回望试炼林，记下这头蟒的出没之地 [平安]", "向陆昭打听山巅那座仙宫的来历 [平安]"],
+    state_changes: { realm_progress: 18, cause_credit_change: 6, npc_affinity_change: { "青衣弟子·陆昭": 10 } },
+  },
+];
+function GuestMode_isActive() { return !!(Game && Game._guestMode); }
+function GuestMode_next(action) {
+  const idx = (Game._guestStep || 0);
+  const node = GUEST_SCRIPT[Math.min(idx, GUEST_SCRIPT.length - 1)];
+  Game._guestStep = idx + 1;
+  // 末节点循环回最后一段，避免"无内容可玩"
+  return JSON.parse(JSON.stringify(node));
+}
+
+// ============================================================
 //  UI 渲染层
 // ============================================================
 const UI = {
@@ -1301,6 +1472,7 @@ const UI = {
     document.querySelectorAll(".screen").forEach(el => el.classList.remove("active"));
     document.getElementById("screen-" + screen).classList.add("active");
 
+    if (screen !== "game") this.hideGuestBanner();
     if (screen === "menu") this.renderMenu();
     if (screen === "create") this.renderCreate();
     if (screen === "game") this.renderGame();
@@ -1340,6 +1512,58 @@ const UI = {
       return "#b06bd6";               // 仙迹
     };
 
+    // —— 确定性地形（山川河流）：同一世界每次渲染一致，不抖动 ——
+    const mulberry32 = (a) => { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; };
+    const hashStr = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+    const seedNum = (typeof gen.seed === "number" ? gen.seed : hashStr(String(gen.seed || "xianxia"))) >>> 0;
+    const rng = mulberry32(seedNum);
+    const mountainLayer = (baseY, amp, step) => {
+      let d = `M 0 ${baseY}`, x = 0;
+      while (x < W) {
+        const peak = baseY - amp * (0.45 + rng() * 0.55);
+        const nx = x + step * (0.7 + rng() * 0.7);
+        const midx = ((x + nx) / 2).toFixed(1);
+        d += ` L ${nx.toFixed(1)} ${baseY} L ${midx} ${peak.toFixed(1)}`;
+        x = nx;
+      }
+      return d + ` L ${W} ${baseY} L ${W} ${H} L 0 ${H} Z`;
+    };
+    const riverPath = (yBase, amp) => {
+      let d = `M -20 ${yBase.toFixed(1)}`, x = -20, y = yBase;
+      while (x < W + 20) {
+        const nx = x + 80 + rng() * 70;
+        const ny = yBase + Math.sin((x + seedNum) * 0.012) * amp + (rng() - 0.5) * 26;
+        const cx = ((x + nx) / 2).toFixed(1), cy = ((y + ny) / 2 + (rng() - 0.5) * 20).toFixed(1);
+        d += ` Q ${cx} ${cy} ${nx.toFixed(1)} ${ny.toFixed(1)}`;
+        x = nx; y = ny;
+      }
+      return d;
+    };
+    const mtnBack = mountainLayer(300, 120, 130);
+    const mtnFront = mountainLayer(440, 150, 160);
+    const river1 = riverPath(370 + rng() * 50, 46);
+    const river2 = rng() > 0.45 ? riverPath(520 + rng() * 70, 54) : "";
+    const seaBlob = `M 40 ${H - 24} Q 30 ${H - 150} 190 ${H - 160} Q 340 ${H - 170} 320 ${H - 50} Q 300 ${H - 22} 40 ${H - 24} Z`;
+    let forest = "";
+    const treeN = 16 + Math.floor(rng() * 12);
+    for (let i = 0; i < treeN; i++) {
+      const tx = 50 + rng() * (W - 100), ty = 400 + rng() * (H - 440);
+      forest += `<g class="terr-tree" transform="translate(${tx.toFixed(0)} ${ty.toFixed(0)})">`
+        + `<path class="terr-tree-1" d="M0 0 L-7 15 L7 15 Z"/>`
+        + `<path class="terr-tree-2" d="M0 -9 L-5 4 L5 4 Z"/>`
+        + `<rect class="terr-tree-trunk" x="-1.5" y="15" width="3" height="6"/></g>`;
+    }
+    let clouds = "";
+    const cloudN = 3;
+    for (let i = 0; i < cloudN; i++) {
+      const cy = 40 + rng() * 170, rx = 42 + rng() * 26, rx2 = 26 + rng() * 18;
+      const dur = 42 + rng() * 40, delay = -rng() * dur;
+      clouds += `<g class="terr-cloud" style="--dur:${dur.toFixed(0)}s;--delay:${delay.toFixed(0)}s">`
+        + `<ellipse cx="0" cy="${cy.toFixed(0)}" rx="${rx.toFixed(0)}" ry="${(rx * 0.38).toFixed(0)}"/>`
+        + `<ellipse cx="${(rx * 0.7).toFixed(0)}" cy="${(cy + 9).toFixed(0)}" rx="${rx2.toFixed(0)}" ry="${(rx2 * 0.38).toFixed(0)}"/>`
+        + `<ellipse cx="${(-rx * 0.6).toFixed(0)}" cy="${(cy + 7).toFixed(0)}" rx="${(rx2 * 0.8).toFixed(0)}" ry="${(rx2 * 0.38).toFixed(0)}"/></g>`;
+    }
+
     // 1) 宏观疆域底框（按地域包围盒计算）
     const box = {};
     gen.regions.forEach(r => {
@@ -1373,7 +1597,9 @@ const UI = {
     }
     let linkSvg = "";
     links.forEach(([a, b]) => {
-      linkSvg += `<line class="map-link" x1="${pts[a].x}" y1="${pts[a].y}" x2="${pts[b].x}" y2="${pts[b].y}"></line>`;
+      const mx = ((pts[a].x + pts[b].x) / 2 + (pts[a].y - pts[b].y) * 0.12).toFixed(1);
+      const my = ((pts[a].y + pts[b].y) / 2 + (pts[b].x - pts[a].x) * 0.12).toFixed(1);
+      linkSvg += `<path class="map-link" d="M ${pts[a].x} ${pts[a].y} Q ${mx} ${my} ${pts[b].x} ${pts[b].y}"></path>`;
     });
 
     // 3) 地域节点
@@ -1381,17 +1607,43 @@ const UI = {
     pts.forEach((r, i) => {
       const isCur = r.name === cur;
       const rad = 10 + Math.min(6, r.danger);
-      nodes += `<g class="map-node ${isCur ? "map-current" : ""}" data-i="${i}" onclick="UI.showRegionDetail(${i})">`
+      // 关卡设计：可选分支节点（秘境/试炼/支线）加高亮类，让玩家一眼看到"可玩支线"
+      const isBranch = (r.branch === "secret" || r.branch === "trial" || r.branch === "sidequest");
+      const branchCls = isBranch ? ("map-branch map-branch-" + r.branch) : "";
+      nodes += `<g class="map-node ${isCur ? "map-current" : ""} ${branchCls}" data-i="${i}" data-branch="${r.branch || ""}" onclick="UI.showRegionDetail(${i})">`
         + `<circle class="node-core" cx="${r.x}" cy="${r.y}" r="${rad}" fill="${dangerColor(r.danger)}" stroke="#000" stroke-width="1.5"></circle>`
         + `<text x="${r.x}" y="${r.y + 5}" text-anchor="middle" font-size="13" fill="#0b0d14" style="pointer-events:none;font-weight:bold">${r.name[0]}</text>`
         + `<text class="node-label" x="${r.x}" y="${r.y + rad + 16}" text-anchor="middle">${r.name}</text>`
         + `</g>`;
     });
+    // 本周秘境节点（确定性生成，整周稳定，金色高亮，作"回访理由"）
+    if (typeof WorldGen !== "undefined") {
+      try {
+        const wk = WorldGen.weeklySecretRealm(gen.seed);
+        nodes += `<g class="map-node map-weekly" data-weekly="1" onclick="UI.showWeeklyDetail()">`
+          + `<circle class="node-core" cx="${wk.x}" cy="${wk.y}" r="13" fill="#ffd24a" stroke="#7a4b00" stroke-width="2"></circle>`
+          + `<text x="${wk.x}" y="${wk.y + 5}" text-anchor="middle" font-size="13" fill="#3a2400" style="pointer-events:none;font-weight:bold">秘</text>`
+          + `<text class="node-label" x="${wk.x}" y="${wk.y + 29}" text-anchor="middle">${wk.name}</text>`
+          + `</g>`;
+      } catch (e) { /* 周秘生成失败不影响主图 */ }
+    }
     // 当前位置脉冲环
     const curR = pts.find(r => r.name === cur);
     const ring = curR ? `<circle class="map-current-ring" cx="${curR.x}" cy="${curR.y}" r="18"></circle>` : "";
 
-    canvas.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">${zones}${linkSvg}${nodes}${ring}</svg>`;
+    canvas.innerHTML = `<svg class="world-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">`
+      + `<defs><linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1"><stop class="sky-top" offset="0"/><stop class="sky-bot" offset="1"/></linearGradient>`
+      + `<linearGradient id="riverGrad" x1="0" y1="0" x2="1" y2="0"><stop class="river-a" offset="0"/><stop class="river-b" offset="1"/></linearGradient></defs>`
+      + `<rect class="terr-sky" x="0" y="0" width="${W}" height="${H}"/>`
+      + `<path class="terr-sea" d="${seaBlob}"/>`
+      + `<path class="terr-mtn terr-mtn-back" d="${mtnBack}"/>`
+      + `<path class="terr-mtn terr-mtn-front" d="${mtnFront}"/>`
+      + `<path class="terr-river" d="${river1}"/>` + (river2 ? `<path class="terr-river" d="${river2}"/>` : "")
+      + `<path class="terr-river-flow" d="${river1}"/>` + (river2 ? `<path class="terr-river-flow" d="${river2}"/>` : "")
+      + `<g class="terr-forest">${forest}</g>`
+      + `<g class="terr-clouds">${clouds}</g>`
+      + zones + linkSvg + nodes + ring
+      + `</svg>`;
   },
 
   // 展示大地图；intro=true 时为开局预览（显示「踏入仙途」）
@@ -1555,6 +1807,33 @@ const UI = {
     this.showWorldMap(true);
   },
 
+  // 游客离线试玩：无需任何 API Key，零摩擦感受玩法循环
+  startGuestPlay() {
+    Game.newProjection({ guest: true, name: "试剑客", rootIndex: 0, bgIndex: 0, genderIndex: 0, seed: "guest-demo", narrationMode: "standard" });
+    this.show("game");
+    this.renderGame();
+    this.showGuestBanner();
+    this.startGame(); // 复用开局发送逻辑；processAction 在游客模式下走本地脚本
+  },
+
+  // 游客模式顶部提示条：配置 Key 即可解锁完整 AI 演绎
+  showGuestBanner() {
+    let banner = document.getElementById("guest-banner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "guest-banner";
+      banner.className = "guest-banner";
+      const stage = document.querySelector(".vn-stage");
+      if (stage) stage.insertBefore(banner, stage.firstChild);
+    }
+    banner.innerHTML = `🎭 游客试玩中（本地脚本剧情）· <a href="javascript:void(0)" onclick="UI.show('settings')">配置 API Key</a> 即解锁 AI 实时演绎的完整仙途`;
+    banner.style.display = "";
+  },
+  hideGuestBanner() {
+    const banner = document.getElementById("guest-banner");
+    if (banner) banner.style.display = "none";
+  },
+
   openWish() {
     const modal = document.getElementById("wish-modal");
     if (modal) modal.style.display = "flex";
@@ -1606,12 +1885,16 @@ const UI = {
         : `<span class="soul-tag soul-tag-active">轮回中 · 第 ${e.turn || 0} 程</span>`;
       const wishLine = e.wish ? `<div class="soul-wish">许愿：${this.escapeHtml(e.wish)}</div>` : "";
       const causeLine = fallen && e.cause ? `<div class="soul-cause">${this.escapeHtml(e.cause)}</div>` : "";
+      const achLine = (e.achievements && e.achievements.length)
+        ? `<div class="soul-ach">${e.achievements.map(a => `<span class="soul-ach-chip">${this.escapeHtml(a)}</span>`).join("")}</div>`
+        : "";
       return `<div class="soul-card ${fallen ? "soul-card-fallen" : "soul-card-active"}">
         <div class="soul-world">${this.escapeHtml(e.worldName || "未知界")}</div>
         <div class="soul-meta">灵力 ${e.spirit != null ? e.spirit : "?"} · 上限 ${e.realmCapLevel != null ? e.realmCapLevel : "?"} 境 · ${this.escapeHtml(e.form || "人")}·${this.escapeHtml(e.genderName || "")} · 因果力 ${e.causeCredit || 0}</div>
         ${wishLine}
         ${tag}
         ${causeLine}
+        ${achLine}
       </div>`;
     }).join("");
     body.innerHTML = cards;
@@ -1744,6 +2027,35 @@ const UI = {
     }
     // 确保滚动到底部（刚从 display:none 切换过来时需要等布局完成）
     this.scrollToBottom();
+    this.initMobileKeyboardHandler();
+  },
+
+  // 移动端：输入法键盘弹起时，把吸底对话框抬到键盘上方，避免输入框被顶飞/遮挡
+  initMobileKeyboardHandler() {
+    if (this._mobileKbBound) return;
+    this._mobileKbBound = true;
+    const input = document.getElementById("action-input");
+    if (!input) return;
+    const dialogue = document.getElementById("vn-dialogue");
+    const applyKb = () => {
+      if (!window.visualViewport || !dialogue) return;
+      const kbTop = window.visualViewport.height; // 视口高度（已排除键盘）
+      const winH = window.innerHeight;
+      const overlap = Math.max(0, winH - kbTop); // 键盘占用的高度
+      dialogue.style.bottom = overlap > 0 ? overlap + "px" : "0px";
+    };
+    input.addEventListener("focus", () => {
+      // 延迟到键盘动画完成后再抬升
+      setTimeout(applyKb, 300);
+      if (window.visualViewport) window.visualViewport.addEventListener("resize", applyKb);
+    });
+    input.addEventListener("blur", () => {
+      if (dialogue) dialogue.style.bottom = "0px";
+      if (window.visualViewport) window.visualViewport.removeEventListener("resize", applyKb);
+    });
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", () => {
+      if (document.activeElement === input) applyKb();
+    });
   },
 
   // 滚动剧情区到底部（延迟到下一帧，确保布局已完成）
@@ -1829,6 +2141,7 @@ const UI = {
     this.updateRealmScene();
     this.updateHeroSprite();
     this.updateActorSprite();
+    this.updateActBanner();
   },
 
   // 境界场景：依当前境界生成像素风 SVG 场景（10 套配色）
@@ -2001,24 +2314,42 @@ const UI = {
 
   // ============ 角色立绘 & 战斗动画 ============
   // 更新左侧主角立绘（按性别切换）
+  // 修炼体系 → 立绘配色 class（让不同体系的修士一眼不同）
+  _systemClass() {
+    const s = (Game.state && Game.state.world && Game.state.world.cultivationSystem) || "";
+    const map = { lingen: "sys-lingen", xuema: "sys-xuema", mingge: "sys-mingge", daozhong: "sys-daozhong", yuansu: "sys-yuansu", lingshu: "sys-lingshu", rudao: "sys-rudao", wudao: "sys-wudao" };
+    return map[s] || "sys-default";
+  },
+
+  // 体系专属角色立绘：程序化 SVG 剪影 + 体系配色 + 体系标记字
+  _heroEmblemHtml() {
+    const c = Game.state && Game.state.character;
+    if (!c) return "";
+    const sys = (Game.state.world && Game.state.world.cultivationSystemName) || "灵根";
+    const glyph = (sys || "灵").slice(0, 1);
+    const sysCls = this._systemClass();
+    const name = this.escapeHtml(c.name);
+    return `<div class="hero-emblem ${sysCls}" title="${name}">
+      <div class="he-aura"></div>
+      <div class="he-body"><div class="he-head"></div><div class="he-glyph">${this.escapeHtml(glyph)}</div></div>
+      <div class="he-base"></div>
+    </div>`;
+  },
+
   updateHeroSprite() {
     if (typeof document === "undefined") return;
     const el = document.getElementById("hero-sprite");
     if (!el || !Game.state || !Game.state.character) return;
-    const gender = Game.state.character.gender;
-    const img = gender === 1 ? "assets/hero_f.webp" : "assets/hero_m.webp";
-    const name = this.escapeHtml(Game.state.character.name);
-    el.innerHTML = `<img src="${img}" alt="${name}" class="hero-img" onerror="this.style.display='none'">`;
+    el.innerHTML = this._heroEmblemHtml();
   },
 
-  // 场景中立绘层：主角（依性别）+ 同框 NPC（依 AI 的 npc 标记）
+  // 场景中立绘层：主角（依体系配色）+ 同框 NPC（依 AI 的 npc 标记）
   updateActorSprite() {
     if (typeof document === "undefined") return;
     const el = document.getElementById("vn-actors");
     if (!el || !Game.state || !Game.state.character) return;
-    const gender = Game.state.character.gender;
-    const heroImg = gender === 1 ? "assets/hero_f.webp" : "assets/hero_m.webp";
-    let html = `<img src="${heroImg}" alt="主角" class="vn-actor hero" onerror="this.style.display='none'">`;
+    const sysCls = this._systemClass();
+    let html = `<div class="vn-actor hero ${sysCls}">${this._heroEmblemHtml()}</div>`;
     if (this.currentNpc) {
       const npcImg = this.npcImageFor(this.currentNpc);
       if (npcImg) html += `<img src="${npcImg}" alt="同框" class="vn-actor npc" onerror="this.style.display='none'">`;
@@ -2553,7 +2884,10 @@ const UI = {
   },
   // 初始化 VN 折叠状态（读档后调用）
   initVnStage() {
-    this._vnCollapsed = localStorage.getItem("xianxia_vn_collapsed_v2") === "1"; // 默认展开（gal game 形态）；旧键作废，避免陈旧折叠状态残留
+    const saved = localStorage.getItem("xianxia_vn_collapsed_v2");
+    const isMobile = window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
+    // 桌面端默认展开（gal game 形态）；移动端默认收起，把屏幕让给剧情
+    this._vnCollapsed = saved ? saved === "1" : isMobile;
     const stage = document.querySelector(".vn-stage");
     if (stage) stage.classList.toggle("vn-collapsed", this._vnCollapsed);
     // 更新场景名显示
@@ -2694,7 +3028,7 @@ const UI = {
     storyEl.scrollTop = storyEl.scrollHeight;
 
     // 渲染选项
-    this.renderOptionsFromList(parsed.options, eventFlag);
+    this.renderOptionsFromList(parsed.options, eventFlag, parsed.optionRisks);
 
     // 场景与立绘切换：AI 指定的场景优先；npc 字段存在即更新同框立绘
     if (parsed && parsed.scene && SCENE_LIB[parsed.scene]) this.setScene(parsed.scene);
@@ -2706,6 +3040,11 @@ const UI = {
     this.renderMobileDrawer();
     // 体验节奏：阶段里程碑横幅
     this.showMilestone(Game.getPacing(Game.state.meta.playTurn));
+
+    // 突破成功 → 自动展开仙途图谱，让玩家看到"跃迁 + 下一关目标"（关卡留人）
+    if (eventFlag === "breakthrough_success") {
+      this.showPathMap();
+    }
 
     // 角色陨落，自动展开仙途终章
     if (eventFlag === 'death') {
@@ -2740,14 +3079,23 @@ const UI = {
     try {
       const { parsed, eventFlag, deltas } = await Game.processAction(opening, true);
       this.displayResult(parsed, eventFlag, deltas);
+      this._maybeFirstGoalToast();
     } catch (e) {
       this.showError(e.message);
     }
   },
 
+  // 首次开局后给一条轻量目标提示（新手目标感），避免开局迷茫
+  _maybeFirstGoalToast() {
+    if (Game._guestMode) { this.flashToast("游客试玩：看看右侧状态与下方选项，试着走几步"); return; }
+    if (localStorage.getItem("fs_goal_toast_seen")) return;
+    localStorage.setItem("fs_goal_toast_seen", "1");
+    setTimeout(() => this.flashToast("目标：从炼气一路突破至飞升 · 点「🧭 仙途图谱」随时看进度，点「🗺 大地图」去探索"), 600);
+  },
+
   // ============ 发送行动 ============
   async sendAction(action) {
-    if (!this.checkConfig()) return;
+    if (!Game._guestMode && !this.checkConfig()) return;
     if (!Game.state.meta.alive) return;
     if (!action.trim()) return;
 
@@ -3000,15 +3348,57 @@ const UI = {
     return true;
   },
 
+  // 把底层报错翻译成玩家能懂的中文，并给出可操作指引
+  _translateApiError(msg) {
+    if (!msg) return { text: "发生未知错误，请重试。", tip: "" };
+    if (/401/.test(msg)) return { text: "API Key 无效或未授权（401）。", tip: "请到「设置 / API配置」检查 Key 是否填写正确、是否已过期。" };
+    if (/403/.test(msg)) return { text: "该账号无权访问此模型（403）。", tip: "请更换模型（如 deepseek-v4-flash）或确认账号额度。" };
+    if (/429/.test(msg)) return { text: "请求过于频繁，已被限流（429）。", tip: "已自动重试；若仍失败，请稍候片刻再试。" };
+    if (/400/.test(msg)) return { text: "请求参数有误（400）。", tip: "请到设置页确认 Base URL 与模型名称是否匹配你的服务商。" };
+    if (/(网络|超时|超时（|fetch|NetworkError|load failed|timeout)/i.test(msg)) return { text: msg, tip: "请检查网络连接，或确认所使用的 API 服务当前可用。" };
+    if (/5\d\d/.test(msg)) return { text: "AI 服务暂时不稳定（服务器错误）。", tip: "已自动重试；若仍失败，请稍后再试。" };
+    return { text: msg, tip: "请检查设置中的 API 配置后重试。" };
+  },
+
   showError(msg) {
     document.getElementById("loading-indicator").style.display = "none";
     document.getElementById("action-input-area").style.display = "";
     // 移除残留的流式块
     const live = document.getElementById("live-story");
     if (live) live.remove();
+    const t = this._translateApiError(msg);
+    const canRetry = !UI._guestMode && !!Game.lastSnapshot && !!Game.lastSnapshot.action;
+    const retryBtn = canRetry ? `<button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="UI.retryLastAction()">↻ 重试此回合</button>` : "";
     const storyEl = document.getElementById("story-text");
-    storyEl.innerHTML += `<div class="error-msg">⚠ ${this.escapeHtml(msg)}<br><br>请检查设置中的 API 配置。</div>`;
+    storyEl.innerHTML += `<div class="error-msg">⚠ ${this.escapeHtml(t.text)}<br><span style="color:var(--text-dim);font-size:13px">${this.escapeHtml(t.tip)}</span><br>${retryBtn}</div>`;
     storyEl.scrollTop = storyEl.scrollHeight;
+  },
+
+  // 重试上一回合（内容卡住/报错时：恢复快照后重新发送）
+  async retryLastAction() {
+    if (!Game.lastSnapshot) { this.showToast("暂无可用回合可重试"); return; }
+    Game.isProcessing = false;
+    Game.state = JSON.parse(JSON.stringify(Game.lastSnapshot.state));
+    Game.history = JSON.parse(JSON.stringify(Game.lastSnapshot.history));
+    Game.log = JSON.parse(JSON.stringify(Game.lastSnapshot.log));
+    Game.save();
+    this.renderHistory();
+    const action = Game.lastSnapshot.action;
+    const isOpening = Game.lastSnapshot.isOpening;
+    if (!isOpening) {
+      const storyEl = document.getElementById("story-text");
+      storyEl.innerHTML += `<div class="user-action">▸ ${this.escapeHtml(action)}</div>`;
+      storyEl.scrollTop = storyEl.scrollHeight;
+    }
+    document.getElementById("loading-indicator").style.display = "block";
+    document.getElementById("action-options").innerHTML = "";
+    document.getElementById("action-input-area").style.display = "none";
+    try {
+      const { parsed, eventFlag, deltas } = await Game.processAction(action, isOpening);
+      this.displayResult(parsed, eventFlag, deltas);
+    } catch (e) {
+      this.showError(e.message);
+    }
   },
 
   // ============ 上香祈愿 / 虚拟香火（不收钱） ============
@@ -3094,6 +3484,71 @@ const UI = {
       el.className = "milestone-banner";
       el.innerHTML = "";
     }
+  },
+
+  // ============ 仙途图谱（关卡脉络弹窗） ============
+  showPathMap() {
+    const info = Game.getPathInfo();
+    const el = document.getElementById("pathmap-body");
+    if (!el || !info) return;
+
+    const ladderHtml = info.ladder.map((s) => {
+      const cls = s.current ? "pl-node pl-current" : (s.done ? "pl-node pl-done" : "pl-node pl-locked");
+      const mark = s.current ? "◉ " : (s.done ? "✔ " : "○ ");
+      return `<div class="${cls}">${mark}${this.escapeHtml(s.name)}</div>`;
+    }).join('<div class="pl-arrow">→</div>');
+
+    const branchTag = { secret: "秘境", trial: "试炼", sidequest: "支线", weekly: "周秘" };
+    const branchesHtml = info.branches.length
+      ? info.branches.map((b) => {
+          const tag = branchTag[b.branch] || b.type;
+          const timed = b.timed ? `<span class="pl-timed">限时 ${b.timed} 程</span>` : "";
+          return `<div class="pl-branch ${b.branch === "weekly" ? "pl-branch-weekly" : ""}">
+            <b>${this.escapeHtml(b.name)}</b> · ${tag} ${timed}
+            <div class="pl-branch-desc">${this.escapeHtml(b.desc || "")}</div>
+          </div>`;
+        }).join("")
+      : '<div class="pl-empty">此界暂无支线历练节点。</div>';
+
+    el.innerHTML = `
+      <div class="pl-act">本幕 · ${this.escapeHtml(info.actName)}${info.finale ? "（终卷·飞升）" : ""}</div>
+      <div class="pl-goal">当前 ${this.escapeHtml(info.realmName)} → 目标 ${info.nextRealmName ? this.escapeHtml(info.nextRealmName) : "飞升功成"}（还需突破 ${info.stepsToNext} 次）</div>
+      <div class="pl-section-title">境界阶梯 · 主线（关键路径）</div>
+      <div class="pl-ladder">${ladderHtml}</div>
+      <div class="pl-section-title">可选历练 · 秘境 / 试炼 / 支线</div>
+      <div class="pl-branches">${branchesHtml}</div>`;
+    this.show("pathmap");
+  },
+
+  // 本周秘境详情（大地图点选金色节点）
+  showWeeklyDetail() {
+    const gen = (Game.state && Game.state.world && Game.state.world.gen);
+    if (!gen || typeof WorldGen === "undefined") return;
+    let wk = null;
+    try { wk = WorldGen.weeklySecretRealm(gen.seed); } catch (e) { return; }
+    if (!wk) return;
+    const dt = ["", "平和", "微险", "凶险", "险峻", "险绝", "危厄", "凶煞", "绝命", "通天", "飞升"][Math.min(10, wk.danger)] || "凶险";
+    let html = `<h3>${this.escapeHtml(wk.name)} <span class="md-week">本周秘境</span></h3>`;
+    html += `<div class="md-macro">${wk.macro} · <span class="md-type">${wk.type}</span></div>`;
+    html += `<div class="md-desc">${this.escapeHtml(wk.desc)}</div>`;
+    html += `<div class="md-row"><b>凶险程度：</b>${wk.danger} / 10（${dt}）</div>`;
+    html += `<div class="md-row"><b>开启窗口：</b>限时 ${wk.timed} 程 · ${wk.weekLabel}（本周有效，过期需候七日轮回）</div>`;
+    html += `<div class="md-row" style="color:var(--gold-bright)">★ 整周稳定开启，错过本周再候轮回——宜早访。</div>`;
+    const detail = document.getElementById("map-detail");
+    if (detail) detail.innerHTML = html;
+  },
+
+  // 持久化的"本幕/目标"指示条（游戏主屏顶部，让玩家随时知道身在何关）
+  updateActBanner() {
+    const el = document.getElementById("act-banner");
+    if (!el || !Game.state) return;
+    const info = Game.getPathInfo();
+    if (!info) return;
+    const goal = info.nextRealmName
+      ? `→ 目标 ${info.nextRealmName}（再突破 ${info.stepsToNext} 次）`
+      : "→ 飞升功成";
+    el.innerHTML = `<span class="act-name">${this.escapeHtml(info.actName)}</span><span class="act-goal">${this.escapeHtml(info.realmName)} ${goal}</span>`;
+    el.style.display = "";
   },
 
   // ============ 仙途列传 / 终章 ============

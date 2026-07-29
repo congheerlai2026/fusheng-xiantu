@@ -17,11 +17,12 @@
       <h1 class="game-title">浮生仙途</h1>
       <p class="game-subtitle">AI 驱动 · 仙侠文字 RPG</p>
       <p class="game-tagline">大道三千，只取一瓢。生死轮回，因果自承。</p>
-      <div style="margin-top:16px"><span style="display:inline-block;padding:6px 24px;background:rgba(176,69,69,0.15);border:1px solid #b04545;color:#d65555;border-radius:20px;font-size:14px;letter-spacing:3px">首批内测 · 限 5 席</span></div>
+      <div style="margin-top:16px"><span style="display:inline-block;padding:6px 24px;background:rgba(120,170,120,0.15);border:1px solid #6fae6f;color:#8fd08a;border-radius:20px;font-size:14px;letter-spacing:2px">AI 仙侠 · 文字修仙 · 无限世界</span></div>
     </div>
     <div class="menu-buttons">
       <button id="btn-continue" class="btn btn-primary btn-lg" onclick="UI.show('game')">继续仙途</button>
       <button class="btn btn-play btn-lg" onclick="UI.startDirectPlay()">⚔ 直接玩</button>
+      <button class="btn btn-guest btn-lg" onclick="UI.startGuestPlay()">👁 游客试玩（免 Key）</button>
       <button class="btn btn-wish btn-lg" onclick="UI.openWish()">✨ 许愿 · 自定义世界</button>
       <button class="btn btn-ghost btn-lg" onclick="UI.showSoul()">📖 神魂册</button>
       <button class="btn btn-ghost btn-lg" onclick="UI.showRank()">⚖ 因果力榜</button>
@@ -102,6 +103,7 @@
       <div id="status-panel" class="status-panel"></div>
       <div class="panel-actions">
         <button class="btn btn-sm btn-map" onclick="UI.showWorldMap()" title="大地图">🗺 大地图</button>
+        <button class="btn btn-sm btn-path" onclick="UI.showPathMap()" title="仙途图谱">🧭 仙途图谱</button>
         <button class="btn btn-sm btn-soul" onclick="UI.showSoul()" title="神魂册">📖</button>
         <button class="btn btn-sm btn-rank" onclick="UI.showRank()" title="因果力榜">⚖</button>
         <button class="btn btn-sm btn-ghost" onclick="UI.show('settings')">⚙</button>
@@ -131,6 +133,7 @@
         <div class="battle-hp battle-hp-enemy"><span class="battle-hp-label" id="battle-enemy-hp-name">敌</span><div class="battle-hp-bar"><i id="battle-enemy-hp"></i></div></div>
       </div>
       <div id="milestone-banner" class="milestone-banner"></div>
+      <div id="act-banner" class="act-banner"></div>
       <div id="vn-dialogue" class="vn-dialogue">
         <div id="story-text" class="story-text"></div>
         <div id="loading-indicator" class="loading" style="display:none">
@@ -293,6 +296,18 @@
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="UI.show('menu')">返回</button>
       <button class="btn btn-primary" onclick="UI.activateBeta()">激活并进入游戏</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 仙途图谱（关卡脉络） ==================== -->
+<div id="screen-pathmap" class="screen">
+  <div class="pathmap-container">
+    <h2 class="section-title">仙途图谱 · 关卡脉络</h2>
+    <p class="pathmap-intro">境界即关卡，突破即跃迁。主线是<strong>境界阶梯</strong>；秘境、试炼、支线是<strong>可选历练</strong>。图谱随你每一步修行实时更新，随时点「🧭 仙途图谱」回看。</p>
+    <div class="pathmap-body" id="pathmap-body"></div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="UI.show('game')">继续仙途</button>
     </div>
   </div>
 </div>
