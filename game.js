@@ -3055,24 +3055,9 @@ const UI = {
     return map[s] || "sys-default";
   },
 
-  // ============ 玩家立绘（优先使用高清PNG立绘，降级为 ArtGen SVG） ============
+  // ============ 玩家立绘：按需求移除角色立绘（仅保留场景背景） ============
   _heroPortrait() {
-    const c = Game.state && Game.state.character;
-    if (!c) return "";
-    const gender = (c.gender === "f" || c.gender === 1) ? "f" : "m";
-    const form = c.form || "human";
-    // 优先：高清PNG立绘（assets/portraits/hero_m.png 或 hero_f.png）
-    if (form === "human" || form === "人族") {
-      const pngUrl = `assets/portraits/hero_${gender}.png`;
-      return `<div class="hero-portrait png-portrait"><img src="${pngUrl}" alt="主角立绘" onerror="this.parentElement.innerHTML=''"/></div>`;
-    }
-    // 非人形态：仍用 ArtGen 程序化生成
-    const seed = (typeof hashSeed === "function") ? hashSeed(c.name || "道友") : 1;
-    try {
-      const spec = ArtGen.specFromSeed(seed, c.arche || "xianzi", gender);
-      let div = ArtGen.being(form, spec);
-      return div.replace('class="artgen-portrait', 'class="hero-portrait artgen-portrait');
-    } catch (e) { return ""; }
+    return "";
   },
 
 
@@ -3363,33 +3348,9 @@ const UI = {
   },
   },
 
+  // ============ NPC 立绘：按需求移除角色立绘（仅保留场景背景） ============
   _npcPortrait(kind) {
-    // 优先：高清PNG立绘（assets/portraits/npc_old_m.png 等）
-    const pngMap = { old_m: "npc_old_m", old_f: "npc_old_f", young_m: "npc_young_m", young_f: "npc_young_f" };
-    if (pngMap[kind]) {
-      const url = `assets/portraits/${pngMap[kind]}.png`;
-      return `<div class="npc-portrait png-portrait"><img src="${url}" alt="${kind}" onerror="this.parentElement.innerHTML=''"/></div>`;
-    }
-    // 具名 NPC（世界生成里有档案）：按其稳定 seed 生成专属立绘（不同人物绝不撞脸）
-    const gen = (Game.state && Game.state.world && Game.state.world.gen);
-    if (gen && gen.npcs) {
-      const npc = gen.npcs.find(n => n.name === kind);
-      if (npc) {
-        const spec = ArtGen.specFromSeed(npc.portraitSeed || hashSeed(npc.name), npc.arche, npc.gender);
-        return ArtGen.npc(spec);
-      }
-    }
-    // 匿名同框 NPC（old_m/young_f 等 slug）：按原型+性别生成，配色随原型微调
-    const map = {
-      old_m: ["elder", "m"], old_f: ["crone", "f"], young_m: ["youth", "m"], young_f: ["maiden", "f"],
-      old: ["elder", "m"], crone: ["crone", "f"], maiden: ["maiden", "f"], youth: ["youth", "m"],
-      merchant: ["scholar", "m"], daoist: ["xia", "m"], yaoxiu: ["yaoxiu", "f"], xiexiu: ["mo", "m"], ghost: ["ghost", "f"],
-    };
-    const m = map[kind] || ["scholar", "f"];
-    const spec = ArtGen.specFromSeed(hashSeed("slug-" + (kind || "x")), m[0], m[1]);
-    if (m[0] === "yaoxiu" || m[0] === "mo") spec.pal = (spec.pal + 5) % ArtGen.PALETTES.length;
-    if (m[0] === "ghost") spec.pal = 8;
-    return ArtGen.npc(spec);
+    return "";
   },
 
   updateHeroSprite() {
@@ -3612,10 +3573,9 @@ const UI = {
     const heroEl = document.getElementById("battle-hero");
     const enemyEl = document.getElementById("battle-enemy");
     const gender = (Game.state && Game.state.character && Game.state.character.gender) || 0;
-    const heroImg = gender === 1 ? "assets/hero_f.webp" : "assets/hero_m.webp";
-    heroEl.innerHTML = `<img src="${heroImg}" alt="hero">`;
-    const art = enemy && enemy.file ? enemy.file : (enemy ? this.enemyArtFor(enemy) : this.enemyImageFor(enemy && enemy.type));
-    enemyEl.innerHTML = `<img src="${art}" alt="enemy">`;
+    // 角色立绘已移除：战斗仅保留敌人名牌与血条，主角/敌人不再出图
+    heroEl.innerHTML = "";
+    enemyEl.innerHTML = "";
     // 敌人名牌
     let nameEl = document.getElementById("battle-enemy-name");
     if (!nameEl) {
