@@ -192,7 +192,7 @@ body.pixel .item-type.skill::before { background-image: url("data:image/svg+xml,
    ============================================================ */
 .vn-stage { position: relative; overflow: hidden; background: #0b0d14; display: flex; flex-direction: column; }
 .vn-bg {
-  position: relative; flex: 0 0 42%; min-height: 180px; max-height: 360px;
+  position: relative; flex: 0 0 15%; min-height: 72px; max-height: 140px;
   background-color: #0b0d14;
   background-size: cover; background-position: center 30%; background-repeat: no-repeat;
   image-rendering: pixelated;
@@ -206,7 +206,7 @@ body.pixel .item-type.skill::before { background-image: url("data:image/svg+xml,
 }
 /* 场景图缺失时：按境界的兜底渐变 */
 .vn-bg.no-scene { background-image: linear-gradient(180deg, #1a2740 0%, #0e1626 55%, #0a0f1a 100%); }
-.vn-actors { position: absolute; left: 0; right: 0; top: 0; height: 46%; z-index: 3; pointer-events: none; overflow: hidden; }
+.vn-actors { position: absolute; left: 0; right: 0; top: 0; height: 26%; z-index: 3; pointer-events: none; overflow: hidden; }
 .vn-actor {
   position: absolute; bottom: 0; height: 94%;
   image-rendering: pixelated;
@@ -261,7 +261,7 @@ body.pixel .item-type.skill::before { background-image: url("data:image/svg+xml,
   display: flex; flex-direction: column; gap: 10px;
 }
 .vn-dialogue .story-text { flex: 0 1 auto; overflow-y: auto; padding: 0; }
-.vn-dialogue .story-content { font-size: 16.5px; line-height: 1.85; color: #2b2b3a; }
+.vn-dialogue .story-content { font-size: 18px; line-height: 1.9; color: #2b2b3a; }
 .vn-dialogue .action-options { padding: 0; }
 .vn-dialogue .action-input-area { padding: 0; }
 .vn-dialogue .loading { padding: 0; }
@@ -433,23 +433,21 @@ body.pixel .event-flag { animation: flag-pulse 2.4s ease-in-out infinite; }
    角色立绘 & 战斗动画
    ============================================================ */
 
-/* ---------- 左侧主角小像（星露谷式 · 小巧） ---------- */
+/* ---------- 左侧主角立绘（古风平滑渲染） ---------- */
 body.pixel #hero-sprite {
   display: flex; justify-content: center; align-items: flex-end;
-  height: 118px; margin: -8px -10px 8px; padding-bottom: 6px;
-  background: linear-gradient(180deg, rgba(15,22,36,0) 0%, rgba(15,22,36,.55) 100%);
+  height: 128px; margin: -8px -10px 8px; padding-bottom: 6px;
+  background: linear-gradient(180deg, rgba(15,22,36,0) 0%, rgba(15,22,36,.5) 100%);
   border-bottom: 2px solid var(--panel-border);
-  image-rendering: pixelated;
   position: relative; overflow: hidden;
 }
 body.pixel #hero-sprite::after {
   content: ""; position: absolute; bottom: 0; left: 15%; right: 15%; height: 3px;
-  background: rgba(0,0,0,.35); border-radius: 50%; filter: blur(0);
+  background: rgba(0,0,0,.3); border-radius: 50%;
 }
-body.pixel .hero-img {
-  max-height: 104px; max-width: 100%; object-fit: contain;
-  image-rendering: pixelated; animation: hero-breathe 3.2s ease-in-out infinite;
-  filter: drop-shadow(2px 2px 0 rgba(0,0,0,.45));
+body.pixel .hero-portrait {
+  max-height: 118px; width: auto;
+  animation: hero-breathe 4s ease-in-out infinite;
 }
 @keyframes hero-breathe {
   0%,100% { transform: translateY(0) scale(1); }
@@ -476,11 +474,11 @@ body.pixel .battle-floor {
 body.pixel .battle-actor {
   position: absolute; bottom: 14px; width: 90px; height: 120px;
   display: flex; align-items: flex-end; justify-content: center;
-  image-rendering: pixelated; transition: none;
+  transition: none;
 }
 body.pixel .battle-actor img {
   max-height: 100%; max-width: 100%; object-fit: contain;
-  image-rendering: pixelated; filter: drop-shadow(3px 3px 0 rgba(0,0,0,.5));
+  filter: drop-shadow(0 3px 8px rgba(0,0,0,.45)) drop-shadow(0 0 12px rgba(100,160,220,0.1));
 }
 body.pixel .battle-hero { left: 10%; }
 body.pixel .battle-enemy { right: 10%; transform: scaleX(-1); }
@@ -623,8 +621,8 @@ body.pixel .map-node { cursor: pointer; }
 body.pixel .map-node .node-core { transition: filter .15s; }
 body.pixel .map-node:hover .node-core,
 body.pixel .map-node.selected .node-core { filter: drop-shadow(0 0 6px var(--gold-bright)); }
-body.pixel .map-node .node-label { fill: var(--text); font-size: 13px; pointer-events: none; }
-body.pixel .map-node.selected .node-label { fill: var(--gold-bright); }
+body.pixel .map-node .node-label { fill: #fff8e6; font-size: 13px; font-weight: 700; paint-order: stroke; stroke: #070910; stroke-width: 3px; pointer-events: none; }
+body.pixel .map-node.selected .node-label { fill: #fff8e6; stroke: #070910; }
 body.pixel .map-current-ring {
   fill: none; stroke: var(--gold-bright); stroke-width: 2.5; opacity: .85;
   animation: map-pulse 1.6s ease-in-out infinite;
@@ -632,7 +630,7 @@ body.pixel .map-current-ring {
 @keyframes map-pulse { 0%,100% { opacity: .25; } 50% { opacity: .9; } }
 body.pixel .map-link { stroke: rgba(120,140,200,.22); stroke-width: 1.5; fill: none; }
 body.pixel .map-zone { fill: rgba(255,255,255,.03); stroke: rgba(255,255,255,.06); stroke-width: 1; }
-body.pixel .map-zone-label { fill: var(--text-dim); font-size: 15px; letter-spacing: 6px; opacity: .45; }
+body.pixel .map-zone-label { fill: #fff8e6; font-size: 16px; font-weight: 800; letter-spacing: 4px; paint-order: stroke; stroke: #070910; stroke-width: 4px; opacity: 1; }
 
 /* 像素风：分支节点 / 周秘 / 仙途图谱 / 本幕条 */
 body.pixel .map-branch .node-core { stroke-dasharray: 4 3; }
@@ -676,9 +674,9 @@ body.pixel .btn-block { width: 100%; margin-top: 10px; }
       radial-gradient(ellipse at center, transparent 70%, rgba(0,0,0,0.22) 100%);
   }
 
-  /* 手机端场景/立绘区域收窄 */
-  body.pixel .vn-bg { flex: 0 0 34%; min-height: 140px; }
-  body.pixel .vn-actors { height: 38%; }
+  /* 手机端场景/立绘区域收窄：场景只做氛围条，把空间让给剧情文字 */
+  body.pixel .vn-bg { flex: 0 0 22%; min-height: 100px; max-height: 180px; }
+  body.pixel .vn-actors { height: 24%; }
 
   /* 手机端对话框：奶白底深色字，高对比 */
   body.pixel .vn-dialogue {
@@ -891,11 +889,11 @@ body.pixel .guest-banner {
 }
 body.pixel .guest-banner a { color: #fff; text-decoration: underline; cursor: pointer; }
 
-/* ============ 立绘系统·像素主题覆盖 ============ */
-body.pixel .hero-portrait .hp-svg { image-rendering: pixelated; shape-rendering: crispEdges; filter: drop-shadow(0 4px 0 rgba(0,0,0,.45)); }
+/* ============ 立绘系统·古风平滑渲染（像素主题覆盖） ============ */
+body.pixel .hero-portrait .hp-svg { filter: drop-shadow(0 4px 10px rgba(0,0,0,.4)) drop-shadow(0 0 16px var(--pt-accent, rgba(100,160,220,0.15))); }
 body.pixel .hp-aura { opacity: .9; }
-body.pixel .npc-portrait svg { image-rendering: pixelated; shape-rendering: crispEdges; }
-body.pixel .vn-actors .vn-actor.npc .npc-portrait { filter: drop-shadow(0 4px 0 rgba(0,0,0,.45)); }
+body.pixel .npc-portrait svg { }
+body.pixel .vn-actors .vn-actor.npc .npc-portrait { filter: drop-shadow(0 4px 12px rgba(0,0,0,.4)) drop-shadow(0 0 18px var(--pt-accent, rgba(100,160,220,0.1))); }
 /* 像素主题：体系配色（暗底高饱和，内袍转暗色更协调） */
 body.pixel .sys-lingen   { --pt-main:#2f8f6b; --pt-accent:#7fe3b0; --pt-dark:#163f30; --pt-light:#1b2a25; }
 body.pixel .sys-xuema    { --pt-main:#9e2b3a; --pt-accent:#ff6b7a; --pt-dark:#3f0d13; --pt-light:#2a1618; }
@@ -906,4 +904,11 @@ body.pixel .sys-lingshu  { --pt-main:#3a5fb0; --pt-accent:#8fb3ff; --pt-dark:#16
 body.pixel .sys-rudao    { --pt-main:#b0b0b8; --pt-accent:#ffffff; --pt-dark:#3a3a40; --pt-light:#222228; }
 body.pixel .sys-wudao    { --pt-main:#3a3f4a; --pt-accent:#9aa3b0; --pt-dark:#121419; --pt-light:#1c2026; }
 body.pixel .sys-default  { --pt-main:#5b7a8f; --pt-accent:#a8c8da; --pt-dark:#22333f; --pt-light:#1a242a; }
+
+/* ============ AI 立绘（ArtEngine 生成；像素主题下保持写实，不像素化） ============ */
+body.pixel .ai-portrait-img { image-rendering: auto; filter: drop-shadow(2px 2px 0 rgba(0,0,0,.5)); }
+body.pixel .hero-portrait .ai-portrait-img,
+body.pixel .npc-portrait .ai-portrait-img { width: 100%; height: 100%; }
+body.pixel .vn-actors .vn-actor .ai-portrait-img { height: 100%; width: auto; }
+body.pixel .ai-portrait-fade { animation: aiFade .6s ease both; }
 

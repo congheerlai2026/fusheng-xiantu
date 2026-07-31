@@ -73,7 +73,7 @@ body::before {
 .btn-send { padding: 10px 16px; }
 .btn-option {
   display: block; width: 100%; text-align: left;
-  padding: 12px 16px; margin-bottom: 8px;
+  padding: 9px 14px; margin-bottom: 4px;
   background: rgba(28,35,48,0.6); border: 1px solid var(--border);
   color: var(--text); border-radius: 4px; cursor: pointer;
   transition: all 0.2s; font-family: inherit; font-size: 14px;
@@ -218,7 +218,7 @@ body::before {
 
 /* 剧情区 */
 .story-text { flex: 1; overflow-y: auto; padding: 18px 22px; }
-.story-content { font-size: 17px; line-height: 1.9; color: var(--text); white-space: pre-wrap; word-break: break-word; font-weight: 400; }
+.story-content { font-size: 18.5px; line-height: 1.95; color: var(--text); white-space: pre-wrap; word-break: break-word; font-weight: 400; }
 .story-content.streaming { color: var(--gold-bright); }
 
 /* ============================================================
@@ -226,7 +226,7 @@ body::before {
    ============================================================ */
 .vn-stage { position: relative; overflow: hidden; background: var(--bg-dark); display: flex; flex-direction: column; }
 .vn-bg {
-  position: relative; flex: 0 0 45%; min-height: 190px; max-height: 380px;
+  position: relative; flex: 0 0 13%; min-height: 64px; max-height: 120px;
   background-color: var(--bg-dark);
   background-size: cover; background-position: center 30%; background-repeat: no-repeat;
   image-rendering: pixelated;
@@ -240,7 +240,7 @@ body::before {
 }
 .vn-bg.no-scene { background-image: linear-gradient(180deg, #1a2740 0%, #0e1626 55%, #0a0f1a 100%); }
 .vn-actors {
-  position: absolute; left: 0; right: 0; top: 0; height: 48%; z-index: 3;
+  position: absolute; left: 0; right: 0; top: 0; height: 25%; z-index: 3;
   pointer-events: none; overflow: hidden;
 }
 .vn-dialogue {
@@ -250,9 +250,9 @@ body::before {
   border-top: 2px solid var(--gold);
   box-shadow: 0 -8px 32px rgba(0,0,0,.55);
   padding: 18px 24px 22px;
-  display: flex; flex-direction: column; gap: 10px;
+  display: flex; flex-direction: column; gap: 6px;
 }
-.vn-dialogue .story-text { flex: 0 1 auto; overflow-y: auto; padding: 0; }
+.vn-dialogue .story-text { flex: 1 1 auto; overflow-y: auto; padding: 0; min-height: 80px; }
 .vn-dialogue .story-content { font-size: 17px; line-height: 1.9; color: #f7f3e3; }
 .vn-dialogue .action-options { padding: 0; }
 .vn-dialogue .action-input-area { padding: 0; }
@@ -260,7 +260,7 @@ body::before {
 .opening-hint { text-align: center; padding: 60px 20px; color: var(--text-dim); }
 .opening-hint p { margin-bottom: 16px; line-height: 2; }
 .opening-hint .btn { margin-top: 20px; }
-.user-action { margin: 20px 0; padding: 12px 16px; background: rgba(90,155,126,0.08); border-left: 3px solid var(--jade); color: var(--jade); font-size: 14px; border-radius: 0 4px 4px 0; }
+.user-action { margin: 10px 0; padding: 8px 14px; background: rgba(90,155,126,0.08); border-left: 3px solid var(--jade); color: var(--jade); font-size: 13px; border-radius: 0 4px 4px 0; }
 
 /* 每回合数值变化 */
 .turn-deltas { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
@@ -271,7 +271,7 @@ body::before {
 }
 .delta-item:empty { display: none; }
 
-.event-flag { padding: 12px 18px; margin: 16px 0; border-radius: 6px; font-weight: bold; text-align: center; letter-spacing: 3px; font-size: 15px; animation: flagPop 0.5s ease both; }
+.event-flag { padding: 8px 14px; margin: 8px 0; border-radius: 6px; font-weight: bold; text-align: center; letter-spacing: 3px; font-size: 14px; animation: flagPop 0.5s ease both; }
 .flag-success { background: linear-gradient(90deg, rgba(201,168,76,0.05), rgba(201,168,76,0.22), rgba(201,168,76,0.05)); color: var(--gold-bright); border: 1px solid var(--gold); box-shadow: 0 0 18px rgba(201,168,76,0.25); }
 .flag-danger  { background: linear-gradient(90deg, rgba(214,85,85,0.05), rgba(214,85,85,0.22), rgba(214,85,85,0.05)); color: var(--danger); border: 1px solid var(--danger); box-shadow: 0 0 18px rgba(214,85,85,0.2); animation: flagShake 0.6s ease both; }
 .flag-death   { background: rgba(80,80,80,0.25); color: #cfcfcf; border: 1px solid #666; letter-spacing: 4px; }
@@ -360,6 +360,57 @@ body::before {
 @keyframes river-flow { to { stroke-dashoffset: -36; } }
 @keyframes cloud-drift { from { transform: translateX(-200px); } to { transform: translateX(1200px); } }
 
+/* ===== 大地图：水墨重绘（发光域核 + 类型篆字 + 标签） ===== */
+.sky-top { stop-color: #eef3f6; }
+.sky-bot { stop-color: #f4efe6; }
+.terr-sea { fill: #aacbe0; opacity: .42; }
+.terr-mtn-back { fill: #b9c6d4; opacity: .45; }
+.terr-mtn-front { fill: #8a9bb0; opacity: .8; }
+.node-glow { opacity: .26; filter: blur(3px); }
+.map-node .node-glow { animation: node-pulse 2.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.map-current .node-glow { opacity: .5; }
+@keyframes node-pulse { 0%,100% { opacity: .2; } 50% { opacity: .42; } }
+.node-core { filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
+.node-label { fill: #fbf4e2; font-size: 13px; font-weight: 700; paint-order: stroke; stroke: #16203a; stroke-width: 3.8px; }
+.node-sub { fill: #ffe6b0; font-size: 11px; font-weight: 600; paint-order: stroke; stroke: #16203a; stroke-width: 3px; }
+.map-current-ring { fill: none; stroke: #ffd24a; stroke-width: 2.5; stroke-dasharray: 4 4; animation: ring-spin 6s linear infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes ring-spin { to { transform: rotate(360deg); } }
+.map-zone { fill: rgba(255,255,255,.16); stroke: rgba(70,90,130,.4); stroke-width: 1.4; stroke-dasharray: 2 5; }
+.map-zone-label { fill: #fbf4e2; opacity: 1; font-size: 16px; font-weight: 800; letter-spacing: 4px; paint-order: stroke; stroke: #16203a; stroke-width: 4px; }
+.map-body { background:
+  radial-gradient(120% 80% at 50% -10%, rgba(255,255,255,.5), rgba(255,255,255,0) 60%),
+  linear-gradient(180deg, #eaf1f4, #e7eef0 40%, #dfe8e6); }
+
+/* ArtGen 程序化立绘（人物/妹子/敌人） */
+.artgen-portrait { width: 120px; height: 180px; display: inline-block; }
+.artgen-portrait .ag-svg { width: 100%; height: 100%; display: block; }
+.npc-portrait .ag-svg, .vn-actor .ag-svg, .hero-portrait .ag-svg { width: 100%; height: 100%; }
+
+/* 地域详情：域内胜迹（子地点） */
+.md-sub-title { margin-top: 8px; }
+.md-subs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+.md-sub-btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 6px;
+  background: rgba(120,150,190,.14); border: 1px solid rgba(120,150,190,.4); color: #2a3a52;
+  font-size: 12px; cursor: pointer; transition: .15s; }
+.md-sub-btn:hover { background: rgba(120,150,190,.32); transform: translateY(-1px); border-color: var(--gold); }
+.md-sub-d { color: #8a6d3b; font-size: 10px; }
+.md-sub-v { color: #2e9e6b; font-size: 10px; }
+
+/* 群像图鉴 */
+#screen-codex .codex-wrap { max-width: 1080px; margin: 0 auto; padding: 24px 20px 60px; }
+.codex-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+.codex-head h2 { color: var(--gold); margin: 0; }
+.codex-count { color: var(--text-dim); }
+.codex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 14px; }
+.codex-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 8px; text-align: center; transition: .15s; }
+.codex-card:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,.18); border-color: var(--gold); }
+.codex-portrait { width: 96px; height: 144px; margin: 0 auto 6px; }
+.codex-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.codex-title { font-size: 11px; color: var(--gold-bright); margin-top: 2px; }
+.codex-where { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+.codex-note { font-size: 10px; color: var(--text-dim); margin-top: 4px; line-height: 1.4; min-height: 28px; }
+.codex-empty { color: var(--text-dim); padding: 40px; text-align: center; }
+
 /* 神魂册·里程碑成就 */
 .soul-ach { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
 .soul-ach-chip { padding: 2px 9px; border-radius: 20px; font-size: 11px; letter-spacing: 1px;
@@ -372,7 +423,7 @@ body::before {
 .error-msg { color: var(--danger); font-size: 14px; padding: 20px; line-height: 1.8; }
 
 /* 行动区 */
-.action-options { padding: 0 40px 12px; }
+.action-options { padding: 0 40px 6px; }
 .action-input-area { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 40px 24px; align-items: flex-end; }
 .action-input {
   flex: 1; padding: 12px 16px; background: var(--bg-card);
@@ -792,23 +843,23 @@ body::before {
   /* 创建页表单：小屏竖排，避免两列挤爆 */
   .form-row { flex-direction: column; gap: 0; }
 
-  /* 手机端选项：放大命中区，拇指友好 */
+  /* 手机端选项：保留拇指友好但压缩间距 */
   .btn-option {
-    padding: 13px 14px 13px 34px;
-    margin-bottom: 9px;
-    font-size: 15px;
-    line-height: 1.5;
-    min-height: 48px;
+    padding: 10px 12px 10px 30px;
+    margin-bottom: 5px;
+    font-size: 14px;
+    line-height: 1.45;
+    min-height: 42px;
   }
   .btn-option::before { top: 50%; }
-  .action-options { padding: 0 14px 8px; gap: 0; }
+  .action-options { padding: 0 14px 4px; gap: 0; }
 
   .modal-card { max-width: 94vw; padding: 24px 20px; max-height: 90vh; }
   .card-grid { grid-template-columns: 1fr; }
 
   /* 手机端场景/立绘区域收窄，把空间让给文字 */
-  .vn-bg { flex: 0 0 36%; min-height: 140px; }
-  .vn-actors { height: 40%; }
+  .vn-bg { flex: 0 0 14%; min-height: 70px; max-height: 130px; }
+  .vn-actors { height: 26%; }
 
   /* 手机端 VN 对话框：在 flex 舞台内占主体，不再固定吸底 */
   .vn-dialogue {
@@ -869,9 +920,9 @@ body::before {
 .sys-wudao    { --pt-main:#3a3f4a; --pt-accent:#9aa3b0; --pt-dark:#1c1f26; --pt-light:#c9ced6; }
 .sys-default  { --pt-main:#5b7a8f; --pt-accent:#a8c8da; --pt-dark:#2f4453; --pt-light:#dde8ef; }
 
-/* 主角立绘（状态栏 hero-sprite / 手机抽屉） */
+/* 主角立绘（状态栏 hero-sprite / 手机抽屉）—— 古风平滑渲染 */
 .hero-portrait { width: 100%; max-width: 200px; margin: 0 auto 6px; }
-.hero-portrait .hp-svg { width: 100%; height: auto; display: block; filter: drop-shadow(0 6px 14px rgba(0,0,0,.35)); image-rendering: pixelated; shape-rendering: crispEdges; }
+.hero-portrait .hp-svg { width: 100%; height: auto; display: block; filter: drop-shadow(0 4px 12px rgba(0,0,0,.3)) drop-shadow(0 0 20px var(--pt-accent, rgba(100,160,220,0.12))); }
 .hp-aura  { transform-box: fill-box; transform-origin: center; animation: hp-breathe 4.5s ease-in-out infinite; }
 .hp-cloak { transform-box: fill-box; transform-origin: top center; animation: hp-sway 7s ease-in-out infinite; }
 .hp-spark { transform-box: fill-box; animation: hp-float 3.6s ease-in-out infinite; }
@@ -879,12 +930,12 @@ body::before {
 @keyframes hp-sway    { 0%,100% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.5deg); } }
 @keyframes hp-float   { 0% { transform: translateY(0); opacity:.25; } 50% { transform: translateY(-7px); opacity:.9; } 100% { transform: translateY(0); opacity:.25; } }
 
-/* 舞台立绘（GAL 形态：人物作为视觉重心，贴底放大） */
+/* 舞台立绘（GAL 形态：人物作为视觉重心，贴底放大）—— 古风平滑渲染 */
 .vn-actors .vn-actor { position: absolute; bottom: 0; height: 92%; width: auto; pointer-events: none; }
 .vn-actors .vn-actor.hero { left: 5%; }
 .vn-actors .vn-actor.npc  { right: 5%; transform: scaleX(-1); }
 .vn-actors .vn-actor .npc-portrait,
-.vn-actors .vn-actor .hero-portrait { height: 100%; width: auto; filter: drop-shadow(0 8px 18px rgba(0,0,0,.42)); image-rendering: pixelated; shape-rendering: crispEdges; }
+.vn-actors .vn-actor .hero-portrait { height: 100%; width: auto; filter: drop-shadow(0 6px 16px rgba(0,0,0,.38)) drop-shadow(0 0 24px var(--pt-accent, rgba(100,160,220,0.1))); }
 .npc-popin { animation: npc-pop .5s cubic-bezier(.2,.85,.3,1) both; }
 @keyframes npc-pop { from { opacity:0; transform: translateY(26px) scale(.95); } to { opacity:1; transform: translateY(0) scale(1); } }
 
@@ -901,3 +952,10 @@ body::before {
   .mdrawer-hero { text-align: center; margin: 6px 0 12px; }
   .mdrawer-hero .hero-portrait { max-width: 130px; }
 }
+
+/* ============ AI 立绘（ArtEngine 生成，淡入替换程序化 SVG） ============ */
+.ai-portrait-img { display: block; height: 100%; width: auto; object-fit: contain; filter: drop-shadow(0 4px 12px rgba(0,0,0,.35)); }
+.hero-portrait .ai-portrait-img, .npc-portrait .ai-portrait-img { width: 100%; height: 100%; }
+.vn-actors .vn-actor .ai-portrait-img { height: 100%; width: auto; }
+.ai-portrait-fade { animation: aiFade .6s ease both; }
+@keyframes aiFade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }

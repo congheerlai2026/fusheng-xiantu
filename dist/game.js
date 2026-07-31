@@ -48,6 +48,9 @@ const Game = {
     const bg = BACKGROUNDS[bgIndex];
     const gender = GENDERS[genderIndex] || GENDERS[0];
     const realm0 = REALMS[0];
+    const formKey = opts.form || "human";
+    const FORM = (typeof FORMS !== "undefined" && FORMS[formKey]) ? FORMS[formKey] : (FORMS ? FORMS.human : null);
+    const formRealm0 = (FORM && FORM.realms && FORM.realms[0]) ? FORM.realms[0] : realm0.name;
 
     // 由世界种子确定性生成此界天地（许愿可轻度偏置风土）
     const gen = WorldGen.generateWorld(seed, opts.wish);
@@ -95,7 +98,8 @@ const Game = {
         name: name || "无名修士",
         gender: gender.id,
         genderName: gender.name,
-        form: opts.form || "human",   // 魂穿形态：人/妖/器/灵……任意
+        form: formKey,               // 魂穿形态：人/妖/器/灵/草木……任意
+        formName: FORM ? FORM.name : "人族",
         wish: opts.wish || null,        // 玩家许愿
         cultivationSystem: cultivationSystemName, // 本界修行体系之名（灵根/血脉/命格…）
         root: root.name,
@@ -103,7 +107,7 @@ const Game = {
         affinity: root.affinity,
         background: bg.name,
         // 修为
-        realm: realm0.name,
+        realm: formRealm0,           // 初始境界名随形态而定（树→萌芽期，人→炼气期）
         realmLevel: 1,
         realmProgress: 0,        // 当前境界进度 0-100
         qi: 50,                  // 灵力
@@ -155,6 +159,8 @@ const Game = {
       },
       // 各 NPC 好感度：以人物名为键；开局不预填，仅在剧情中真正结识的人物才入表（met:true）
       npcs: {},
+      // 各 NPC 独立记忆：随剧情累积其见闻与标记，每回合注入 AI 提示词，使其"不忘设定、随剧情成长"
+      npcMemory: {},
       narrationMode: narrationMode || "standard",  // 叙事节奏档位：short / standard / immersive
       meta: {
         createdAt: Date.now(),
@@ -172,6 +178,18 @@ const Game = {
         tags: { combat: 0, social: 0, cultivation: 0, exploration: 0, craft: 0, romance: 0, scheming: 0, mercy: 0 },
       },
     };
+
+    // 初始化各 NPC 独立记忆（档案来自世界生成；后续由 AI 的 npc_memory 字段累积见闻与标记）
+    (gen.npcs || []).forEach(n => {
+      if (!this.state.npcMemory[n.name]) {
+        this.state.npcMemory[n.name] = {
+          profile: n.profile || {},
+          arche: n.arche || "", gender: n.gender || "",
+          title: n.title || "", trait: n.trait || "", where: n.where || "",
+          notes: [], flags: {}, relations: {},
+        };
+      }
+    });
 
     this.history = [];
     this.log = [];
@@ -412,7 +430,8 @@ const Game = {
       const oldLevel = c.realmLevel;
       c.realmLevel = clamp(c.realmLevel + ch.realm_level_change, 1, REALMS.length);
       if (c.realmLevel !== oldLevel) {
-        c.realm = REALMS[Math.max(0, c.realmLevel - 1)].name;
+        const _bf = (typeof FORMS !== "undefined" && FORMS[c.form]) ? FORMS[c.form] : (FORMS ? FORMS.human : null);
+        c.realm = (_bf && _bf.realms && _bf.realms[c.realmLevel - 1]) ? _bf.realms[c.realmLevel - 1] : REALMS[Math.max(0, c.realmLevel - 1)].name;
         c.realmProgress = 0;
         deltas.push(`境界变为 ${c.realm}`);
       }
@@ -504,6 +523,34 @@ const Game = {
         if (v !== 0) deltas.push(`「${name}」好感 ${v > 0 ? "+" : ""}${v}`);
       });
     }
+    // NPC 独立记忆增长：AI 每回合可把与本界人物发生的关键交集写入 npc_memory，
+    // 引擎据此累加其"见闻/标记"，使其设定随剧情成长且不被遗忘（呼应"每个 NPC 有独立记忆"诉求）
+    const npcMem = ch.npc_memory;
+    if (npcMem) {
+      const arr = Array.isArray(npcMem)
+        ? npcMem
+        : Object.keys(npcMem).map(name => Object.assign({ name }, npcMem[name]));
+      arr.forEach(entry => {
+        if (!entry || !entry.name) return;
+        const nm = entry.name;
+        const mem = (this.state.npcMemory[nm] = this.state.npcMemory[nm] || { profile: {}, notes: [], flags: {}, relations: {} });
+        if (entry.note) {
+          mem.notes = mem.notes || [];
+          const text = String(entry.note);
+          if (!mem.notes.some(x => x.text === text)) {
+            mem.notes.push({ t: (this.state.meta && this.state.meta.playTurn) || 0, text });
+          }
+        }
+        if (entry.flag) {
+          mem.flags = mem.flags || {};
+          mem.flags[entry.flag] = (mem.flags[entry.flag] || 0) + 1;
+        }
+        if (entry.relation) {
+          mem.relations = mem.relations || {};
+          mem.relations[entry.relation] = (mem.relations[entry.relation] || 0) + 1;
+        }
+      });
+    }
     if (ch.items_gained && ch.items_gained.length) {
       const gainedNames = [];
       ch.items_gained.forEach(item => {
@@ -577,7 +624,11 @@ const Game = {
         if (v !== 0) deltas.push(`【${nm}】熟练度 ${v > 0 ? "+" : ""}${v}${c.skills[nm].path ? "（" + c.skills[nm].path + "）" : ""}`);
       });
     }
-    if (ch.pet_gained) {
+    // 灵宠：仅在 ≥ 第 3 程后才允许灵宠事件（首两程玩家啥也没干就获宠不合逻辑）
+    // 灵宠应来自机缘/奇遇/秘境等特殊事件，非开局赠送
+    const petTurnThreshold = 3;
+    const currentTurn = this.state.meta.playTurn || 1;
+    if (ch.pet_gained && currentTurn >= petTurnThreshold) {
       c.pet = {
         name: ch.pet_gained.name || "无名灵宠",
         type: ch.pet_gained.type || "灵兽",
@@ -593,7 +644,7 @@ const Game = {
         deltas.push(`灵宠「${name}」离去`);
       }
     }
-    if (ch.pet_updated && c.pet) {
+    if (ch.pet_updated && c.pet && currentTurn >= petTurnThreshold) {
       if (ch.pet_updated.name) c.pet.name = ch.pet_updated.name;
       if (ch.pet_updated.type) c.pet.type = ch.pet_updated.type;
       if (typeof ch.pet_updated.growth === "number") c.pet.growth = ch.pet_updated.growth;
@@ -632,7 +683,7 @@ const Game = {
         this.state.meta.threads.push(obj);
         planted.push(h);
       });
-      if (planted.length) deltas.push("埋下伏笔：" + planted.join("；"));
+      if (planted.length) deltas.push("关键信息：" + planted.join("；"));
     }
     if (ch.threads_resolved && Array.isArray(ch.threads_resolved) && ch.threads_resolved.length) {
       const resolvedList = [];
@@ -651,7 +702,7 @@ const Game = {
           resolvedList.push(h); // 仍记录回收，防止遗漏
         }
       });
-      if (resolvedList.length) deltas.push("伏笔回收：" + resolvedList.join("；"));
+      if (resolvedList.length) deltas.push("线索闭合：" + resolvedList.join("；"));
     }
 
     // 飞升（苦修或以技证道）：记录成就，便于终章列传写"白日飞升"
@@ -924,6 +975,10 @@ const Game = {
       if (typeof this.state.world.realmCapLevel !== "number") this.state.world.realmCapLevel = (typeof REALMS !== "undefined" && REALMS.length) ? REALMS.length : 9;
       if (typeof this.state.world.spirit !== "number") this.state.world.spirit = 6;
       if (!this.state.character.form) this.state.character.form = "human";
+      if (!this.state.character.formName) {
+        const _f0 = (typeof FORMS !== "undefined" && FORMS[this.state.character.form]) ? FORMS[this.state.character.form] : FORMS.human;
+        this.state.character.formName = _f0 ? _f0.name : "人族";
+      }
       if (!this.state.character.cultivationSystem) this.state.character.cultivationSystem = "灵根";
       if (!this.state.world.cultivationSystemName) this.state.world.cultivationSystemName = this.state.character.cultivationSystem || "灵根";
       if (!this.state.meta) this.state.meta = { playTurn: 0, alive: true };
@@ -1001,6 +1056,19 @@ const Game = {
     if (e) { e.status = "fallen"; e.cause = cause; e.realmReached = realmReached; e.fallenAt = Date.now(); e.endedAt = Date.now(); }
     else { reg.push({ projectionId: projectionId, status: "fallen", cause: cause, realmReached: realmReached, fallenAt: Date.now() }); }
     try { localStorage.setItem(this._soulKey, JSON.stringify(reg)); } catch (err) {}
+  },
+  // 从许愿文本解析"魂穿形态"（本体种族/物种）。顺序很重要：先草木/花，避免被"妖"误吞
+  parseForm(wish) {
+    if (!wish || !wish.trim) return "human";
+    const w = wish;
+    if (/树|木|灵植|妖植|草木|藤|竹|松|柳|槐|榕|菩提|兰|枫/.test(w)) return "tree";
+    if (/花|花灵|花妖|花魅|莲/.test(w)) return "flower";
+    if (/石|岩|山石|顽石|灵岩|玉髓/.test(w)) return "stone";
+    if (/器灵|剑灵|法宝|鼎灵|古钟|钟灵|器魂|器/.test(w)) return "artifact";
+    if (/鬼|魂|幽|阴灵|亡灵|鬼修|厉鬼/.test(w)) return "ghost";
+    if (/火灵|水灵|风灵|雷灵|冰灵|光灵|元素灵|元素精灵|火之灵|水之灵|火精灵|水精灵|自然之灵|元素之体/.test(w)) return "elemental";
+    if (/妖|兽|狼|虎|蛇|狐|龙|鹏|豹|熊|鹰|蛟|麒麟|妖兽|妖修|猫咪|猫/.test(w)) return "beast";
+    return "human";
   },
   // 开启一道新投影（神魂再投诸天万界）
   // opts.reincarnation：{ oldWorld, realmReached, cause, inheritCredit } —— 由 destroyWorld 传入，供首回合"重生叙事"使用
@@ -1135,7 +1203,7 @@ const Game = {
     const c = state.character;
     const w = state.world;
     const gen = w.gen || {};
-    let intro = `我是「${c.name}」，${c.root}修士，出身「${c.background}」，目前境界${c.realm}。`;
+    let intro = `我是「${c.name}」，本相为${c.formName || "人族"}（${c.root}之道），出身「${c.background}」，目前境界${c.realm}。`;
     if (c.gender === "bag") {
       const g = GENDERS.find(x => x.id === "bag");
       if (g && g.premise) intro += `\n${g.premise}\n`;
@@ -1463,6 +1531,384 @@ function GuestMode_next(action) {
 // ============================================================
 //  UI 渲染层
 // ============================================================
+
+// ====== 程序化立绘工厂（模块级，UI 内复用） ======
+
+  //  参数化立绘工厂 ArtGen —— 用可组合特征程序化生成长相各异的
+  //  修士 / 妖姬 / 魔尊 / 敌人，可达上万种组合（告别写死的 9 种脸）。
+  //  配色板(14) × 发型(5) × 衣着(5) × 饰品(5) × 脸型(3) × 性别(2)
+  // =====================================================================
+  const ArtGen = {
+    // 14 套配色板：c1 主袍 c2 次色 c3 高光 c4 点缀 skin 肤 skinSh 肤影 hair 发 hairSh 发影 lip 唇 eye 眼 glow 光晕
+    PALETTES: [
+      { c1:"#2f6f8f", c2:"#8fd0e8", c3:"#d8f4ff", c4:"#bfeaff", skin:"#fce8dc", skinSh:"#f0d2bc", hair:"#1a1614", hairSh:"#3d3530", lip:"#d47a7a", eye:"#2a1814", glow:"rgba(120,200,235,0.25)" },
+      { c1:"#b05080", c2:"#f0b8d8", c3:"#ffd8ee", c4:"#ffc0e8", skin:"#fce8dc", skinSh:"#f0d2bc", hair:"#2e2020", hairSh:"#4a3838", lip:"#e07a8a", eye:"#3a2018", glow:"rgba(220,140,200,0.22)" },
+      { c1:"#2a2e3a", c2:"#6a7290", c3:"#aab4d8", c4:"#c8d2f0", skin:"#f0dcc8", skinSh:"#e0c8b0", hair:"#12110f", hairSh:"#2e2a26", lip:"#c06a60", eye:"#2a1a12", glow:"rgba(150,165,210,0.2)" },
+      { c1:"#b08028", c2:"#f0d080", c3:"#ffe8a0", c4:"#ffd866", skin:"#f8e0c8", skinSh:"#e6cdb0", hair:"#221a10", hairSh:"#4a3e28", lip:"#c87a5a", eye:"#3a2010", glow:"rgba(240,210,120,0.24)" },
+      { c1:"#3a8a5a", c2:"#9fd8b0", c3:"#d0f4dc", c4:"#b8f0c8", skin:"#fce8dc", skinSh:"#f0d2bc", hair:"#1e1a14", hairSh:"#3e3828", lip:"#d07a7a", eye:"#2a1a10", glow:"rgba(120,210,160,0.22)" },
+      { c1:"#6a3f9a", c2:"#b890e0", c3:"#e0c8ff", c4:"#d0b0ff", skin:"#f6e2d8", skinSh:"#e8d0c4", hair:"#241828", hairSh:"#443848", lip:"#c878b0", eye:"#2a1828", glow:"rgba(190,140,235,0.24)" },
+      { c1:"#a02a2a", c2:"#e89090", c3:"#ffc0c0", c4:"#ff9a9a", skin:"#f4dcc8", skinSh:"#e2c6b2", hair:"#1a0e0e", hairSh:"#3e2828", lip:"#d05a5a", eye:"#2a1410", glow:"rgba(230,110,110,0.24)" },
+      { c1:"#5a7a9a", c2:"#c0dcef", c3:"#eaf4ff", c4:"#d8ecff", skin:"#f2e6dc", skinSh:"#e2d4c8", hair:"#2a2e36", hairSh:"#4a4e58", lip:"#c89aa0", eye:"#1a2a3a", glow:"rgba(180,210,240,0.22)" },
+      { c1:"#4a5a78", c2:"#9ab0d0", c3:"#cfe0ff", c4:"#b8cce8", skin:"#e2e8f4", skinSh:"#cdd6ea", hair:"#1a2230", hairSh:"#3a4250", lip:"#a890b0", eye:"#dfe9ff", glow:"rgba(160,190,235,0.2)" },
+      { c1:"#7a5a30", c2:"#c8a060", c3:"#e8d0a0", c4:"#d8b878", skin:"#f0d8c0", skinSh:"#e0c4a8", hair:"#221a10", hairSh:"#4a3e28", lip:"#b07850", eye:"#3a2010", glow:"rgba(200,160,90,0.2)" },
+      { c1:"#34406a", c2:"#7a8fc0", c3:"#b8c8f0", c4:"#a0b8e8", skin:"#f2e2d6", skinSh:"#e2d2c6", hair:"#181a26", hairSh:"#3a3c4a", lip:"#b87888", eye:"#1a1a2a", glow:"rgba(130,155,210,0.22)" },
+      { c1:"#9a3a5a", c2:"#e0a0b8", c3:"#ffc8dc", c4:"#f0a8c0", skin:"#fce0d8", skinSh:"#f0d0c6", hair:"#281820", hairSh:"#4c3840", lip:"#e07a90", eye:"#3a1820", glow:"rgba(220,140,170,0.22)" },
+      { c1:"#2f7a4a", c2:"#8fd0a0", c3:"#c8f0d0", c4:"#a8e8bc", skin:"#f4e2cc", skinSh:"#e4d2bc", hair:"#1c1a12", hairSh:"#3e3e2e", lip:"#c8786a", eye:"#2a2a10", glow:"rgba(120,200,150,0.2)" },
+      { c1:"#6a7080", c2:"#c0c8d8", c3:"#eef2fb", c4:"#d8deec", skin:"#f6ece2", skinSh:"#e8ddd0", hair:"#20222a", hairSh:"#40424a", lip:"#c09098", eye:"#2a2a34", glow:"rgba(180,190,210,0.2)" },
+    ],
+    _rng(seed) { let a = (seed >>> 0) || 1; return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; },
+    specFromSeed(seed, arche, gender) {
+      const r = this._rng(seed);
+      const ri = (n) => Math.floor(r() * n);
+      return { pal: ri(this.PALETTES.length), hair: ri(5), outfit: ri(5), acc: ri(5), face: ri(3), gender: gender || "f" };
+    },
+
+    _defs(c) {
+      return `<defs>
+        <radialGradient id="agAura" cx="50%" cy="42%" r="52%">
+          <stop offset="0%" stop-color="${c.c4}" stop-opacity="0.30"/>
+          <stop offset="55%" stop-color="${c.glow}" stop-opacity="0.10"/>
+          <stop offset="100%" stop-color="${c.glow}" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="agRobe" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${c.c2}" stop-opacity="0.30"/>
+          <stop offset="45%" stop-color="${c.c1}" stop-opacity="0.65"/>
+          <stop offset="100%" stop-color="${c.c1}" stop-opacity="0.92"/>
+        </linearGradient>
+        <linearGradient id="agRobeSh" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="${c.c1}" stop-opacity="0.95"/>
+          <stop offset="50%" stop-color="${c.c2}" stop-opacity="0.25"/>
+          <stop offset="100%" stop-color="${c.c1}" stop-opacity="0.95"/>
+        </linearGradient>
+        <filter id="agGlow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <filter id="agSoft"><feGaussianBlur stdDeviation="0.8"/></filter>
+      </defs>`;
+    },
+    _aura(c) {
+      return `<ellipse cx="80" cy="115" rx="52" ry="75" fill="url(#agAura)"/>
+        <circle cx="38" cy="58" r="1.5" fill="${c.c4}" opacity="0.40"><animate attributeName="cy" values="58;48;58" dur="4s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.40;0.12;0.40" dur="4s" repeatCount="indefinite"/></circle>
+        <circle cx="124" cy="72" r="1.2" fill="${c.c4}" opacity="0.30"><animate attributeName="cy" values="72;62;72" dur="3.5s" repeatCount="indefinite"/></circle>
+        <circle cx="50" cy="155" r="1.1" fill="${c.c4}" opacity="0.25"><animate attributeName="cy" values="155;145;155" dur="5s" repeatCount="indefinite"/></circle>
+        <circle cx="112" cy="170" r="1.4" fill="${c.c4}" opacity="0.20"><animate attributeName="cy" values="170;160;170" dur="4.5s" repeatCount="indefinite"/></circle>`;
+    },
+
+    _body(c, g, o) {
+      const belt = `<path d="M58,172 Q80,177 102,172 L101,179 Q80,184 59,179Z" fill="${c.c4}" opacity="0.55"/>
+        <path d="M76,174 L84,174 L83,182 L77,182Z" fill="${c.c1}" opacity="0.9"/>`;
+      const baseF = `
+        <path d="M48,105 Q44,135 52,168 Q56,180 64,186 L96,186 Q104,180 108,168 Q116,135 112,105
+                 Q108,94 98,91 Q86,87 80,87 Q74,87 62,91 Q52,94 48,105Z" fill="${c.c1}" opacity="0.93"/>
+        <path d="M52,107 Q48,138 54,167 Q58,178 66,183 L94,183 Q102,178 106,167 Q112,138 108,107
+                 Q104,97 95,94 Q85,90 80,90 Q75,90 65,94 Q56,97 52,107Z" fill="url(#agRobe)"/>
+        <path d="M48,107 Q34,116 24,142 Q22,156 30,175 Q38,166 44,150 Q48,138 50,120Z" fill="${c.c1}" opacity="0.88"/>
+        <path d="M46,112 Q36,120 28,142 Q26,154 32,164 Q38,158 44,148 Q48,138 50,122Z" fill="url(#agRobeSh)" opacity="0.5"/>
+        <path d="M112,107 Q126,116 136,142 Q138,156 132,175 Q124,166 116,150 Q112,138 110,120Z" fill="${c.c1}" opacity="0.88"/>
+        <path d="M114,112 Q124,120 132,142 Q134,154 128,164 Q122,158 116,148 Q112,138 110,122Z" fill="url(#agRobeSh)" opacity="0.5"/>
+        <path d="M64,186 Q54,210 50,238 L110,238 Q106,210 96,186Z" fill="${c.c1}" opacity="0.90"/>
+        <path d="M66,188 Q58,208 55,234 L105,234 Q102,208 94,188Z" fill="url(#agRobe)"/>
+        <ellipse cx="28" cy="171" rx="5" ry="7" fill="${c.skin}" opacity="0.9"/>
+        <ellipse cx="132" cy="171" rx="5" ry="7" fill="${c.skin}" opacity="0.9"/>`;
+      const baseM = `
+        <path d="M46,105 Q42,138 50,172 Q56,188 66,196 L94,196 Q104,188 110,172 Q118,138 114,105
+                 Q109,93 97,89 Q85,86 80,86 Q75,86 63,89 Q51,93 46,105Z" fill="${c.c1}" opacity="0.93"/>
+        <path d="M50,107 Q46,140 52,171 Q58,185 68,192 L92,192 Q102,185 108,171 Q114,140 110,107
+                 Q105,96 95,92 Q85,89 80,89 Q75,89 65,92 Q55,96 50,107Z" fill="url(#agRobe)"/>
+        <path d="M46,105 Q32,116 22,145 Q19,162 27,176 Q37,166 46,152 Q50,138 48,118Z" fill="${c.c1}" opacity="0.88"/>
+        <path d="M114,105 Q128,116 138,145 Q141,162 133,176 Q123,166 114,152 Q110,138 112,118Z" fill="${c.c1}" opacity="0.88"/>
+        <path d="M66,196 Q56,218 52,244 L108,244 Q104,218 94,196Z" fill="${c.c1}" opacity="0.90"/>
+        <path d="M68,198 Q60,216 57,240 L103,240 Q100,216 92,198Z" fill="url(#agRobe)"/>
+        <ellipse cx="27" cy="174" rx="6" ry="8" fill="${c.skin}" opacity="0.9"/>
+        <ellipse cx="133" cy="174" rx="6" ry="8" fill="${c.skin}" opacity="0.9"/>`;
+      let body = g === "f" ? baseF : baseM;
+      if (o === 1) body += `<path d="M64,94 Q80,106 80,114 Q80,106 96,94 Q86,100 80,110 Q74,100 64,94Z" fill="${c.c3}" opacity="0.45"/>` + belt;
+      else if (o === 2) body += `<path d="M60,100 Q80,108 100,100 Q92,105 80,113 Q68,105 60,100Z" fill="${c.c4}" opacity="0.40"/>` + belt;
+      else if (o === 3) body += `<path d="M50,108 Q42,117 44,134 L56,127 Q52,118 54,110Z" fill="${c.c3}" opacity="0.60"/><path d="M110,108 Q118,117 116,134 L104,127 Q108,118 106,110Z" fill="${c.c3}" opacity="0.60"/><path d="M68,95 L92,95 L89,103 L71,103Z" fill="${c.c3}" opacity="0.50"/>` + belt;
+      else if (o === 4) body += `<path d="M56,158 Q80,166 104,158 L102,154 Q80,162 58,154Z" fill="${c.c4}" opacity="0.35"/><path d="M80,105 Q80,155 80,205" stroke="${c.c4}" stroke-width="1.2" fill="none" opacity="0.40"/>` + belt;
+      else body += belt;
+      return body;
+    },
+
+    _head(idx, c, g) {
+      const neck = `<path d="M71,82 L71,92 Q80,97 89,92 L89,82" fill="${c.skin}"/>
+        <path d="M73,84 L73,91 Q80,95 87,91 L87,84" fill="${c.skinSh}" opacity="0.5"/>`;
+      if (idx === 0) {
+        return `<path d="M54,58 Q50,38 62,26 Q72,17 80,16 Q88,17 98,26 Q110,38 106,58
+                  Q104,76 95,84 Q87,90 80,90 Q73,90 65,84 Q56,76 54,58Z" fill="${c.skin}"/>` +
+               `<path d="M56,60 Q52,42 63,30 Q72,21 80,20 Q88,21 97,30 Q108,42 104,60
+                  Q102,77 94,84 Q87,89 80,89 Q73,89 66,84 Q58,77 56,60Z" fill="${c.skinSh}" opacity="0.35"/>` + neck;
+      }
+      if (idx === 1) {
+        return `<path d="M52,56 Q48,36 61,24 Q72,15 80,14 Q89,15 100,24 Q112,36 108,56
+                  Q106,75 97,83 Q88,90 80,90 Q72,90 63,83 Q54,75 52,56Z" fill="${c.skin}"/>` +
+               `<path d="M54,58 Q50,40 62,28 Q73,19 80,18 Q88,19 99,28 Q110,40 106,58
+                  Q104,76 96,83 Q87,89 80,89 Q73,89 64,83 Q56,76 54,58Z" fill="${c.skinSh}" opacity="0.30"/>` + neck;
+      }
+      return `<path d="M54,57 Q50,40 62,28 Q73,19 80,18 Q88,19 98,28 Q110,40 106,57
+                Q104,74 96,82 Q87,89 80,89 Q73,89 66,82 Q57,74 54,57Z" fill="${c.skin}"/>` +
+           `<path d="M56,59 Q52,42 63,31 Q73,22 80,21 Q87,22 98,31 Q109,42 105,59
+                Q103,75 95,82 Q87,88 80,88 Q73,88 65,81 Q57,75 56,59Z" fill="${c.skinSh}" opacity="0.32"/>` + neck;
+    },
+
+    _features(c, g) {
+      const eyeY = 55;
+      const blush = g === "f"
+        ? `<ellipse cx="62" cy="64" rx="6" ry="3.5" fill="#ffb0a0" opacity="0.25"/>
+           <ellipse cx="98" cy="64" rx="6" ry="3.5" fill="#ffb0a0" opacity="0.25"/>`
+        : "";
+      const brow = g === "f"
+        ? `<path d="M58,47 Q65,43 73,46" stroke="${c.hairSh}" stroke-width="1.4" fill="none" stroke-linecap="round" opacity="0.75"/>
+           <path d="M87,46 Q95,43 102,47" stroke="${c.hairSh}" stroke-width="1.4" fill="none" stroke-linecap="round" opacity="0.75"/>`
+        : `<path d="M56,45 Q66,40 77,44" stroke="${c.hairSh}" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
+           <path d="M83,44 Q94,40 104,45" stroke="${c.hairSh}" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>`;
+      const eRx = g === "f" ? 6 : 6.5, eRy = g === "f" ? 4 : 4.4;
+      const eyes = `
+        <ellipse cx="68" cy="${eyeY}" rx="${eRx}" ry="${eRy}" fill="#fff" opacity="0.95"/>
+        <ellipse cx="92" cy="${eyeY}" rx="${eRx}" ry="${eRy}" fill="#fff" opacity="0.95"/>
+        <ellipse cx="68.5" cy="${eyeY + 0.5}" rx="3.5" ry="3.8" fill="${c.eye}" opacity="0.92"/>
+        <ellipse cx="92.5" cy="${eyeY + 0.5}" rx="3.5" ry="3.8" fill="${c.eye}" opacity="0.92"/>
+        <circle cx="70" cy="${eyeY - 1.2}" r="1.6" fill="#fff" opacity="0.95"/>
+        <circle cx="94" cy="${eyeY - 1.2}" r="1.6" fill="#fff" opacity="0.95"/>
+        <circle cx="67" cy="${eyeY + 1}" r="0.8" fill="#fff" opacity="0.6"/>
+        <circle cx="91" cy="${eyeY + 1}" r="0.8" fill="#fff" opacity="0.6"/>`;
+      const nose = `<path d="M80,56 Q82.5,63 80,71" stroke="${c.skinSh}" stroke-width="1.3" fill="none" stroke-linecap="round" opacity="0.7"/>
+        <path d="M80,71 Q78,73 80,74" stroke="${c.skinSh}" stroke-width="1" fill="none" stroke-linecap="round" opacity="0.5"/>`;
+      const lip = g === "f"
+        ? `<path d="M73,79 Q80,82.5 87,79" stroke="${c.lip}" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+           <path d="M76,79 Q80,81 84,79" fill="${c.lip}" opacity="0.18"/>`
+        : `<path d="M73,80 Q80,83.5 87,80" stroke="${c.lip}" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+      const ears = `<ellipse cx="51" cy="58" rx="4" ry="6" fill="${c.skin}" transform="rotate(-10 51 58)"/>
+        <ellipse cx="51" cy="58" rx="2" ry="4" fill="${c.skinSh}" opacity="0.4" transform="rotate(-10 51 58)"/>
+        <ellipse cx="109" cy="58" rx="4" ry="6" fill="${c.skin}" transform="rotate(10 109 58)"/>
+        <ellipse cx="109" cy="58" rx="2" ry="4" fill="${c.skinSh}" opacity="0.4" transform="rotate(10 109 58)"/>`;
+      return ears + blush + brow + eyes + nose + lip;
+    },
+
+    HAIR_F: [
+      (c) => `<path d="M50,56 Q42,32 56,18 Q68,6 80,5 Q90,6 102,18 Q114,32 110,56
+                  Q108,72 100,82 Q92,90 80,90 Q68,90 60,82 Q52,72 50,56Z" fill="${c.hair}"/>
+        <path d="M48,60 Q36,88 30,140 Q34,108 44,82 Q48,72 48,60Z" fill="${c.hair}" opacity="0.92"/>
+        <path d="M112,60 Q124,88 130,140 Q126,108 116,82 Q112,72 112,60Z" fill="${c.hair}" opacity="0.92"/>
+        <path d="M54,42 Q58,28 70,20 Q78,15 88,20 Q100,28 104,42
+                  Q96,34 86,30 Q76,27 66,30 Q58,34 54,42Z" fill="${c.hairSh}"/>
+        <path d="M56,48 Q60,36 72,28 Q80,24 90,28 Q102,36 104,48
+                  Q96,42 86,39 Q76,37 66,39 Q58,42 56,48Z" fill="${c.hairSh}" opacity="0.7"/>`,
+      (c) => `<path d="M50,56 Q42,32 56,18 Q68,6 80,5 Q90,6 102,18 Q114,32 110,56
+                  Q108,72 100,82 Q92,90 80,90 Q68,90 60,82 Q52,72 50,56Z" fill="${c.hair}"/>
+        <circle cx="52" cy="36" r="11" fill="${c.hair}"/>
+        <circle cx="52" cy="36" r="7" fill="${c.hairSh}"/>
+        <circle cx="52" cy="33" r="2.5" fill="${c.c4}" opacity="0.7" filter="url(#agGlow)"/>
+        <circle cx="108" cy="36" r="11" fill="${c.hair}"/>
+        <circle cx="108" cy="36" r="7" fill="${c.hairSh}"/>
+        <circle cx="108" cy="33" r="2.5" fill="${c.c4}" opacity="0.7" filter="url(#agGlow)"/>
+        <path d="M50,62 Q38,90 32,138 Q36,108 46,82 Q50,72 50,62Z" fill="${c.hair}" opacity="0.88"/>
+        <path d="M110,62 Q122,90 128,138 Q124,108 114,82 Q110,72 110,62Z" fill="${c.hair}" opacity="0.88"/>
+        <path d="M56,48 Q60,36 72,28 Q80,24 90,28 Q102,36 104,48
+                  Q96,42 86,39 Q76,37 66,39 Q58,42 56,48Z" fill="${c.hairSh}"/>`,
+      (c) => `<path d="M50,56 Q42,32 56,18 Q68,6 80,5 Q90,6 102,18 Q114,32 110,56
+                  Q108,72 100,82 Q92,90 80,90 Q68,90 60,82 Q52,72 50,56Z" fill="${c.hair}"/>
+        <path d="M56,38 Q80,14 104,38 Q96,26 80,24 Q64,26 56,38Z" fill="${c.hairSh}"/>
+        <path d="M80,18 Q86,40 82,80 Q78,50 80,18Z" fill="${c.hair}" opacity="0.9"/>
+        <path d="M80,18 Q94,35 100,70 Q88,42 82,22Z" fill="${c.hair}" opacity="0.85"/>
+        <circle cx="80" cy="16" r="4.5" fill="${c.c4}" opacity="0.65" filter="url(#agGlow)"/>
+        <path d="M48,62 Q38,92 34,142 Q38,110 46,84 Q50,74 48,62Z" fill="${c.hair}" opacity="0.85"/>
+        <path d="M112,62 Q122,92 126,142 Q122,110 114,84 Q110,74 112,62Z" fill="${c.hair}" opacity="0.85"/>
+        <path d="M54,48 Q58,36 70,28 Q78,24 88,28 Q100,36 104,48
+                  Q96,42 86,39 Q76,37 66,39 Q58,42 54,48Z" fill="${c.hairSh}"/>`,
+      (c) => `<path d="M52,56 Q46,34 58,20 Q70,9 80,8 Q90,9 102,20 Q114,34 108,56
+                  Q106,72 98,80 Q90,88 80,88 Q70,88 62,80 Q54,72 52,56Z" fill="${c.hair}"/>
+        <path d="M53,44 Q56,34 66,27 Q75,22 85,27 Q95,34 98,44 Q90,38 82,35 Q74,33 66,35 Q58,38 53,44Z" fill="${c.hair}"/>
+        <path d="M55,46 Q58,37 68,30 Q76,26 86,30 Q96,37 99,46
+                  Q92,41 84,38 Q76,36 67,38 Q59,41 55,46Z" fill="${c.hairSh}" opacity="0.7"/>
+        <rect x="73" y="18" width="14" height="7" rx="2.5" fill="${c.c4}" opacity="0.65"/>
+        <circle cx="80" cy="16" r="3" fill="${c.c4}" opacity="0.6" filter="url(#agGlow)"/>
+        <path d="M50,62 Q42,84 38,120 Q42,96 48,76 Q52,68 50,62Z" fill="${c.hair}" opacity="0.85"/>
+        <path d="M110,62 Q118,84 122,120 Q118,96 112,76 Q108,68 110,62Z" fill="${c.hair}" opacity="0.85"/>`,
+      (c) => `<path d="M50,56 Q42,32 56,18 Q68,6 80,5 Q90,6 102,18 Q114,32 110,56
+                  Q108,72 100,82 Q92,90 80,90 Q68,90 60,82 Q52,72 50,56Z" fill="${c.hair}"/>
+        <path d="M48,60 Q34,90 28,148 Q32,112 44,84 Q50,74 48,60Z" fill="${c.hair}" opacity="0.92"/>
+        <path d="M112,60 Q126,90 132,148 Q128,112 116,84 Q110,74 112,60Z" fill="${c.hair}" opacity="0.92"/>
+        <path d="M34,100 Q30,118 34,134" stroke="${c.hairSh}" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.4"/>
+        <path d="M126,100 Q130,118 126,134" stroke="${c.hairSh}" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.4"/>
+        <path d="M54,44 Q58,28 72,19 Q80,14 90,19 Q102,28 106,44
+                  Q97,35 86,31 Q76,28 66,31 Q57,35 54,44Z" fill="${c.hairSh}"/>
+        <path d="M56,50 Q60,38 72,30 Q80,25 90,30 Q100,38 104,50
+                  Q96,43 86,40 Q76,37 67,40 Q58,43 56,50Z" fill="${c.hairSh}" opacity="0.65"/>`,
+    ],
+
+    HAIR_M: [
+      (c) => `<path d="M52,56 Q44,32 58,18 Q70,7 80,6 Q90,7 102,18 Q116,32 108,56
+                  Q106,72 98,80 Q90,88 80,88 Q70,88 62,80 Q54,72 52,56Z" fill="${c.hair}"/>
+        <path d="M64,24 Q80,12 96,24 Q88,18 80,17 Q72,18 64,24Z" fill="${c.hairSh}"/>
+        <line x1="58" y1="30" x2="102" y2="30" stroke="${c.c4}" stroke-width="2.5" stroke-linecap="round" opacity="0.65"/>
+        <rect x="74" y="24" width="12" height="6" rx="1.5" fill="${c.c4}" opacity="0.55"/>
+        <path d="M56,52 Q60,38 72,29 Q80,25 88,29 Q100,38 104,52
+                  Q96,44 86,40 Q76,38 66,40 Q58,44 56,52Z" fill="${c.hairSh}"/>
+        <path d="M50,60 Q38,90 32,140 Q36,108 46,82 Q50,72 50,60Z" fill="${c.hair}" opacity="0.88"/>
+        <path d="M110,60 Q122,90 128,140 Q124,108 114,82 Q110,72 110,60Z" fill="${c.hair}" opacity="0.88"/>`,
+      (c) => `<path d="M54,56 Q46,34 58,20 Q70,10 80,9 Q90,10 102,20 Q114,34 108,56
+                  Q106,72 98,80 Q90,87 80,87 Q70,87 62,80 Q54,72 54,56Z" fill="${c.hair}"/>
+        <path d="M56,52 Q60,40 74,31 Q80,27 88,31 Q102,40 104,52
+                  Q96,44 86,41 Q76,38 66,41 Q58,44 56,52Z" fill="${c.hairSh}"/>`,
+      (c) => `<path d="M52,56 Q44,32 56,18 Q68,6 80,5 Q92,6 104,18 Q116,32 108,56
+                  Q106,72 100,82 Q92,90 80,90 Q68,90 60,82 Q52,72 52,56Z" fill="${c.hair}"/>
+        <path d="M48,60 Q36,90 30,145 Q34,112 44,84 Q50,74 48,60Z" fill="${c.hair}" opacity="0.90"/>
+        <path d="M112,60 Q124,90 130,145 Q126,112 116,84 Q110,74 112,60Z" fill="${c.hair}" opacity="0.90"/>
+        <path d="M54,50 Q58,36 70,27 Q78,22 88,27 Q100,36 104,50
+                  Q96,42 86,38 Q76,35 66,38 Q58,42 54,50Z" fill="${c.hairSh}"/>`,
+      (c) => `<path d="M52,56 Q46,36 58,22 Q70,12 80,11 Q90,12 102,22 Q114,36 108,56
+                  Q106,70 98,78 Q90,85 80,85 Q70,85 62,78 Q54,70 52,56Z" fill="${c.hair}"/>
+        <path d="M68,26 Q80,16 92,26 Q86,20 80,19 Q74,20 68,26Z" fill="${c.hairSh}"/>
+        <path d="M58,32 Q80,28 102,32 L100,38 Q80,34 60,38Z" fill="${c.c4}" opacity="0.55"/>
+        <path d="M58,40 Q60,30 72,23 L80,38 Q88,23 100,40 Q98,32 92,28 Q80,24 68,28 Q62,30 58,40Z" fill="${c.hairSh}"/>`,
+      (c) => `<path d="M52,56 Q44,32 58,18 Q70,7 80,6 Q90,7 102,18 Q116,32 108,56
+                  Q106,72 98,80 Q90,88 80,88 Q70,88 62,80 Q54,72 52,56Z" fill="${c.hair}"/>
+        <rect x="62" y="22" width="36" height="6" rx="2" fill="${c.c4}" opacity="0.55"/>
+        <line x1="56" y1="32" x2="104" y2="32" stroke="${c.c4}" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+        <circle cx="80" cy="19" r="3" fill="${c.c4}" opacity="0.6" filter="url(#agGlow)"/>
+        <path d="M56,52 Q60,38 72,29 Q80,25 88,29 Q100,38 104,52
+                  Q96,44 86,40 Q76,38 66,40 Q58,44 56,52Z" fill="${c.hairSh}"/>
+        <path d="M50,60 Q38,90 32,140 Q36,108 46,82 Q50,72 50,60Z" fill="${c.hair}" opacity="0.88"/>
+        <path d="M110,60 Q122,90 128,140 Q124,108 114,82 Q110,72 110,60Z" fill="${c.hair}" opacity="0.88"/>`,
+    ],
+
+    ACC: [
+      (c, g) => `<line x1="92" y1="28" x2="108" y2="20" stroke="${c.c4}" stroke-width="2.2" stroke-linecap="round"/>
+        <circle cx="109" cy="19" r="2.8" fill="${c.c4}" filter="url(#agGlow)"/>
+        <circle cx="91" cy="29" r="2" fill="${c.c4}" opacity="0.7"/>`,
+      (c, g) => `<g transform="rotate(-13 128 100)">
+        <rect x="124" y="54" width="3.5" height="58" rx="1.5" fill="#e8f0f8" opacity="0.94"/>
+        <rect x="125" y="54" width="1.2" height="58" rx="0.6" fill="#fff" opacity="0.55"/>
+        <rect x="120" y="104" width="10" height="4.5" rx="1.2" fill="${c.c4}" opacity="0.7"/>
+        </g>`,
+      (c, g) => `<g transform="translate(120,125)">
+        <path d="M0,0 Q13,-5 20,3 Q13,13 0,11 Z" fill="${c.c2}" opacity="0.82" stroke="${c.c4}" stroke-width="1"/>
+        <line x1="-2" y1="7" x2="-14" y2="20" stroke="${c.c1}" stroke-width="1.6"/>
+        </g>`,
+      (c, g) => `<circle cx="128" cy="78" r="10" fill="none" stroke="${c.c4}" stroke-width="1.3" opacity="0.45">
+        <animate attributeName="r" values="10;11.5;10" dur="3s" repeatCount="indefinite"/></circle>
+        <circle cx="128" cy="78" r="4.5" fill="${c.c3}" opacity="0.35" filter="url(#agGlow)">
+        <animate attributeName="opacity" values="0.35;0.55;0.35" dur="2.5s" repeatCount="indefinite"/></circle>`,
+      (c, g) => ``,
+    ],
+
+  // 非人形态立绘：按魂穿形态画不同剪影（树/花/石/器/鬼/妖兽/元素灵），配色沿用玩家调色板
+  being(form, spec) {
+    const P = this.PALETTES[spec.pal % this.PALETTES.length];
+    const g = (spec.gender === "f") ? "f" : "m";
+    const aura = this._aura(P);
+    let body = "";
+    if (form === "tree") {
+      body = `
+        <path d="M73,236 Q70,182 75,150 L85,150 Q90,182 87,236 Z" fill="${P.c1}"/>
+        <path d="M75,150 Q72,120 78,98 L82,98 Q88,120 85,150 Z" fill="${P.c1}" opacity="0.85"/>
+        <ellipse cx="80" cy="76" rx="42" ry="36" fill="${P.c3}" opacity="0.92"/>
+        <ellipse cx="54" cy="92" rx="27" ry="25" fill="${P.c2}" opacity="0.9"/>
+        <ellipse cx="106" cy="90" rx="29" ry="27" fill="${P.c2}" opacity="0.92"/>
+        <ellipse cx="80" cy="58" rx="31" ry="29" fill="${P.c4}" opacity="0.85"/>
+        <circle cx="73" cy="150" r="2.8" fill="${P.glow}" opacity="0.95"/>
+        <circle cx="87" cy="150" r="2.8" fill="${P.glow}" opacity="0.95"/>
+        <ellipse cx="73" cy="150" rx="4.5" ry="4.5" fill="none" stroke="${P.c4}" stroke-width="1" opacity="0.5"/>
+        <ellipse cx="87" cy="150" rx="4.5" ry="4.5" fill="none" stroke="${P.c4}" stroke-width="1" opacity="0.5"/>`;
+    } else if (form === "flower") {
+      body = `
+        <path d="M80,238 Q78,202 80,170" stroke="${P.c1}" stroke-width="5" fill="none" stroke-linecap="round"/>
+        <ellipse cx="66" cy="198" rx="13" ry="6" fill="${P.c2}" opacity="0.8" transform="rotate(-30 66 198)"/>
+        <ellipse cx="94" cy="198" rx="13" ry="6" fill="${P.c2}" opacity="0.8" transform="rotate(30 94 198)"/>
+        ${[0,60,120,180,240,300].map(a=>`<ellipse cx="80" cy="118" rx="13" ry="27" fill="${P.c2}" opacity="0.9" transform="rotate(${a} 80 118)"/>`).join("")}
+        <circle cx="80" cy="118" r="14" fill="${P.c4}"/>
+        <circle cx="76" cy="118" r="2.4" fill="${P.glow}"/><circle cx="84" cy="118" r="2.4" fill="${P.glow}"/>`;
+    } else if (form === "stone") {
+      body = `
+        <path d="M42,238 Q28,188 52,150 Q70,128 98,138 Q128,128 132,172 Q140,214 112,238 Z" fill="${P.c1}"/>
+        <path d="M52,150 Q66,140 82,150 Q70,158 60,158 Z" fill="${P.c2}" opacity="0.5"/>
+        <path d="M98,138 Q112,150 108,168" stroke="${P.c2}" stroke-width="1.5" fill="none" opacity="0.5"/>
+        <circle cx="72" cy="186" r="3" fill="${P.glow}"/><circle cx="92" cy="186" r="3" fill="${P.glow}"/>
+        <ellipse cx="72" cy="186" rx="5" ry="5" fill="none" stroke="${P.c4}" stroke-width="1" opacity="0.5"/>
+        <ellipse cx="92" cy="186" rx="5" ry="5" fill="none" stroke="${P.c4}" stroke-width="1" opacity="0.5"/>`;
+    } else if (form === "artifact") {
+      body = `
+        <path d="M80,44 L87,96 L85,196 L80,214 L75,196 L73,96 Z" fill="${P.c3}" stroke="${P.c1}" stroke-width="1.5"/>
+        <path d="M80,60 L83,110 L80,160 L77,110 Z" fill="${P.c4}" opacity="0.6"/>
+        <rect x="60" y="196" width="40" height="6" rx="2" fill="${P.c4}"/>
+        <rect x="76" y="202" width="8" height="28" rx="2" fill="${P.c1}"/>
+        <circle cx="80" cy="232" r="5" fill="${P.c4}"/>
+        <circle cx="80" cy="120" r="3" fill="${P.glow}"><animate attributeName="r" values="3;5;3" dur="2.5s" repeatCount="indefinite"/></circle>`;
+    } else if (form === "ghost") {
+      body = `
+        <path d="M80,72 Q54,92 56,150 Q58,206 80,230 Q102,206 104,150 Q106,92 80,72 Z" fill="${P.c2}" opacity="0.55"/>
+        <path d="M80,86 Q62,104 64,150 Q66,196 80,218 Q94,196 96,150 Q98,104 80,86 Z" fill="${P.c3}" opacity="0.5"/>
+        <circle cx="72" cy="138" r="4" fill="${P.glow}"/><circle cx="88" cy="138" r="4" fill="${P.glow}"/>
+        <path d="M72,162 Q80,170 88,162" stroke="${P.c4}" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+    } else if (form === "beast") {
+      body = `
+        <ellipse cx="86" cy="158" rx="44" ry="22" fill="${P.c1}"/>
+        <circle cx="46" cy="146" r="18" fill="${P.c1}"/>
+        <path d="M34,132 L40,118 L46,130 Z" fill="${P.c1}"/><path d="M52,130 L58,116 L62,130 Z" fill="${P.c1}"/>
+        <path d="M30,150 Q24,154 30,160 L36,154 Z" fill="${P.c1}"/>
+        <rect x="60" y="176" width="7" height="20" rx="2" fill="${P.c1}"/><rect x="92" y="176" width="7" height="20" rx="2" fill="${P.c1}"/><rect x="108" y="176" width="7" height="20" rx="2" fill="${P.c1}"/><rect x="80" y="178" width="7" height="20" rx="2" fill="${P.c1}"/>
+        <path d="M126,150 Q140,140 134,160 Q130,156 126,158 Z" fill="${P.c1}"/>
+        <circle cx="40" cy="144" r="3" fill="${P.glow}"/><circle cx="52" cy="144" r="3" fill="${P.glow}"/>`;
+    } else if (form === "elemental") {
+      body = `
+        <circle cx="80" cy="140" r="44" fill="${P.c2}" opacity="0.4" filter="url(#agGlow)"/>
+        <circle cx="80" cy="140" r="28" fill="${P.c3}" opacity="0.85"/>
+        <circle cx="80" cy="140" r="14" fill="${P.c4}"/>
+        <circle cx="80" cy="140" r="50" fill="none" stroke="${P.c4}" stroke-width="1" opacity="0.35"><animate attributeName="r" values="44;54;44" dur="3s" repeatCount="indefinite"/></circle>
+        <circle cx="80" cy="100" r="3" fill="${P.glow}"><animate attributeName="cy" values="100;96;100" dur="3s" repeatCount="indefinite"/></circle>
+        <circle cx="120" cy="150" r="2.5" fill="${P.glow}"><animate attributeName="cx" values="120;124;120" dur="2.5s" repeatCount="indefinite"/></circle>
+        <circle cx="42" cy="150" r="2.5" fill="${P.glow}"/><circle cx="80" cy="186" r="2.5" fill="${P.glow}"/>`;
+    } else {
+      return this.npc(spec);
+    }
+    return `<div class="artgen-portrait gender-${g} form-${form}"><svg class="ag-svg" viewBox="0 0 160 260" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">${aura}${body}</svg></div>`;
+  },
+
+  // 程序化敌人立绘：依 cfg 配色 + feats 特征（horns/armor/aura/ghost/wisp/eyes3）画一只妖兽剪影
+  enemySvg(cfg) {
+    cfg = cfg || {};
+    const body = cfg.body || "#4a3a30";
+    const belly = cfg.belly || "#c9a878";
+    const eye = cfg.eye || "#ffcf66";
+    const c4 = cfg.c4 || "#ffffff";
+    const feats = Array.isArray(cfg.feats) ? cfg.feats : [];
+    const has = (x) => feats.indexOf(x) >= 0;
+    const ghost = has("ghost") || has("wisp");
+    const opacity = ghost ? 0.62 : 1;
+    let extra = "";
+    if (has("aura")) extra += `<ellipse cx="80" cy="120" rx="64" ry="58" fill="${c4}" opacity="0.14"/>`;
+    if (has("horns")) extra += `<path d="M64,56 Q58,40 66,34 Q62,46 70,54 Z" fill="${body}"/><path d="M96,56 Q102,40 94,34 Q98,46 90,54 Z" fill="${body}"/>`;
+    if (has("armor")) extra += `<path d="M52,96 Q80,108 108,96 L104,122 Q80,134 56,122 Z" fill="${c4}" opacity="0.5"/>`;
+    if (has("eyes3")) extra += `<circle cx="80" cy="72" r="2.4" fill="${eye}"/>`;
+    const tail = ghost
+      ? `<path d="M118,150 Q140,138 132,170 Q124,154 118,158 Z" fill="${body}" opacity="${opacity}"/>`
+      : `<path d="M118,150 Q138,142 132,166 Q126,154 118,158 Z" fill="${body}"/>`;
+    return `<svg class="ag-svg ag-enemy" viewBox="0 0 160 200" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="80" cy="150" rx="50" ry="26" fill="${body}" opacity="${opacity}"/>
+      <ellipse cx="80" cy="160" rx="30" ry="14" fill="${belly}" opacity="${opacity}"/>
+      <circle cx="52" cy="96" r="22" fill="${body}" opacity="${opacity}"/>
+      <path d="M38,86 L44,68 L52,82 Z" fill="${body}" opacity="${opacity}"/>
+      <path d="M62,82 L68,66 L74,82 Z" fill="${body}" opacity="${opacity}"/>
+      <rect x="60" y="170" width="9" height="22" rx="2" fill="${body}" opacity="${opacity}"/><rect x="91" y="170" width="9" height="22" rx="2" fill="${body}" opacity="${opacity}"/><rect x="40" y="166" width="8" height="20" rx="2" fill="${body}" opacity="${opacity}"/><rect x="112" y="166" width="8" height="20" rx="2" fill="${body}" opacity="${opacity}"/>
+      ${tail}
+      <circle cx="46" cy="92" r="3.4" fill="${eye}"/><circle cx="60" cy="92" r="3.4" fill="${eye}"/>
+      ${extra}
+    </svg>`;
+  },
+
+    npc(spec) {
+      const P = this.PALETTES[spec.pal % this.PALETTES.length];
+      const g = (spec.gender === "f") ? "f" : "m";
+      const hair = (g === "f" ? this.HAIR_F : this.HAIR_M)[spec.hair % 5](P);
+      const body = this._body(P, g, spec.outfit % 5);
+      const head = this._head(spec.face % 3, P, g);
+      const feat = this._features(P, g);
+      const acc = this.ACC[spec.acc % 5](P, g);
+      const defs = this._defs(P);
+      const aura = this._aura(P);
+      return `<div class="artgen-portrait gender-${g}"><svg class="ag-svg" viewBox="0 0 160 260" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">${defs}${aura}${body}${head}${hair}${feat}${acc}</svg></div>`;
+    },
+  };
+
 const UI = {
   currentScreen: "menu", // menu | create | game | settings
 
@@ -1502,7 +1948,11 @@ const UI = {
     if (detail) detail.innerHTML = '<div class="map-detail-empty">点选地图上的地域节点，查看其风土与凶险。</div>';
 
     const W = 1000, H = 680;
-    const cur = (Game.state.world && Game.state.world.location) || gen.startLocation;
+    const _locRaw = (Game.state.world && Game.state.world.location) || gen.startLocation;
+    // 当前位置可能是"地域名"或"子地点名"：兼容子地点，定位其所属地域用于高亮
+    const cur = gen.regions.some(r => r.name === _locRaw)
+      ? _locRaw
+      : (((gen.sublocations || []).find(s => s.name === _locRaw) || {}).region || gen.startLocation);
 
     const dangerColor = (d) => {
       if (d <= 1) return "#5fae6a";   // 凡俗/平和
@@ -1571,13 +2021,14 @@ const UI = {
       b.x0 = Math.min(b.x0, r.x); b.y0 = Math.min(b.y0, r.y);
       b.x1 = Math.max(b.x1, r.x); b.y1 = Math.max(b.y1, r.y);
     });
+    const TYPE_GLYPH = { "凡俗":"凡", "宗门":"宗", "荒野":"荒", "坊市":"坊", "禁地":"禁", "秘境":"秘", "试炼":"试", "仙迹":"仙" };
     let zones = "";
     (gen.macroRegions || []).forEach(m => {
       const b = box[m.name]; if (!b) return;
       const x0 = b.x0 - 55, y0 = b.y0 - 45, x1 = b.x1 + 55, y1 = b.y1 + 45;
       const cx = (x0 + x1) / 2;
-      zones += `<rect class="map-zone" x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}"></rect>`;
-      zones += `<text class="map-zone-label" x="${cx}" y="${y0 + 22}" text-anchor="middle">${m.name}</text>`;
+      zones += `<rect class="map-zone" x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" rx="16"></rect>`;
+      zones += `<text class="map-zone-label" x="${cx}" y="${y0 + 24}" text-anchor="middle">${m.name}</text>`;
     });
 
     // 2) 灵脉连线（每个地域连最近的另一个地域）
@@ -1602,19 +2053,23 @@ const UI = {
       linkSvg += `<path class="map-link" d="M ${pts[a].x} ${pts[a].y} Q ${mx} ${my} ${pts[b].x} ${pts[b].y}"></path>`;
     });
 
-    // 3) 地域节点
+    // 3) 地域节点（域核：发光圆盘 + 类型篆字 + 当前位置脉冲 + 域内胜迹数）
     let nodes = "";
     pts.forEach((r, i) => {
       const isCur = r.name === cur;
-      const rad = 10 + Math.min(6, r.danger);
+      const rad = 12 + Math.min(7, r.danger);
       // 关卡设计：可选分支节点（秘境/试炼/支线）加高亮类，让玩家一眼看到"可玩支线"
       const isBranch = (r.branch === "secret" || r.branch === "trial" || r.branch === "sidequest");
       const branchCls = isBranch ? ("map-branch map-branch-" + r.branch) : "";
-      nodes += `<g class="map-node ${isCur ? "map-current" : ""} ${branchCls}" data-i="${i}" data-branch="${r.branch || ""}" onclick="UI.showRegionDetail(${i})">`
-        + `<circle class="node-core" cx="${r.x}" cy="${r.y}" r="${rad}" fill="${dangerColor(r.danger)}" stroke="#000" stroke-width="1.5"></circle>`
-        + `<text x="${r.x}" y="${r.y + 5}" text-anchor="middle" font-size="13" fill="#0b0d14" style="pointer-events:none;font-weight:bold">${r.name[0]}</text>`
-        + `<text class="node-label" x="${r.x}" y="${r.y + rad + 16}" text-anchor="middle">${r.name}</text>`
-        + `</g>`;
+      const glyph = TYPE_GLYPH[r.type] || "·";
+      const subN = (gen.sublocations || []).filter(s => s.region === r.name).length;
+      nodes += `<g class="map-node ${isCur ? "map-current" : ""} ${branchCls}" data-i="${i}" data-branch="${r.branch || ""}" onclick="UI.showRegionDetail(${i})">
+        <circle class="node-glow" cx="${r.x}" cy="${r.y}" r="${rad + 11}" fill="${dangerColor(r.danger)}"></circle>
+        <circle class="node-core" cx="${r.x}" cy="${r.y}" r="${rad}" fill="${dangerColor(r.danger)}" stroke="rgba(255,255,255,0.75)" stroke-width="2"></circle>
+        <text x="${r.x}" y="${r.y + 5}" text-anchor="middle" font-size="14" fill="#fff" style="pointer-events:none;font-weight:bold;text-shadow:0 1px 2px rgba(0,0,0,.6)">${glyph}</text>
+        <text class="node-label" x="${r.x}" y="${r.y + rad + 15}" text-anchor="middle">${r.name}</text>
+        ${subN ? `<text class="node-sub" x="${r.x}" y="${r.y + rad + 28}" text-anchor="middle">${subN} 处</text>` : ""}
+      </g>`;
     });
     // 本周秘境节点（确定性生成，整周稳定，金色高亮，作"回访理由"）
     if (typeof WorldGen !== "undefined") {
@@ -1627,9 +2082,9 @@ const UI = {
           + `</g>`;
       } catch (e) { /* 周秘生成失败不影响主图 */ }
     }
-    // 当前位置脉冲环
+    // 当前位置脉冲环（半径随节点大小自适应，包裹"域核"）
     const curR = pts.find(r => r.name === cur);
-    const ring = curR ? `<circle class="map-current-ring" cx="${curR.x}" cy="${curR.y}" r="18"></circle>` : "";
+    const ring = curR ? `<circle class="map-current-ring" cx="${curR.x}" cy="${curR.y}" r="${12 + Math.min(7, curR.danger) + 7}"></circle>` : "";
 
     canvas.innerHTML = `<svg class="world-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">`
       + `<defs><linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1"><stop class="sky-top" offset="0"/><stop class="sky-bot" offset="1"/></linearGradient>`
@@ -1680,9 +2135,84 @@ const UI = {
     html += `<div class="md-row"><b>凶险程度：</b>${r.danger} / 10（${dt}）</div>`;
     if (facs.length) html += `<div class="md-row"><b>盘踞势力：</b>${facs.map(f => f.name).join("、")}</div>`;
     if (npcs.length) html += `<div class="md-row"><b>相关人物：</b>${npcs.map(n => n.name + "（" + n.title + "）").join("、")}</div>`;
-    if (r.name === (Game.state.world.location)) html += `<div class="md-row" style="color:var(--gold-bright)">★ 你当前所在</div>`;
+    const subs = (gen.sublocations || []).filter(s => s.region === r.name);
+    if (subs.length) {
+      html += `<div class="md-row md-sub-title"><b>域内胜迹（${subs.length} 处 · 可前往）：</b></div>`;
+      html += `<div class="md-subs">` + subs.map((s, k) => {
+        const visited = (Game.state.world.visited || []).indexOf(s.id) >= 0;
+        const dangerTag = s.danger >= 7 ? " · 绝险" : (s.danger >= 5 ? " · 凶" : "");
+        return `<button class="md-sub-btn" onclick="UI.travelToSub(${i},${k})">${s.name}<span class="md-sub-d">${s.type}${dangerTag}</span>${visited ? '<span class="md-sub-v">✓已游</span>' : ''}</button>`;
+      }).join("") + `</div>`;
+    }
+    const curRegion = gen.regions.some(x => x.name === Game.state.world.location)
+      ? Game.state.world.location
+      : ((gen.sublocations || []).find(s => s.name === Game.state.world.location) || {}).region || gen.startLocation;
+    if (r.name === curRegion) html += `<div class="md-row" style="color:var(--gold-bright)">★ 你当前所在</div>`;
     const detail = document.getElementById("map-detail");
     if (detail) detail.innerHTML = html;
+  },
+
+  // 前往某地域的子地点（胜迹）：直接更新所在地点，记录游历，返回游戏
+  travelToSub(regionIdx, subIdx) {
+    const gen = (Game.state && Game.state.world && Game.state.world.gen);
+    if (!gen) return;
+    const r = gen.regions[regionIdx];
+    if (!r) return;
+    const subs = (gen.sublocations || []).filter(s => s.region === r.name);
+    const sub = subs[subIdx];
+    if (!sub) return;
+    const w = Game.state.world;
+    w.location = sub.name;
+    w.subLocation = sub.id;
+    w.locationRegion = r.name;
+    w.visited = w.visited || [];
+    if (w.visited.indexOf(sub.id) < 0) w.visited.push(sub.id);
+    // 给一句系统提示，让玩家感知"已抵达"；renderHistory 会将其作为旁白渲染
+    try { Game.log.push({ role: "system", text: "你循着地势，来到了【" + sub.name + "】——" + (sub.desc || "") }); } catch (e) {}
+    this.show("game");
+    // 自动触发一回合 AI，生成新地点的剧情与选项（否则玩家看到场景描述后无选项可点）
+    setTimeout(() => { try { this.sendAction("环顾【" + sub.name + "】，探索此地的风物与机缘"); } catch(e){} }, 120);
+  },
+
+  // ============ 群像图鉴 ============
+  // 用 ArtGen 程序化生成本世界所有具名 NPC 的立绘，证明"几百个妹子/人物立绘"可凭种子组合而成
+  showCodex() {
+    this.renderCodex();
+    this.show("codex");
+  },
+  renderCodex() {
+    const gen = (Game.state && Game.state.world && Game.state.world.gen);
+    const wrap = document.getElementById("codex-grid");
+    if (!wrap) return;
+    if (!gen || !gen.npcs || !gen.npcs.length) {
+      wrap.innerHTML = '<div class="codex-empty">此界尚未生成人物。</div>';
+      return;
+    }
+    const cards = gen.npcs.map(n => {
+      const spec = ArtGen.specFromSeed(n.portraitSeed || hashSeed(n.name), n.arche, n.gender);
+      const portrait = ArtGen.npc(spec);
+      const mem = (Game.state.npcMemory && Game.state.npcMemory[n.name]) || null;
+      const notes = mem && mem.notes && mem.notes.length
+        ? mem.notes.map(x => x.text).slice(-3).join("；")
+        : (n.profile && n.profile.goal ? "所求：" + n.profile.goal : "尚未相交");
+      return `<div class="codex-card">
+        <div class="codex-portrait">${portrait}</div>
+        <div class="codex-name">${UI.escapeHtml(n.name)}</div>
+        <div class="codex-title">${UI.escapeHtml(n.title)}·${UI.escapeHtml(n.trait)}</div>
+        <div class="codex-where">常现于 ${UI.escapeHtml(n.where)}</div>
+        <div class="codex-note">${UI.escapeHtml(notes)}</div>
+      </div>`;
+    }).join("");
+    wrap.innerHTML = cards;
+    if (gen && gen.npcs) {
+      wrap.querySelectorAll(".codex-portrait").forEach((cell, i) => {
+        const n = gen.npcs[i];
+        const spec = this._npcSpec(n);
+        if (spec) ArtEngine.upgrade(cell, spec);
+      });
+    }
+    const count = document.getElementById("codex-count");
+    if (count) count.textContent = gen.npcs.length + " 位";
   },
 
   // ============ 主菜单 ============
@@ -1859,9 +2389,12 @@ const UI = {
       if (/女|她|姐|妹|妻|姬|妃/.test(wish)) genderIndex = 1;
       else if (/男|他|哥|弟|夫|君|郎/.test(wish)) genderIndex = 0;
     }
-    Game.newProjection({ wish: wish || null, genderIndex: genderIndex });
+    // 从许愿文本解析"魂穿形态"（我是一棵树 → 树精；我是一头妖狼 → 妖兽……）
+    const form = Game.parseForm(wish);
+    Game.newProjection({ wish: wish || null, genderIndex: genderIndex, form: form });
     const sysName = (Game.state.world && Game.state.world.cultivationSystemName) || "灵根";
-    this.flashToast(`命中之界 · 修炼体系：${sysName}`);
+    const formName = (Game.state.character && Game.state.character.formName) || "人族";
+    this.flashToast(`本相·${formName}　命中之界 · 修炼体系：${sysName}`);
     this.showWorldMap(true);
   },
 
@@ -2072,7 +2605,7 @@ const UI = {
     const w = Game.state.world;
     document.getElementById("status-panel").innerHTML = `
       <div class="char-name">${c.name}</div>
-      <div class="char-root">${(c.genderName || (GENDERS.find(g => g.id === c.gender) || {}).name || "修士")} · ${(c.cultivationSystem || "灵根")}·${c.root} · ${c.background}</div>
+      <div class="char-root">${c.formName || "人族"} · ${(c.genderName || (GENDERS.find(g => g.id === c.gender) || {}).name || "修士")} · ${(c.cultivationSystem || "灵根")}·${c.root}</div>
       <div class="stat-row"><span>境界</span><span class="stat-val">${c.realm}</span></div>
       <div class="progress-bar"><div class="progress-fill" style="width:${c.realmProgress}%"></div></div>
       <div class="stat-row"><span>灵力</span><span class="stat-val">${c.qi}/${c.maxQi}</span></div>
@@ -2321,118 +2854,331 @@ const UI = {
     return map[s] || "sys-default";
   },
 
-  // ============ 宝可梦风格像素立绘（零 AI 积分，纯 SVG 块化精灵） ============
-  // 设计：大头身比、粗黑描边、硬边填色、大萌眼、体系高饱和配色
+  // ============ 玩家立绘（复用 ArtGen 程序化生成，长相随道号稳定） ============
   _heroPortrait() {
     const c = Game.state && Game.state.character;
     if (!c) return "";
-    const sysCls = this._systemClass();
-    const gender = c.gender === 1 ? "f" : "m";
-    const name = this.escapeHtml(c.name || "修士");
-    // 像素块绘制辅助：x,y,w,h,fill
-    const rect = (x, y, w, h, f) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}"/>`;
-    const skin = "#f8dcb8", hair = gender === "f" ? "#3e2f2a" : "#241f1b";
-    const eyeWhite = "#fff", eyePupil = "#1a120e";
-    // 女主：长发+簪子；男主：短发+束冠
-    const headBlocks = gender === "f"
-      ? rect(58,42,44,36,skin) + rect(54,34,52,20,hair) + rect(50,48,8,32,hair) + rect(102,48,8,32,hair)
-        + rect(54,76,52,8,hair) + rect(100,38,12,6,"var(--pt-accent)") + rect(102,34,8,8,"var(--pt-accent)")
-        + rect(66,64,10,12,eyeWhite) + rect(88,64,10,12,eyeWhite) + rect(70,68,4,6,eyePupil) + rect(90,68,4,6,eyePupil)
-        + rect(74,84,16,4,"#d47a7a")
-      : rect(60,44,42,34,skin) + rect(56,36,50,18,hair) + rect(54,50,10,20,hair) + rect(100,50,10,20,hair)
-        + rect(58,68,46,8,hair) + rect(72,34,18,8,"var(--pt-accent)") + rect(76,30,10,8,"var(--pt-accent)")
-        + rect(66,64,10,12,eyeWhite) + rect(88,64,10,12,eyeWhite) + rect(70,68,4,6,eyePupil) + rect(90,68,4,6,eyePupil)
-        + rect(76,84,12,4,"#d47a7a");
-    // 法器：按体系给不同像素造型
-    const sys = (Game.state.world && Game.state.world.cultivationSystem) || "lingen";
-    const artX = 116, artY = 120;
-    const arts = {
-      lingen:   rect(artX,artY,6,52,"var(--pt-light)") + rect(artX-2,artY,10,8,"var(--pt-accent)") + rect(artX,artY+48,6,8,"var(--pt-accent)"),
-      xuema:    rect(artX,artY,16,16,"var(--pt-accent)") + rect(artX+4,artY+4,8,8,"#fff") + rect(artX+6,artY+6,4,4,"var(--pt-dark)"),
-      mingge:   rect(artX,artY,18,18,"none") + `<rect x="${artX}" y="${artY}" width="18" height="18" fill="none" stroke="var(--pt-accent)" stroke-width="3"/>` + rect(artX+7,artY-4,4,26,"var(--pt-accent)") + rect(artX-4,artY+7,26,4,"var(--pt-accent)"),
-      daozhong: rect(artX-2,artY+6,22,10,"var(--pt-accent)") + rect(artX+2,artY,14,22,"var(--pt-light)") + rect(artX+6,artY-4,6,6,"var(--pt-accent)"),
-      yuansu:   rect(artX,artY,16,16,"var(--pt-accent)") + rect(artX+6,artY-6,4,28,"var(--pt-light)") + rect(artX-6,artY+6,28,4,"var(--pt-light)"),
-      lingshu:  rect(artX,artY,18,22,"var(--pt-light)") + rect(artX+2,artY+2,14,18,"var(--pt-main)") + rect(artX+7,artY-2,4,26,"var(--pt-accent)"),
-      rudao:    rect(artX+4,artY-8,6,64,"var(--pt-light)") + rect(artX+2,artY-8,10,8,"var(--pt-accent)") + rect(artX,artY+48,14,6,"var(--pt-accent)"),
-      wudao:    rect(artX,artY,18,14,"var(--pt-accent)") + rect(artX+2,artY+2,14,10,"var(--pt-light)") + rect(artX+6,artY+14,6,10,"var(--pt-dark)"),
-    };
-    const artifact = arts[sys] || arts.lingen;
-    return `<div class="hero-portrait ${sysCls} gender-${gender}" title="${name}">
-      <svg class="hp-svg" viewBox="0 0 160 240" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-label="${name}" shape-rendering="crispEdges">
-        <rect x="0" y="0" width="160" height="240" fill="none"/>
-        <!-- 灵气背景 -->
-        <rect x="28" y="22" width="104" height="96" fill="var(--pt-accent)" opacity="0.18" rx="0"/>
-        <rect x="36" y="30" width="88" height="80" fill="var(--pt-accent)" opacity="0.12"/>
-        <!-- 身体/袍子：块化 -->
-        <rect x="50" y="104" width="60" height="76" fill="var(--pt-dark)"/>
-        <rect x="56" y="108" width="48" height="68" fill="var(--pt-main)"/>
-        <rect x="68" y="108" width="24" height="68" fill="var(--pt-light)" opacity="0.5"/>
-        <rect x="62" y="142" width="36" height="10" fill="var(--pt-accent)"/>
-        <!-- 袖子 -->
-        <rect x="34" y="110" width="22" height="48" fill="var(--pt-main)"/>
-        <rect x="104" y="110" width="22" height="48" fill="var(--pt-main)"/>
-        <rect x="30" y="154" width="12" height="12" fill="var(--pt-light)"/>
-        <rect x="118" y="154" width="12" height="12" fill="var(--pt-light)"/>
-        <!-- 脖子 -->
-        <rect x="70" y="96" width="20" height="12" fill="${skin}"/>
-        <!-- 头部 -->
-        ${headBlocks}
-        <!-- 法器 -->
-        ${artifact}
-        <!-- 描边（后叠加，粗黑边） -->
-        <rect x="58" y="42" width="44" height="36" fill="none" stroke="#1a120e" stroke-width="3"/>
-        <rect x="50" y="104" width="60" height="76" fill="none" stroke="#1a120e" stroke-width="3"/>
-      </svg>
-    </div>`;
+    const gender = (c.gender === "f" || c.gender === 1) ? "f" : "m";
+    const seed = (typeof hashSeed === "function") ? hashSeed(c.name || "道友") : 1;
+    try {
+      const spec = ArtGen.specFromSeed(seed, c.arche || "xianzi", gender);
+      const form = c.form || "human";
+      let div;
+      if (form === "human" || form === "人族") div = ArtGen.npc(spec);
+      else div = ArtGen.being(form, spec);
+      return div.replace('class="artgen-portrait', 'class="hero-portrait artgen-portrait');
+    } catch (e) { return ""; }
   },
 
-  // NPC 立绘库：宝可梦/Q 版像素精灵（零积分、可组合变体）
+
+  // NPC 立绘库：古风修仙人物（平滑 SVG 路径，每种有独特造型）
   NPC_POOL: {
-    old:      { label:"仙风老者", main:"#6d614e", accent:"#e8d5a0", skin:"#f0d5b0", hair:"#e6e6e6",
-      head:`<rect x="58" y="42" width="44" height="38" fill="#f0d5b0"/><rect x="54" y="36" width="52" height="20" fill="#e6e6e6"/><rect x="50" y="50" width="8" height="30" fill="#e6e6e6"/><rect x="102" y="50" width="8" height="30" fill="#e6e6e6"/><rect x="72" y="38" width="16" height="8" fill="#b8b8b8"/><rect x="64" y="66" width="10" height="12" fill="#fff"/><rect x="86" y="66" width="10" height="12" fill="#fff"/><rect x="68" y="70" width="4" height="6" fill="#1a120e"/><rect x="88" y="70" width="4" height="6" fill="#1a120e"/><rect x="72" y="86" width="16" height="3" fill="#9a9a9a"/>` },
-    crone:    { label:"白发老妪", main:"#7a6e7a", accent:"#f0d0f0", skin:"#f0d5b0", hair:"#e6e6e6",
-      head:`<rect x="58" y="44" width="44" height="36" fill="#f0d5b0"/><rect x="54" y="36" width="52" height="22" fill="#e6e6e6"/><rect x="50" y="52" width="8" height="32" fill="#e6e6e6"/><rect x="102" y="52" width="8" height="32" fill="#e6e6e6"/><rect x="64" y="66" width="10" height="12" fill="#fff"/><rect x="86" y="66" width="10" height="12" fill="#fff"/><rect x="68" y="70" width="4" height="6" fill="#1a120e"/><rect x="88" y="70" width="4" height="6" fill="#1a120e"/><rect x="72" y="86" width="16" height="3" fill="#d47a7a"/>` },
-    maiden:   { label:"灵秀少女", main:"#d47aa8", accent:"#ffd0e8", skin:"#fce0c8", hair:"#3e2f2a",
-      head:`<rect x="58" y="42" width="44" height="36" fill="#fce0c8"/><rect x="54" y="32" width="52" height="24" fill="#3e2f2a"/><rect x="50" y="48" width="10" height="34" fill="#3e2f2a"/><rect x="100" y="48" width="10" height="34" fill="#3e2f2a"/><rect x="94" y="36" width="12" height="8" fill="#ffd0e8"/><rect x="64" y="64" width="10" height="12" fill="#fff"/><rect x="86" y="64" width="10" height="12" fill="#fff"/><rect x="68" y="68" width="4" height="6" fill="#1a120e"/><rect x="88" y="68" width="4" height="6" fill="#1a120e"/><rect x="72" y="84" width="16" height="3" fill="#d47a7a"/>` },
-    youth:    { label:"英气少男", main:"#5a84b8", accent:"#c8e0ff", skin:"#f8dcb8", hair:"#241f1b",
-      head:`<rect x="60" y="44" width="42" height="34" fill="#f8dcb8"/><rect x="56" y="36" width="50" height="20" fill="#241f1b"/><rect x="54" y="50" width="10" height="24" fill="#241f1b"/><rect x="100" y="50" width="10" height="24" fill="#241f1b"/><rect x="72" y="34" width="18" height="8" fill="#c8e0ff"/><rect x="64" y="64" width="10" height="12" fill="#fff"/><rect x="86" y="64" width="10" height="12" fill="#fff"/><rect x="68" y="68" width="4" height="6" fill="#1a120e"/><rect x="88" y="68" width="4" height="6" fill="#1a120e"/><rect x="74" y="84" width="14" height="3" fill="#d47a7a"/>` },
-    merchant: { label:"商贾",     main:"#a67c36", accent:"#ffe090", skin:"#f0d0a8", hair:"#2c2620",
-      head:`<rect x="58" y="44" width="44" height="36" fill="#f0d0a8"/><rect x="54" y="38" width="52" height="18" fill="#2c2620"/><rect x="82" y="50" width="20" height="10" fill="#2c2620"/><rect x="80" y="38" width="22" height="8" fill="#ffe090"/><rect x="64" y="66" width="10" height="12" fill="#fff"/><rect x="86" y="66" width="10" height="12" fill="#fff"/><rect x="68" y="70" width="4" height="6" fill="#1a120e"/><rect x="88" y="70" width="4" height="6" fill="#1a120e"/><rect x="70" y="86" width="20" height="3" fill="#9a6a3a"/>` },
-    daoist:   { label:"道士",     main:"#4a8068", accent:"#a8f0c8", skin:"#f8dcb8", hair:"#222",
-      head:`<rect x="60" y="44" width="42" height="34" fill="#f8dcb8"/><rect x="56" y="36" width="50" height="18" fill="#222"/><rect x="54" y="50" width="10" height="24" fill="#222"/><rect x="100" y="50" width="10" height="24" fill="#222"/><rect x="70" y="34" width="22" height="8" fill="#a8f0c8"/><rect x="64" y="64" width="10" height="12" fill="#fff"/><rect x="86" y="64" width="10" height="12" fill="#fff"/><rect x="68" y="68" width="4" height="6" fill="#1a120e"/><rect x="88" y="68" width="4" height="6" fill="#1a120e"/><rect x="72" y="84" width="16" height="3" fill="#4a8068"/>` },
-    yaoxiu:   { label:"妖修化形", main:"#8a5298", accent:"#f0a8ff", skin:"#f0d0b8", hair:"#3a2533",
-      head:`<rect x="58" y="44" width="44" height="36" fill="#f0d0b8"/><rect x="54" y="34" width="52" height="22" fill="#3a2533"/><rect x="48" y="46" width="10" height="14" fill="#3a2533"/><rect x="102" y="46" width="10" height="14" fill="#3a2533"/><rect x="66" y="64" width="12" height="12" fill="#f0a8ff"/><rect x="88" y="64" width="12" height="12" fill="#f0a8ff"/><rect x="70" y="68" width="4" height="6" fill="#1a120e"/><rect x="90" y="68" width="4" height="6" fill="#1a120e"/><rect x="72" y="84" width="16" height="3" fill="#a06090"/>` },
-    xiexiu:   { label:"邪修",     main:"#4a1018", accent:"#ff5b5b", skin:"#e0b898", hair:"#160a0c",
-      head:`<rect x="58" y="44" width="44" height="36" fill="#e0b898"/><rect x="54" y="34" width="52" height="22" fill="#160a0c"/><rect x="50" y="48" width="10" height="28" fill="#160a0c"/><rect x="102" y="48" width="10" height="28" fill="#160a0c"/><rect x="64" y="64" width="10" height="12" fill="#ffd0d0"/><rect x="86" y="64" width="10" height="12" fill="#ffd0d0"/><rect x="68" y="68" width="4" height="6" fill="#7a1f2b"/><rect x="88" y="68" width="4" height="6" fill="#7a1f2b"/><rect x="70" y="86" width="20" height="3" fill="#7a1f2b"/>` },
-    ghost:    { label:"鬼物",     main:"#5a6a88", accent:"#cfe0ff", skin:"#d8e0f0", hair:"#9fb0c8",
-      head:`<rect x="58" y="44" width="44" height="36" fill="#d8e0f0" opacity="0.9"/><rect x="54" y="36" width="52" height="18" fill="#9fb0c8" opacity="0.8"/><rect x="50" y="50" width="10" height="28" fill="#9fb0c8" opacity="0.8"/><rect x="102" y="50" width="10" height="28" fill="#9fb0c8" opacity="0.8"/><rect x="68" y="66" width="8" height="8" fill="#fff"/><rect x="88" y="66" width="8" height="8" fill="#fff"/><rect x="72" y="86" width="16" height="3" fill="#8fa0c0"/>` },
+    old:      { label:"仙风老者", main:"#5a6050", accent:"#c8d8b8", skin:"#f0dcb8", hair:"#d8e0d0",
+      aura:"rgba(180,200,160,0.2)",
+      svg:(s)=>`<!-- 仙风老者：白须飘飘、道骨仙风 -->
+        <defs><radialGradient id="npcAura" cx="50%" cy="45%" r="55%"><stop offset="0%" stop-color="${s.accent}" stop-opacity="0.3"/><stop offset="100%" stop-color="${s.accent}" stop-opacity="0"/></radialGradient></defs>
+        <ellipse cx="80" cy="110" rx="52" ry="70" fill="url(#npcAura)"/>
+        <!-- 长袍 -->
+        <path d="M54,178 Q50,140 58,112 Q66,98 80,96 Q94,98 102,112 Q110,140 106,178 Q103,196 95,212 L65,212 Q57,196 54,178Z" fill="${s.main}" opacity="0.9"/>
+        <path d="M58,174 Q54,142 60,116 Q68,102 80,100 Q92,100 100,116 Q106,142 102,174 Q99,192 93,208 L67,208Q61,192 58,174Z" fill="${s.accent}" opacity="0.2"/>
+        <path d="M57,152 Q80,158 103,152 L102,160 Q80,167 58,160Z" fill="${s.accent}" opacity="0.4"/>
+        <!-- 袖子 -->
+        <path d="M56,114 Q36,120 26,144 Q22,162 30,176 Q38,168 48,156 Q54,144 56,126Z" fill="${s.main}" opacity="0.88"/>
+        <path d="M104,114 Q124,120 134,144 Q138,162 130,176 Q122,168 112,156 Q106,144 104,126Z" fill="${s.main}" opacity="0.88"/>
+        <!-- 手 -->
+        <ellipse cx="30" cy="172" rx="5" ry="7" fill="${s.skin}"/>
+        <ellipse cx="130" cy="172" rx="5" ry="7" fill="${s.skin}"/>
+        <!-- 白发/长髯 -->
+        <path d="M54,72 Q48,50 58,36 Q70,22 80,20 Q90,22 102,36 Q112,50 106,72 Q104,84 98,90 Q90,96 80,96 Q70,96 62,90 Q56,84 54,72Z" fill="${s.hair}"/>
+        <path d="M52,76 Q42,100 34,145 Q38,115 46,90 Q50,80 52,76Z" fill="${s.hair}" opacity="0.85"/>
+        <path d="M108,76 Q118,100 126,145 Q122,115 114,90 Q110,80 108,76Z" fill="${s.hair}" opacity="0.85"/>
+        <!-- 长须 -->
+        <path d="M68,88 Q64,108 60,138 Q66,112 72,90Z" fill="${s.hair}" opacity="0.75"/>
+        <path d="M80,89 Q78,112 76,142 Q82,114 84,89Z" fill="${s.hair}" opacity="0.7"/>
+        <path d="M92,88 Q96,108 100,138 Q94,112 88,90Z" fill="${s.hair}" opacity="0.75"/>
+        <!-- 脸 -->
+        <path d="M60,70 Q58,56 66,46 Q74,38 80,38 Q86,38 94,46 Q102,56 100,70 Q98,82 92,88 Q86,93 80,93 Q74,93 68,88 Q62,82 60,70Z" fill="${s.skin}"/>
+        <ellipse cx="69" cy="65" rx="4" ry="3" fill="#fff"/><ellipse cx="91" cy="65" rx="4" ry="3" fill="#fff"/>
+        <circle cx="70" cy="65.5" r="2.2" fill="#2a1810"/><circle cx="92" cy="65.5" r="2.2" fill="#2a1810"/>
+        <circle cx="71" cy="64.5" r="0.8" fill="#fff"/><circle cx="93" cy="64.5" r="0.8" fill="#fff"/>
+        <path d="M66,59 Q70,56 76,58" stroke="${s.hair}" stroke-width="1" fill="none" opacity="0.6" stroke-linecap="round"/>
+        <path d="M84,58 Q90,56 94,59" stroke="${s.hair}" stroke-width="1" fill="none" opacity="0.6" stroke-linecap="round"/>
+        <path d="M77,78 Q80,81 83,78" stroke="#a07060" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <path d="M73,91 L73,99 Q80,103 87,99 L87,91" fill="${s.skin}"/>
+        ` },
+    crone:    { label:"白发老妪", main:"#6a5a6a", accent:"#e0d0e8", skin:"#f0dcb8", hair:"#d8d0d0",
+      aura:"rgba(200,180,210,0.18)",
+      svg:(s)=>`<!-- 白发老妪：慈眉善目、银发如霜 -->
+        <defs><radialGradient id="npcAura" cx="50%" cy="45%" r="55%"><stop offset="0%" stop-color="${s.accent}" stop-opacity="0.25"/><stop offset="100%" stop-color="${s.accent}" stop-opacity="0"/></radialGradient></defs>
+        <ellipse cx="80" cy="112" rx="50" ry="68" fill="url(#npcAura)"/>
+        <path d="M56,178 Q52,140 60,114 Q67,100 80,97 Q93,100 100,114 Q108,140 104,178 Q101,196 94,211 L66,211 Q59,196 56,178Z" fill="${s.main}" opacity="0.9"/>
+        <path d="M60,174 Q56,144 62,118 Q69,104 80,101 Q91,104 98,118 Q104,144 100,174 Q97,192 91,207 L69,207Q63,192 60,174Z" fill="${s.accent}" opacity="0.18"/>
+        <path d="M59,154 Q80,160 101,154 L100,161 Q80,168 60,161Z" fill="${s.accent}" opacity="0.35"/>
+        <path d="M58,116 Q40,121 30,143 Q26,160 32,175 Q40,167 49,155 Q55,144 58,127Z" fill="${s.main}" opacity="0.86"/>
+        <path d="M102,116 Q120,121 130,143 Q134,160 128,175 Q120,167 111,155 Q105,144 102,127Z" fill="${s.main}" opacity="0.86"/>
+        <ellipse cx="32" cy="171" rx="4.5" ry="6.5" fill="${s.skin}"/>
+        <ellipse cx="128" cy="171" rx="4.5" ry="6.5" fill="${s.skin}"/>
+        <path d="M54,74 Q48,52 58,38 Q70,24 80,22 Q90,24 102,38 Q112,52 106,74 Q104,86 98,92 Q90,98 80,98 Q70,98 62,92 Q56,86 54,74Z" fill="${s.hair}"/>
+        <path d="M52,78 Q44,102 36,143 Q40,116 47,92 Q51,82 52,78Z" fill="${s.hair}" opacity="0.8"/>
+        <path d="M108,78 Q116,102 124,143 Q120,116 113,92 Q109,82 108,78Z" fill="${s.hair}" opacity="0.8"/>
+        <path d="M66,90 Q63,108 60,135 Q65,112 70,91Z" fill="${s.hair}" opacity="0.65"/>
+        <path d="M94,90 Q97,108 100,135 Q95,112 90,91Z" fill="${s.hair}" opacity="0.65"/>
+        <path d="M60,72 Q58,58 66,48 Q74,40 80,40 Q86,40 94,48 Q102,58 100,72 Q98,84 92,90 Q86,95 80,95 Q74,95 68,90 Q62,84 60,72Z" fill="${s.skin}"/>
+        <ellipse cx="69" cy="67" rx="4" ry="3" fill="#fff"/><ellipse cx="91" cy="67" rx="4" ry="3" fill="#fff"/>
+        <circle cx="69.5" cy="67.5" r="2" fill="#2a1810"/><circle cx="91.5" cy="67.5" r="2" fill="#2a1810"/>
+        <circle cx="70.5" cy="66.5" r="0.8" fill="#fff"/><circle cx="92.5" cy="66.5" r="0.8" fill="#fff"/>
+        <path d="M66,61 Q70,58 75,60" stroke="${s.hair}" stroke-width="1" fill="none" opacity="0.5" stroke-linecap="round"/>
+        <path d="M85,60 Q90,58 94,61" stroke="${s.hair}" stroke-width="1" fill="none" opacity="0.5" stroke-linecap="round"/>
+        <path d="M76,80 Q80,83 84,80" stroke="#b08080" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+        <path d="M73,93 L73,101 Q80,105 87,101 L87,93" fill="${s.skin}"/>
+        ` },
+    maiden:   { label:"灵秀少女", main:"#a06090", accent:"#f0d0ee", skin:"#fce8dc", hair:"#3e2820",
+      aura:"rgba(220,160,200,0.18)",
+      svg:(s)=>`<!-- 灵秀少女：双丫髻、灵动可爱 -->
+        <defs><radialGradient id="npcAura" cx="50%" cy="44%" r="56%"><stop offset="0%" stop-color="${s.accent}" stop-opacity="0.3"/><stop offset="100%" stop-color="${s.accent}" stop-opacity="0"/></radialGradient></defs>
+        <ellipse cx="80" cy="108" rx="50" ry="70" fill="url(#npcAura)"/>
+        <path d="M54,176 Q50,140 58,112 Q65,98 79,95 Q93,98 102,112 Q110,140 106,176 Q103,194 95,210 L65,210 Q57,194 54,176Z" fill="${s.main}" opacity="0.88"/>
+        <path d="M58,172 Q54,144 60,117 Q67,103 79,99 Q91,103 99,117 Q105,144 101,172 Q98,190 92,206 L68,206Q62,190 58,172Z" fill="${s.accent}" opacity="0.2"/>
+        <path d="M58,150 Q80,157 102,150 L101,158 Q80,165 59,158Z" fill="${s.accent}" opacity="0.5"/>
+        <path d="M77,153 L83,153 L82,163 L78,163Z" fill="${s.main}" opacity="0.7"/>
+        <path d="M56,114 Q36,119 26,141 Q22,158 30,173 Q38,164 48,152 Q54,141 56,125Z" fill="${s.main}" opacity="0.85"/>
+        <path d="M104,114 Q124,119 134,141 Q138,158 130,173 Q122,164 112,152 Q106,141 104,125Z" fill="${s.main}" opacity="0.85"/>
+        <ellipse cx="31" cy="169" rx="4.5" ry="6" fill="${s.skin}"/>
+        <ellipse cx="129" cy="169" rx="4.5" ry="6" fill="${s.skin}"/>
+        <!-- 双丫髻发型 -->
+        <path d="M52,72 Q46,50 56,35 Q68,21 80,19 Q92,21 104,35 Q114,50 108,72 Q106,84 100,90 Q92,96 80,96 Q68,96 60,90 Q54,84 52,72Z" fill="${s.hair}"/>
+        <path d="M48,44 Q38,38 36,50 Q38,44 44,46 Q48,48 48,44Z" fill="${s.hair}"/> <!-- 左髻 -->
+        <path d="M112,44 Q122,38 124,50 Q122,44 116,46 Q112,48 112,44Z" fill="${s.hair}"/> <!-- 右髻 -->
+        <circle cx="40" cy="44" r="3" fill="${s.accent}" opacity="0.7"/><circle cx="120" cy="44" r="3" fill="${s.accent}" opacity="0.7"/>
+        <path d="M56,56 Q58,42 68,33 Q77,29 86,33 Q97,42 99,56 Q93,48 85,44 Q77,42 68,44 Q61,48 56,56Z" fill="#4e3530"/>
+        <path d="M50,76 Q42,100 34,140 Q38,114 46,90 Q50,80 50,76Z" fill="${s.hair}" opacity="0.85"/>
+        <path d="M110,76 Q118,100 126,140 Q122,114 114,90 Q110,80 110,76Z" fill="${s.hair}" opacity="0.85"/>
+        <path d="M58,70 Q56,56 64,45 Q73,37 80,37 Q87,37 96,45 Q104,56 102,70 Q100,83 94,89 Q86,94 80,94 Q74,94 66,89 Q60,83 58,70Z" fill="${s.skin}"/>
+        <ellipse cx="67" cy="66" rx="5" ry="3.5" fill="#fff"/><ellipse cx="93" cy="66" rx="5" ry="3.5" fill="#fff"/>
+        <ellipse cx="68" cy="66.5" rx="3" ry="3.2" fill="#2a1510"/><ellipse cx="94" cy="66.5" rx="3" ry="3.2" fill="#2a1510"/>
+        <circle cx="69.5" cy="65.2" r="1.2" fill="#fff"/><circle cx="95.5" cy="65.2" r="1.2" fill="#fff"/>
+        <path d="M63,60 Q67,57 73,59" stroke="${s.hair}" stroke-width="1" fill="none" opacity="0.5" stroke-linecap="round"/>
+        <path d="M87,59 Q93,57 97,60" stroke="${s.hair}" stroke-width="1" fill="none" opacity="0.5" stroke-linecap="round"/>
+        <path d="M64,64 Q66,62 68,64" stroke="${s.hair}" stroke-width="0.6" fill="none" opacity="0.3"/>
+        <path d="M92,64 Q94,62 96,64" stroke="${s.hair}" stroke-width="0.6" fill="none" opacity="0.3"/>
+        <ellipse cx="65" cy="74" rx="5" ry="3" fill="#ffb0a0" opacity="0.2"/>
+        <ellipse cx="95" cy="74" rx="5" ry="3" fill="#ffb0a0" opacity="0.2"/>
+        <path d="M75,82 Q80,85 85,82" stroke="#d07a8a" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <path d="M73,90 L73,98 Q80,102 87,98 L87,90" fill="${s.skin}"/>
+        ` },
+    youth:    { label:"英气少男", main:"#4a7098", accent:"#b0d0f0", skin:"#f8dcc8", hair:"#1a1614",
+      aura:"rgba(150,180,220,0.18)",
+      svg:(s)=>`<!-- 英气少男：玉树临风、剑眉星目 -->
+        <defs><radialGradient id="npcAura" cx="50%" cy="45%" r="55%"><stop offset="0%" stop-color="${s.accent}" stop-opacity="0.25"/><stop offset="100%" stop-color="${s.accent}" stop-opacity="0"/></radialGradient></defs>
+        <ellipse cx="80" cy="110" rx="52" ry="70" fill="url(#npcAura)"/>
+        <path d="M52,178 Q48,138 57,110 Q65,96 80,94 Q95,96 103,110 Q112,138 108,178 Q105,198 96,214 L64,214 Q55,198 52,178Z" fill="${s.main}" opacity="0.9"/>
+        <path d="M56,174 Q52,142 59,114 Q67,100 80,98 Q93,100 101,114 Q108,142 104,174 Q100,194 93,209 L67,209Q60,194 56,174Z" fill="${s.accent}" opacity="0.18"/>
+        <path d="M56,152 Q80,159 104,152 L103,160 Q80,168 57,160Z" fill="${s.accent}" opacity="0.4"/>
+        <path d="M76,155 L84,155 L83,166 L77,166Z" fill="${s.main}" opacity="0.7"/>
+        <path d="M56,112 Q34,118 24,144 Q20,162 28,177 Q38,168 48,155 Q54,143 56,124Z" fill="${s.main}" opacity="0.87"/>
+        <path d="M104,112 Q126,118 136,144 Q140,162 132,177 Q122,168 112,155 Q106,143 104,124Z" fill="${s.main}" opacity="0.87"/>
+        <ellipse cx="29" cy="173" rx="5.5" ry="7.5" fill="${s.skin}"/>
+        <ellipse cx="131" cy="173" rx="5.5" ry="7.5" fill="${s.skin}"/>
+        <path d="M54,70 Q48,48 58,34 Q70,20 80,18 Q90,20 102,34 Q112,48 106,70 Q104,83 98,89 Q90,95 80,95 Q70,95 62,89 Q56,83 54,70Z" fill="${s.hair}"/>
+        <path d="M66,26 Q80,16 94,26 Q86,20 80,20 Q74,20 66,26Z" fill="#2a2220"/>
+        <line x1="62" y1="32" x2="98" y2="32" stroke="${s.accent}" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+        <rect x="76" y="27" width="8" height="5" rx="1" fill="${s.accent}" opacity="0.5"/>
+        <path d="M58,54 Q60,40 70,31 Q78,27 88,31 Q99,40 101,54 Q94,46 86,42 Q78,40 69,42 Q62,46 58,54Z" fill="#2a2220"/>
+        <path d="M52,66 Q46,70 44,84 Q46,78 50,74 Q52,70 52,66Z" fill="${s.hair}"/>
+        <path d="M108,66 Q114,70 116,84 Q114,78 110,74 Q108,70 108,66Z" fill="${s.hair}"/>
+        <path d="M58,68 Q56,54 64,43 Q73,35 80,35 Q87,35 96,43 Q104,54 102,68 Q100,82 94,88 Q86,93 80,93 Q74,93 66,88 Q60,82 58,68Z" fill="${s.skin}"/>
+        <path d="M61,58 Q67,53 77,56" stroke="${s.hair}" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <path d="M83,56 Q93,53 99,58" stroke="${s.hair}" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <ellipse cx="68" cy="65" rx="5.5" ry="4" fill="#fff"/><ellipse cx="92" cy="65" rx="5.5" ry="4" fill="#fff"/>
+        <ellipse cx="68.5" cy="65.5" rx="3.2" ry="3.5" fill="#1a120e"/><ellipse cx="92.5" cy="65.5" rx="3.2" ry="3.5" fill="#1a120e"/>
+        <circle cx="70" cy="64" r="1.5" fill="#fff"/><circle cx="94" cy="64" r="1.5" fill="#fff"/>
+        <circle cx="67" cy="66.5" r="0.8" fill="#fff" opacity="0.4"/><circle cx="93" cy="66.5" r="0.8" fill="#fff" opacity="0.4"/>
+        <path d="M80,66 Q82,73 80,80" stroke="#e8c8b8" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+        <path d="M74,84 Q80,87 86,84" stroke="#b06858" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path d="M74,90 L74,99 Q80,103 86,99 L86,90" fill="${s.skin}"/>
+        ` },
+    merchant: { label:"商贾",     main:"#8a6a30", accent:"#f0d890", skin:"#f0d0a8", hair:"#2c2418",
+      aura:"rgba(220,190,120,0.15)",
+      svg:(s)=>`<!-- 商贾：富态圆脸、锦衣华服 -->
+        <defs><radialGradient id="npcAura" cx="50%" cy="46%" r="54%"><stop offset="0%" stop-color="${s.accent}" stop-opacity="0.25"/><stop offset="100%" stop-color="${s.accent}" stop-opacity="0"/></radialGradient></defs>
+        <ellipse cx="80" cy="112" rx="50" ry="68" fill="url(#npcAura)"/>
+        <path d="M54,178 Q50,142 58,114 Q66,100 80,97 Q94,100 102,114 Q110,142 106,178 Q103,196 95,211 L65,211 Q57,196 54,178Z" fill="${s.main}" opacity="0.9"/>
+        <path d="M58,174 Q54,146 60,118 Q67,104 80,101 Q93,101 100,118 Q106,146 102,174 Q99,192 93,207 L67,207Q61,192 58,174Z" fill="${s.accent}" opacity="0.22"/>
+        <path d="M56,152 Q80,159 104,152 L103,160 Q80,168 57,160Z" fill="${s.accent}" opacity="0.5"/>
+        <path d="M74,154 L86,154 L85,165 L75,165Z" fill="${s.accent}" opacity="0.6"/>
+        <path d="M56,114 Q36,120 26,144 Q24,160 32,174 Q40,166 49,154 Q55,143 58,126Z" fill="${s.main}" opacity="0.86"/>
+        <path d="M104,114 Q124,120 134,144 Q136,160 128,174 Q120,166 111,154 Q105,143 104,126Z" fill="${s.main}" opacity="0.86"/>
+        <ellipse cx="31" cy="170" rx="5" ry="7" fill="${s.skin}"/>
+        <ellipse cx="129" cy="170" rx="5" ry="7" fill="${s.skin}"/>
+        <path d="M54,72 Q48,52 58,38 Q70,24 80,22 Q90,24 102,38 Q112,52 106,72 Q104,84 98,90 Q90,96 80,96 Q70,96 62,90 Q56,84 54,72Z" fill="${s.hair}"/>
+        <path d="M78,28 Q84,24 90,28 Q86,25 84,25 Q82,25 78,28Z" fill="#3c3020" opacity="0.6"/>
+        <path d="M58,56 Q60,42 70,33 Q78,29 88,33 Q98,42 100,56 Q94,48 86,44 Q78,42 69,44 Q62,48 58,56Z" fill="#3c3020"/>
+        <path d="M80,34 Q96,34 100,44 Q92,38 84,38 Q80,38 80,34Z" fill="${s.accent}" opacity="0.4"/> <!-- 商贾帽檐 -->
+        <path d="M58,70 Q56,56 65,46 Q74,38 80,38 Q86,38 95,46 Q104,56 102,70 Q100,84 94,90 Q86,95 80,95 Q74,95 66,90 Q60,84 58,70Z" fill="${s.skin}"/>
+        <ellipse cx="68" cy="65" rx="4.5" ry="3.5" fill="#fff"/><ellipse cx="92" cy="65" rx="4.5" ry="3.5" fill="#fff"/>
+        <circle cx="68.5" cy="65.5" r="2.2" fill="#1a120e"/><circle cx="92.5" cy="65.5" r="2.2" fill="#1a120e"/>
+        <circle cx="69.8" cy="64.5" r="0.9" fill="#fff"/><circle cx="93.8" cy="64.5" r="0.9" fill="#fff"/>
+        <path d="M64,59 Q68,56 74,58" stroke="${s.hair}" stroke-width="1.2" fill="none" opacity="0.5" stroke-linecap="round"/>
+        <path d="M86,58 Q92,56 96,59" stroke="${s.hair}" stroke-width="1.2" fill="none" opacity="0.5" stroke-linecap="round"/>
+        <path d="M75,82 Q80,85 85,82" stroke="#a06840" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path d="M73,92 L73,100 Q80,104 87,100 L87,92" fill="${s.skin}"/>
+        ` },
+    daoist:   { label:"道士",     main:"#3a7858", accent:"#90f0c0", skin:"#f5e0c8", hair:"#1a1a1a",
+      aura:"rgba(100,200,140,0.18)",
+      svg:(s)=>`<!-- 道士：道袍高冠、清逸出尘 -->
+        <defs><radialGradient id="npcAura" cx="50%" cy="45%" r="55%"><stop offset="0%" stop-color="${s.accent}" stop-opacity="0.28"/><stop offset="100%" stop-color="${s.accent}" stop-opacity="0"/></radialGradient></defs>
+        <ellipse cx="80" cy="110" rx="52" ry="70" fill="url(#npcAura)"/>
+        <path d="M52,178 Q48,138 57,110 Q65,96 80,94 Q95,96 103,110 Q112,138 108,178 Q105,198 96,214 L64,214 Q55,198 52,178Z" fill="${s.main}" opacity="0.9"/>
+        <path d="M56,174 Q52,142 59,114 Q67,100 80,98 Q93,100 101,114 Q108,142 104,174 Q100,194 93,209 L67,209Q60,194 56,174Z" fill="${s.accent}" opacity="0.2"/>
+        <path d="M56,152 Q80,159 104,152 L103,160 Q80,168 57,160Z" fill="${s.accent}" opacity="0.45"/>
+        <path d="M76,155 L84,155 L83,165 L77,165Z" fill="${s.main}" opacity="0.7"/>
+        <path d="M56,112 Q34,118 24,144 Q20,162 28,177 Q38,168 48,155 Q54,143 56,124Z" fill="${s.main}" opacity="0.87"/>
+        <path d="M104,112 Q126,118 136,144 Q140,162 132,177 Q122,168 112,155 Q106,143 104,124Z" fill="${s.main}" opacity="0.87"/>
+        <ellipse cx="29" cy="173" rx="5" ry="7" fill="${s.skin}"/>
+        <ellipse cx="131" cy="173" rx="5" ry="7" fill="${s.skin}"/>
+        <!-- 道冠 -->
+        <path d="M54,70 Q48,48 58,34 Q70,20 80,18 Q90,20 102,34 Q112,48 106,70 Q104,83 98,89 Q90,95 80,95 Q70,95 62,89 Q56,83 54,70Z" fill="${s.hair}"/>
+        <rect x="64" y="26" width="32" height="6" rx="2" fill="${s.accent}" opacity="0.6"/>
+        <line x1="58" y1="32" x2="102" y2="32" stroke="${s.accent}" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+        <circle cx="80" cy="23" r="2.5" fill="${s.accent}" opacity="0.5"/>
+        <path d="M58,54 Q60,40 70,31 Q78,27 88,31 Q98,40 100,54 Q94,46 86,42 Q78,40 69,42 Q62,46 58,54Z" fill="#2a2a2a"/>
+        <path d="M52,66 Q46,70 44,84 Q46,78 50,74 Q52,70 52,66Z" fill="${s.hair}"/>
+        <path d="M108,66 Q114,70 116,84 Q114,78 110,74 Q108,70 108,66Z" fill="${s.hair}"/>
+        <path d="M58,68 Q56,54 64,43 Q73,35 80,35 Q87,35 96,43 Q104,54 102,68 Q100,82 94,88 Q86,93 80,93 Q74,93 66,88 Q60,82 58,68Z" fill="${s.skin}"/>
+        <path d="M62,58 Q68,53 76,56" stroke="${s.hair}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        <path d="M84,56 Q92,53 98,58" stroke="${s.hair}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        <ellipse cx="68" cy="65" rx="5" ry="3.8" fill="#fff"/><ellipse cx="92" cy="65" rx="5" ry="3.8" fill="#fff"/>
+        <ellipse cx="68.5" cy="65.5" rx="3" ry="3.3" fill="#151810"/><ellipse cx="92.5" cy="65.5" rx="3" ry="3.3" fill="#151810"/>
+        <circle cx="70" cy="64.2" r="1.3" fill="#fff"/><circle cx="94" cy="64.2" r="1.3" fill="#fff"/>
+        <path d="M80,66 Q82,73 80,80" stroke="#e0c8b8" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+        <path d="M75,82 Q80,85 85,82" stroke="#a08868" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <path d="M73,90 L73,99 Q80,103 87,99 L87,90" fill="${s.skin}"/>
+        ` },
+    yaoxiu:   { label:"妖修化形", main:"#7a3080", accent:"#e8a0ff", skin:"#f0d0b8", hair:"#3a2038",
+      aura:"rgba(200,120,220,0.2)",
+      svg:(s)=>`<!-- 妖修化形：妖异之美、异色瞳 -->
+        <defs><radialGradient id="npcAura" cx="50%" cy="44%" r="56%"><stop offset="0%" stop-color="${s.accent}" stop-opacity="0.32"/><stop offset="100%" stop-color="${s.accent}" stop-opacity="0"/></radialGradient></defs>
+        <ellipse cx="80" cy="108" rx="50" ry="70" fill="url(#npcAura)"/>
+        <path d="M54,176 Q50,140 58,112 Q65,98 79,95 Q93,98 102,112 Q110,140 106,176 Q103,194 95,210 L65,210 Q57,194 54,176Z" fill="${s.main}" opacity="0.88"/>
+        <path d="M58,172 Q54,144 60,117 Q67,103 79,99 Q91,103 99,117 Q105,144 101,172 Q98,190 92,206 L68,206Q62,190 58,172Z" fill="${s.accent}" opacity="0.22"/>
+        <path d="M58,150 Q80,157 102,150 L101,158 Q80,165 59,158Z" fill="${s.accent}" opacity="0.5"/>
+        <path d="M77,153 L83,153 L82,163 L78,163Z" fill="${s.main}" opacity="0.7"/>
+        <path d="M56,114 Q36,119 26,141 Q22,158 30,173 Q38,164 48,152 Q54,141 56,125Z" fill="${s.main}" opacity="0.85"/>
+        <path d="M104,114 Q124,119 134,141 Q138,158 130,173 Q122,164 112,152 Q106,141 104,125Z" fill="${s.main}" opacity="0.85"/>
+        <ellipse cx="31" cy="169" rx="4.5" ry="6.5" fill="${s.skin}"/>
+        <ellipse cx="129" cy="169" rx="4.5" ry="6.5" fill="${s.skin}"/>
+        <!-- 妖异长发 -->
+        <path d="M50,74 Q44,50 56,34 Q68,20 80,18 Q92,20 104,34 Q116,50 110,74 Q108,87 100,93 Q92,99 80,99 Q68,99 60,93 Q52,87 50,74Z" fill="${s.hair}"/>
+        <path d="M46,78 Q36,104 28,148 Q34,118 44,92 Q48,82 46,78Z" fill="${s.hair}" opacity="0.85"/>
+        <path d="M114,78 Q124,104 132,148 Q126,118 116,92 Q112,82 114,78Z" fill="${s.hair}" opacity="0.85"/>
+        <!-- 妖角 -->
+        <path d="M52,42 Q44,28 48,18" stroke="${s.hair}" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.7"/>
+        <path d="M108,42 Q116,28 112,18" stroke="${s.hair}" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.7"/>
+        <path d="M56,56 Q58,40 68,30 Q78,25 88,30 Q100,40 102,56 Q95,48 86,43 Q78,41 68,43 Q61,48 56,56Z" fill="#4a3045"/>
+        <!-- 妖纹 -->
+        <path d="M100,76 Q106,74 110,78" stroke="${s.accent}" stroke-width="1" fill="none" opacity="0.3"/>
+        <path d="M58,72 Q68,68 74,72" stroke="${s.accent}" stroke-width="0.8" fill="none" opacity="0.25"/>
+        <path d="M58,70 Q56,55 65,44 Q74,36 80,36 Q86,36 95,44 Q104,55 102,70 Q100,84 94,90 Q86,96 80,96 Q74,96 66,90 Q60,84 58,70Z" fill="${s.skin}"/>
+        <!-- 异色瞳 -->
+        <ellipse cx="67" cy="65" rx="5" ry="3.8" fill="#fff"/><ellipse cx="93" cy="65" rx="5" ry="3.8" fill="#fff"/>
+        <ellipse cx="67.5" cy="65.5" rx="3" ry="3.2" fill="${s.accent}" opacity="0.8"/><ellipse cx="93.5" cy="65.5" rx="3" ry="3.2" fill="#2a1510"/>
+        <circle cx="69" cy="64.2" r="1.3" fill="#fff"/><circle cx="95" cy="64.2" r="1.3" fill="#fff"/>
+        <path d="M62,59 Q66,56 72,58" stroke="${s.hair}" stroke-width="1" fill="none" opacity="0.5" stroke-linecap="round"/>
+        <path d="M88,58 Q94,56 98,59" stroke="${s.hair}" stroke-width="1" fill="none" opacity="0.5" stroke-linecap="round"/>
+        <ellipse cx="64" cy="74" rx="5" ry="3" fill="${s.accent}" opacity="0.12"/>
+        <ellipse cx="96" cy="74" rx="5" ry="3" fill="${s.accent}" opacity="0.12"/>
+        <path d="M74,82 Q80,86 86,82" stroke="#a05878" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <path d="M73,90 L73,99 Q80,103 87,99 L87,90" fill="${s.skin}"/>
+        ` },
+    xiexiu:   { label:"邪修",     main:"#3a0a12", accent:"#ff4050", skin:"#e0b898", hair:"#0e0608",
+      aura:"rgba(180,40,60,0.2)",
+      svg:(s)=>`<!-- 邪修：阴鸷面容、邪气缭绕 -->
+        <defs><radialGradient id="npcAura" cx="50%" cy="46%" r="54%"><stop offset="0%" stop-color="${s.accent}" stop-opacity="0.25"/><stop offset="100%" stop-color="${s.accent}" stop-opacity="0"/></radialGradient></defs>
+        <ellipse cx="80" cy="112" rx="50" ry="68" fill="url(#npcAura)"/>
+        <path d="M54,178 Q50,140 58,112 Q66,98 80,95 Q94,98 102,112 Q110,140 106,178 Q103,196 95,211 L65,211 Q57,196 54,178Z" fill="${s.main}" opacity="0.92"/>
+        <path d="M58,174 Q54,142 60,116 Q68,102 80,99 Q92,100 100,116 Q106,142 102,174 Q99,192 93,207 L67,207Q61,192 58,174Z" fill="${s.accent}" opacity="0.12"/>
+        <path d="M56,152 Q80,159 104,152 L103,160 Q80,168 57,160Z" fill="${s.accent}" opacity="0.25"/>
+        <path d="M56,114 Q36,120 26,144 Q22,162 30,177 Q40,168 49,155 Q55,143 58,126Z" fill="${s.main}" opacity="0.88"/>
+        <path d="M104,114 Q124,120 134,144 Q138,162 132,177 Q122,168 111,155 Q106,143 104,126Z" fill="${s.main}" opacity="0.88"/>
+        <ellipse cx="30" cy="173" rx="5" ry="7" fill="${s.skin}"/>
+        <ellipse cx="130" cy="173" rx="5" ry="7" fill="${s.skin}"/>
+        <!-- 散乱黑发 -->
+        <path d="M52,74 Q44,50 56,34 Q68,20 80,18 Q92,20 104,34 Q116,50 110,74 Q108,86 100,92 Q90,98 80,98 Q70,98 60,92 Q52,86 52,74Z" fill="${s.hair}"/>
+        <path d="M46,78 Q36,106 28,150 Q36,118 46,92 Q50,82 46,78Z" fill="${s.hair}" opacity="0.9"/>
+        <path d="M114,78 Q124,106 132,150 Q124,118 114,92 Q110,82 114,78Z" fill="${s.hair}" opacity="0.9"/>
+        <path d="M56,56 Q58,40 68,30 Q78,25 88,30 Q100,40 102,56 Q94,47 86,43 Q78,41 68,43 Q60,48 56,56Z" fill="#1a0e10"/>
+        <!-- 邪气纹路 -->
+        <path d="M100,78 Q108,76 114,82" stroke="${s.accent}" stroke-width="0.8" fill="none" opacity="0.25"/>
+        <path d="M58,72 Q66,68 72,72" stroke="${s.accent}" stroke-width="0.8" fill="none" opacity="0.2"/>
+        <path d="M58,70 Q56,55 65,44 Q74,36 80,36 Q86,36 95,44 Q104,55 102,70 Q100,84 94,90 Q86,96 80,96 Q74,96 66,90 Q60,84 58,70Z" fill="${s.skin}"/>
+        <!-- 阴鸷眼神 -->
+        <ellipse cx="67" cy="65" rx="5" ry="3.5" fill="#ffe0e0"/><ellipse cx="93" cy="65" rx="5" ry="3.5" fill="#ffe0e0"/>
+        <ellipse cx="67.5" cy="65.5" rx="2.8" ry="3" fill="#500810"/><ellipse cx="93.5" cy="65.5" rx="2.8" ry="3" fill="#500810"/>
+        <circle cx="68.8" cy="64.5" r="1" fill="#ff8080"/><circle cx="94.8" cy="64.5" r="1" fill="#ff8080"/>
+        <path d="M60,58 Q66,54 74,57" stroke="${s.hair}" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+        <path d="M86,57 Q94,54 100,58" stroke="${s.hair}" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+        <path d="M74,83 Q80,87 86,83" stroke="#802830" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path d="M73,91 L73,100 Q80,104 87,100 L87,91" fill="${s.skin}"/>
+        ` },
+    ghost:    { label:"鬼物",     main:"#4a5a78", accent:"#b0c8f0", skin:"#c8d8ec", hair:"#8098b8",
+      aura:"rgba(140,160,200,0.15)",
+      svg:(s)=>`<!-- 鬼物：半透明飘渺、幽冥之气 -->
+        <defs><radialGradient id="npcAura" cx="50%" cy="46%" r="54%"><stop offset="0%" stop-color="${s.accent}" stop-opacity="0.2"/><stop offset="100%" stop-color="${s.accent}" stop-opacity="0"/></radialGradient></defs>
+        <ellipse cx="80" cy="112" rx="50" ry="70" fill="url(#npcAura)" opacity="0.8"/>
+        <g opacity="0.82">
+        <path d="M56,178 Q52,140 60,114 Q67,100 80,97 Q93,100 100,114 Q108,140 104,178 Q101,196 94,211 L66,211 Q58,196 56,178Z" fill="${s.main}"/>
+        <path d="M60,174 Q56,144 62,118 Q69,104 80,101 Q91,101 98,118 Q104,144 100,174 Q97,192 92,207 L68,207Q62,192 60,174Z" fill="${s.accent}" opacity="0.15"/>
+        <path d="M58,152 Q80,159 102,152 L101,160 Q80,168 59,160Z" fill="${s.accent}" opacity="0.3"/>
+        </g>
+        <path d="M58,114 Q40,120 30,144 Q26,160 33,174 Q42,166 50,154 Q56,143 58,126Z" fill="${s.main}" opacity="0.7"/>
+        <path d="M102,114 Q120,120 130,144 Q134,160 127,174 Q118,166 110,154 Q104,143 102,126Z" fill="${s.main}" opacity="0.7"/>
+        <!-- 飘渺发丝 -->
+        <path d="M54,74 Q46,50 58,34 Q70,20 80,18 Q90,20 102,34 Q114,50 108,74 Q106,87 98,93 Q90,99 80,99 Q70,99 60,93 Q52,87 54,74Z" fill="${s.hair}" opacity="0.7"/>
+        <path d="M44,80 Q34,110 26,155 Q34,120 44,94 Q48,84 44,80Z" fill="${s.hair}" opacity="0.5"/>
+        <path d="M116,80 Q126,110 134,155 Q126,120 116,94 Q112,84 116,80Z" fill="${s.hair}" opacity="0.5"/>
+        <path d="M58,56 Q60,40 70,30 Q78,25 88,30 Q98,40 100,56 Q94,47 86,43 Q78,41 68,43 Q60,48 58,56Z" fill="#90a8c8" opacity="0.7"/>
+        <path d="M58,70 Q56,55 65,44 Q74,36 80,36 Q86,36 95,44 Q104,55 102,70 Q100,84 94,90 Q86,96 80,96 Q74,96 66,90 Q60,84 58,70Z" fill="${s.skin}" opacity="0.85"/>
+        <!-- 幽冥眼 -->
+        <ellipse cx="67" cy="65" rx="5" ry="3.8" fill="#e0e8ff" opacity="0.8"/><ellipse cx="93" cy="65" rx="5" ry="3.8" fill="#e0e8ff" opacity="0.8"/>
+        <circle cx="68" cy="65.5" r="2.5" fill="${s.accent}" opacity="0.6"/><circle cx="94" cy="65.5" r="2.5" fill="${s.accent}" opacity="0.6"/>
+        <circle cx="69" cy="64.5" r="1" fill="#fff" opacity="0.7"/><circle cx="95" cy="64.5" r="1" fill="#fff" opacity="0.7"/>
+        <path d="M62,59 Q66,56 72,58" stroke="${s.hair}" stroke-width="1" fill="none" opacity="0.4" stroke-linecap="round"/>
+        <path d="M88,58 Q94,56 98,59" stroke="${s.hair}" stroke-width="1" fill="none" opacity="0.4" stroke-linecap="round"/>
+        <path d="M76,82 Q80,86 84,82" stroke="#8098b8" stroke-width="1.6" fill="none" stroke-linecap="round" opacity="0.6"/>
+        <path d="M74,90 L74,99 Q80,103 86,99 L86,90" fill="${s.skin}" opacity="0.8"/>
+        <!-- 魂火飘散 -->
+        <circle cx="38" cy="100" r="1.5" fill="${s.accent}" opacity="0.3">
+          <animate attributeName="cy" values="100;90;100" dur="3s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.3;0.1;0.3" dur="3s" repeatCount="indefinite"/>
+        </circle>
+        <circle cx="122" cy="110" r="1.2" fill="${s.accent}" opacity="0.25">
+          <animate attributeName="cy" values="110;100;110" dur="4s" repeatCount="indefinite"/>
+        </circle>
+        `,
+  },
   },
 
   _npcPortrait(kind) {
-    const def = this.NPC_POOL[kind] || this.NPC_POOL.youth;
-    const rect = (x,y,w,h,f,o=1) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}" opacity="${o}"/>`;
-    return `<div class="npc-portrait npc-${kind}">
-      <svg viewBox="0 0 160 240" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-label="${def.label}" shape-rendering="crispEdges">
-        <rect x="0" y="0" width="160" height="240" fill="none"/>
-        <!-- 灵气背景 -->
-        <rect x="28" y="22" width="104" height="96" fill="${def.accent}" opacity="0.16"/>
-        <rect x="36" y="30" width="88" height="80" fill="${def.accent}" opacity="0.10"/>
-        <!-- 身体 -->
-        <rect x="50" y="104" width="60" height="76" fill="${def.main}"/>
-        <rect x="56" y="108" width="48" height="68" fill="${def.accent}" opacity="0.35"/>
-        <rect x="62" y="142" width="36" height="10" fill="${def.accent}"/>
-        <!-- 袖子 -->
-        <rect x="34" y="110" width="22" height="48" fill="${def.main}"/>
-        <rect x="104" y="110" width="22" height="48" fill="${def.main}"/>
-        <!-- 脖子 -->
-        <rect x="70" y="96" width="20" height="12" fill="${def.skin}"/>
-        <!-- 头部 -->
-        ${def.head}
-        <!-- 粗描边 -->
-        <rect x="58" y="42" width="44" height="36" fill="none" stroke="#1a120e" stroke-width="3"/>
-        <rect x="50" y="104" width="60" height="76" fill="none" stroke="#1a120e" stroke-width="3"/>
-      </svg>
-    </div>`;
+    // 具名 NPC（世界生成里有档案）：按其稳定 seed 生成专属立绘（不同人物绝不撞脸）
+    const gen = (Game.state && Game.state.world && Game.state.world.gen);
+    if (gen && gen.npcs) {
+      const npc = gen.npcs.find(n => n.name === kind);
+      if (npc) {
+        const spec = ArtGen.specFromSeed(npc.portraitSeed || hashSeed(npc.name), npc.arche, npc.gender);
+        return ArtGen.npc(spec);
+      }
+    }
+    // 匿名同框 NPC（old_m/young_f 等 slug）：按原型+性别生成，配色随原型微调
+    const map = {
+      old_m: ["elder", "m"], old_f: ["crone", "f"], young_m: ["youth", "m"], young_f: ["maiden", "f"],
+      old: ["elder", "m"], crone: ["crone", "f"], maiden: ["maiden", "f"], youth: ["youth", "m"],
+      merchant: ["scholar", "m"], daoist: ["xia", "m"], yaoxiu: ["yaoxiu", "f"], xiexiu: ["mo", "m"], ghost: ["ghost", "f"],
+    };
+    const m = map[kind] || ["scholar", "f"];
+    const spec = ArtGen.specFromSeed(hashSeed("slug-" + (kind || "x")), m[0], m[1]);
+    if (m[0] === "yaoxiu" || m[0] === "mo") spec.pal = (spec.pal + 5) % ArtGen.PALETTES.length;
+    if (m[0] === "ghost") spec.pal = 8;
+    return ArtGen.npc(spec);
   },
 
   updateHeroSprite() {
@@ -2440,6 +3186,55 @@ const UI = {
     const el = document.getElementById("hero-sprite");
     if (!el || !Game.state || !Game.state.character) return;
     el.innerHTML = this._heroPortrait();
+    const spec = this._heroSpec();
+    if (spec) ArtEngine.upgrade(el, spec);
+  },
+
+  _formToRace(form) {
+    if (!form) return "人";
+    const map = { human: "人", "人族": "人", 树: "树", 花: "花", 石: "石", 器: "器", 灵: "灵", 兽: "兽", 元素: "元素" };
+    const s = String(form);
+    if (map[form]) return map[form];
+    if (s.includes("妖") || s.includes("兽")) return "妖";
+    if (s.includes("魔") || s.includes("邪")) return "魔";
+    if (s.includes("龙")) return "龙";
+    return "人";
+  },
+  _archeToRace(arche) {
+    if (!arche) return "人";
+    const s = String(arche);
+    if (s.includes("妖") || s.includes("兽")) return "妖";
+    if (s.includes("魔") || s.includes("邪")) return "魔";
+    if (s.includes("龙")) return "龙";
+    if (s.includes("仙")) return "仙";
+    if (s.includes("鬼") || s.includes("幽")) return "鬼";
+    if (s.includes("灵")) return "灵";
+    return "人";
+  },
+  _heroSpec() {
+    const c = Game.state && Game.state.character; if (!c) return null;
+    const gender = (c.gender === "f" || c.gender === 1) ? "f" : "m";
+    const sys = (Game.state.world && Game.state.world.cultivationSystem) || "";
+    return {
+      kind: "hero", race: this._formToRace(c.form), gender,
+      system: sys, form: c.form || "human", arche: c.arche || "xianzi",
+      seed: (typeof hashSeed === "function") ? hashSeed(c.name || "道友") : 1,
+    };
+  },
+  _npcSpec(npc) {
+    let n = npc;
+    if (typeof npc === "string") {
+      const gen = Game.state && Game.state.world && Game.state.world.gen;
+      n = (gen && gen.npcs && gen.npcs.find(x => x.name === npc)) || { name: npc, gender: "m", arche: "" };
+    }
+    if (!n) return null;
+    const gender = (n.gender === "f") ? "f" : "m";
+    const sys = (Game.state.world && Game.state.world.cultivationSystem) || "";
+    return {
+      kind: "npc", race: this._archeToRace(n.arche), gender,
+      system: sys, form: "human", arche: n.arche || "",
+      seed: n.portraitSeed || ((typeof hashSeed === "function") ? hashSeed(n.name || "npc") : 1),
+    };
   },
 
   // 场景中立绘层：主角（依体系配色）+ 同框 NPC（依 AI 的 npc 标记）
@@ -2456,6 +3251,11 @@ const UI = {
     }
     el.innerHTML = html;
     if (stage) stage.classList.toggle("npc-active", !!this.currentNpc);
+    if (this.currentNpc) {
+      const actor = el.querySelector(".vn-actor.npc");
+      const spec = this._npcSpec(this.currentNpc);
+      if (actor && spec) ArtEngine.upgrade(actor, spec);
+    }
   },
 
   npcImageFor(t) {
@@ -2478,56 +3278,47 @@ const UI = {
       { slug: "zhu",   name: "钢鬃野猪", cfg: { body: "#5b4636", belly: "#cdbfa8", eye: "#15110c" }, feats: ["tusks"] },
       { slug: "xie",   name: "毒尾蝎",   cfg: { body: "#6a3d8a", belly: "#caa6e0", eye: "#ff5b5b" }, feats: ["tail", "stinger"] },
       { slug: "xiong", name: "撼山熊",   cfg: { body: "#6b4a2f", belly: "#caa982", eye: "#15110c" }, feats: ["big"] },
+      { slug: "jiao",  name: "青鳞蛟",   cfg: { body: "#2f7a8f", belly: "#bfe8ef", eye: "#aef0ff" }, feats: ["tail", "fangs", "horns", "aura"] },
+      { slug: "shi",   name: "赤炎狮",   cfg: { body: "#c85a2a", belly: "#f6d2a8", eye: "#ffe08a" }, feats: ["stripes", "fangs", "big"] },
+      { slug: "ya",    name: "墨羽鸦",   cfg: { body: "#2a2a36", belly: "#7a7a8a", eye: "#ff5b5b" }, feats: ["wings", "beak", "eyes3"] },
+      { slug: "lu",    name: "玉鳞鹿",   cfg: { body: "#6a8f6a", belly: "#d8efd8", eye: "#2a4a2a" }, feats: ["horns"] },
+      { slug: "gui",   name: "玄龟",     cfg: { body: "#3a5a4a", belly: "#9ab0a0", eye: "#bfe8c0" }, feats: ["big", "armor"] },
+      { slug: "hu2",   name: "火尾狐",   cfg: { body: "#d07030", belly: "#f6d8b8", eye: "#ffd070" }, feats: ["tail", "fangs", "aura"] },
+      { slug: "zhu2",  name: "寒蛛",     cfg: { body: "#4a5a78", belly: "#aeb8d0", eye: "#dfe9ff" }, feats: ["fangs", "eyes3"] },
+      { slug: "bao",   name: "雷纹豹",   cfg: { body: "#5a5a7a", belly: "#c0c0d8", eye: "#ffe080" }, feats: ["stripes", "fangs", "aura"] },
+      { slug: "gu2",   name: "白骨妖",   cfg: { body: "#cfc8b8", belly: "#efe8d8", eye: "#ff5b5b" }, feats: ["fangs", "horns"] },
     ],
     xiexiu: [
       { slug: "jiexiu", name: "黑风劫修", file: "assets/enemy_xiexiu.webp" },
       { slug: "xuexiu", name: "血刀魔修", cfg: { body: "#7a1f2b", robe: "#3a0d12", eye: "#ff5b5b" }, feats: ["cultivator", "blade"] },
       { slug: "duxiu",  name: "毒手邪修", cfg: { body: "#2f6b3a", robe: "#13301a", eye: "#a6e0b0" }, feats: ["cultivator"] },
+      { slug: "xueying", name: "血影修士", cfg: { body: "#8a1f2b", robe: "#2a0a0a", eye: "#ff5b5b" }, feats: ["cultivator", "blade", "aura"] },
+      { slug: "shihun", name: "噬魂老魔", cfg: { body: "#4a1f5a", robe: "#1a0a2a", eye: "#d08aff" }, feats: ["cultivator", "horns"] },
+      { slug: "shigu",  name: "蚀骨妖修", cfg: { body: "#2f6b3a", robe: "#13301a", eye: "#a6e0b0" }, feats: ["cultivator", "blade"] },
+      { slug: "anci",   name: "黯影刺客", cfg: { body: "#2a2e3a", robe: "#11131a", eye: "#9ab0d0" }, feats: ["cultivator", "blade", "armor"] },
+      { slug: "fentian", name: "焚天狂徒", cfg: { body: "#b05020", robe: "#3a1505", eye: "#ffb060" }, feats: ["cultivator", "horns", "aura"] },
     ],
     ghost: [
       { slug: "yuanling", name: "含冤厉魄", file: "assets/enemy_ghost.webp" },
       { slug: "yinhun",   name: "阴魂老者", cfg: { body: "#5a7fa8", eye: "#dfe9ff" }, feats: ["ghost", "wisp"] },
       { slug: "guhun",    name: "孤野游魂", cfg: { body: "#9aa0a8", eye: "#ffffff" }, feats: ["ghost", "wisp"] },
+      { slug: "qixue",    name: "泣血女鬼", cfg: { body: "#7a2a4a", eye: "#ff9ab0" }, feats: ["ghost", "wisp", "aura"] },
+      { slug: "wumian",   name: "无面游魂", cfg: { body: "#6a7080", eye: "#ffffff" }, feats: ["ghost", "wisp"] },
+      { slug: "baigu",    name: "白骨怨灵", cfg: { body: "#cfc8b8", eye: "#ff5b5b" }, feats: ["ghost", "eyes3"] },
+      { slug: "sheqing",  name: "摄青鬼",   cfg: { body: "#3a5a4a", eye: "#aef0c0" }, feats: ["ghost", "wisp", "aura"] },
     ],
   },
 
-  // 程序化像素立绘生成（零二进制，省内存，风格与 young NPC 一致）
+  // 程序化敌人立绘生成（委托 ArtGen，支持 horns/armor/eyes3/aura 等更多特征，变体更丰富）
   enemySvg(cfg) {
-    const c = cfg.c || {};
-    const P = c.body || "#888";
-    const B = c.belly || "#ddd";
-    const E = c.eye || "#fff";
-    const f = cfg.feats || [];
-    let s = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>";
-    s += "<ellipse cx='32' cy='57' rx='20' ry='4' fill='rgba(0,0,0,0.25)'/>";
-    if (f.includes("ghost")) {
-      s += "<path d='M16 24 q16 -16 32 0 v22 q-4 6 -8 0 q-4 6 -8 0 q-4 6 -8 0 q-4 6 -8 0 z' fill='" + P + "' opacity='0.82'/>";
-      if (f.includes("wisp")) s += "<circle cx='20' cy='13' r='3' fill='" + P + "' opacity='0.5'/><circle cx='45' cy='11' r='2' fill='" + P + "' opacity='0.4'/>";
-    } else if (f.includes("cultivator")) {
-      s += "<rect x='22' y='22' width='20' height='30' rx='6' fill='" + (c.robe || "#333") + "'/>";
-      s += "<circle cx='32' cy='14' r='8' fill='" + P + "'/>";
-      if (f.includes("blade")) s += "<rect x='47' y='22' width='4' height='26' rx='2' fill='#cfd6e0' transform='rotate(20 49 35)'/>";
-    } else {
-      const big = f.includes("big") ? 6 : 0;
-      s += "<ellipse cx='32' cy='" + (34 - big / 2) + "' rx='" + (20 + big) + "' ry='" + (16 + big) + "' fill='" + P + "'/>";
-      s += "<ellipse cx='32' cy='" + (40 - big / 2) + "' rx='" + (12 + big) + "' ry='" + (9 + big) + "' fill='" + B + "' opacity='0.6'/>";
-      if (f.includes("tail")) s += "<path d='M50 40 q14 4 8 -10' stroke='" + P + "' stroke-width='6' fill='none' stroke-linecap='round'/>" + (f.includes("stinger") ? "<path d='M58 30 l5 -9 l-3 9 z' fill='" + E + "'/>" : "");
-      if (f.includes("wings")) s += "<path d='M18 28 l-14 -10 l10 16 z' fill='" + P + "'/><path d='M46 28 l14 -10 l-10 16 z' fill='" + P + "'/>";
-      if (f.includes("stripes")) s += "<rect x='26' y='22' width='3' height='20' fill='rgba(0,0,0,0.25)'/><rect x='35' y='22' width='3' height='20' fill='rgba(0,0,0,0.25)'/>";
-      if (f.includes("tusks")) s += "<path d='M28 46 l-2 8 l3 -6 z' fill='#fff'/><path d='M36 46 l2 8 l-3 -6 z' fill='#fff'/>";
-      if (f.includes("fangs")) s += "<path d='M28 44 l-1 5 l2 -4 z' fill='#fff'/><path d='M36 44 l1 5 l-2 -4 z' fill='#fff'/>";
-      if (f.includes("beak")) s += "<path d='M32 30 l-4 8 l8 0 z' fill='#e0a020'/>";
-    }
-    const ey = f.includes("cultivator") ? 13 : 30;
-    s += "<circle cx='26' cy='" + ey + "' r='3' fill='#fff'/><circle cx='38' cy='" + ey + "' r='3' fill='#fff'/>";
-    s += "<circle cx='26' cy='" + ey + "' r='1.4' fill='" + E + "'/><circle cx='38' cy='" + ey + "' r='1.4' fill='" + E + "'/>";
-    s += "</svg>";
-    return "data:image/svg+xml;utf8," + encodeURIComponent(s);
+    return ArtGen.enemySvg(cfg);
   },
 
   enemyArtFor(entry) {
     if (!entry) return "assets/enemy_wolf.webp";
-    return entry.file ? entry.file : this.enemySvg({ c: entry.cfg, feats: entry.feats });
+    if (entry.file) return entry.file;
+    const c = entry.cfg || {};
+    return ArtGen.enemySvg({ body: c.body, belly: c.belly, eye: c.eye, robe: c.robe, c4: c.c4, feats: entry.feats || [] });
   },
 
   enemyEntryBySlug(slug, type) {
@@ -2819,7 +3610,7 @@ const UI = {
     if (threads.length) {
       const open = threads.filter(t => t.status === "planted");
       const done = threads.filter(t => t.status === "resolved");
-      html += '<div class="inv-title" style="margin-top:12px">暗线 · 伏笔（' + open.length + ' 未解 / ' + done.length + ' 已收）</div>';
+      html += '<div class="inv-title" style="margin-top:12px">暗线 · 关键信息（' + open.length + ' 未解 / ' + done.length + ' 已收）</div>';
       threads.slice().reverse().forEach(t => {
         if (t.status === "planted") html += `<div class="inv-item thread open">🕸 ${this.escapeHtml(t.hint)} <span class="thread-turn">第${t.plantedTurn}程</span></div>`;
         else html += `<div class="inv-item thread resolved">✓ ${this.escapeHtml(t.hint)} <span class="thread-turn">第${t.resolvedTurn}程收</span></div>`;
@@ -3305,6 +4096,17 @@ const UI = {
     if (modeSel) modeSel.value = (Game.state && Game.state.narrationMode) || "standard";
     const px = document.getElementById("set-pixel");
     if (px) px.checked = document.body.classList.contains("pixel");
+    const ap = document.getElementById("set-aiportrait");
+    const apk = document.getElementById("set-aiportrait-key");
+    const apl = document.getElementById("set-aiportrait-lib");
+    const aplb = document.getElementById("set-aiportrait-libbase");
+    if (ap && apk) {
+      const c = (typeof ArtEngine !== "undefined") ? ArtEngine.cfg() : { enabled: false, key: "" };
+      ap.checked = !!c.enabled;
+      apk.value = c.key || "";
+      if (apl) apl.checked = !!c.libEnabled;
+      if (aplb) aplb.value = c.libBase || "";
+    }
   },
 
   // 像素风开关：切换 body.pixel 并持久化
@@ -3313,6 +4115,36 @@ const UI = {
     document.body.classList.toggle("pixel", on);
     try { localStorage.setItem("fx_pixel", on ? "1" : "0"); } catch (e) {}
     this.initPixelFx();
+  },
+
+  // AI 立绘开关：切换 localStorage 配置（Key 在保存时一并写入）
+  toggleAiPortrait(on) {
+    if (typeof on === "undefined") {
+      const el = document.getElementById("set-aiportrait");
+      on = el ? el.checked : false;
+    }
+    try {
+      const cur = (typeof ArtEngine !== "undefined") ? ArtEngine.cfg() : {};
+      localStorage.setItem("xianxia_ai_portrait", JSON.stringify({
+        enabled: on, key: cur.key || "",
+        libEnabled: cur.libEnabled || false, libBase: cur.libBase || "",
+      }));
+    } catch (e) {}
+  },
+
+  // 托管库开关：仅切 libEnabled，地址在保存时写入
+  toggleAiPortraitLib(on) {
+    if (typeof on === "undefined") {
+      const el = document.getElementById("set-aiportrait-lib");
+      on = el ? el.checked : false;
+    }
+    try {
+      const cur = (typeof ArtEngine !== "undefined") ? ArtEngine.cfg() : {};
+      localStorage.setItem("xianxia_ai_portrait", JSON.stringify({
+        enabled: cur.enabled || false, key: cur.key || "",
+        libEnabled: on, libBase: cur.libBase || "",
+      }));
+    } catch (e) {}
   },
 
   saveSettings() {
@@ -3329,6 +4161,20 @@ const UI = {
       Game.state.narrationMode = modeSel.value || "standard";
       Game.save();
     }
+
+    // AI 立绘配置（与 DeepSeek Key 同理：本地存储，不联网上传游戏数据）
+    try {
+      const apEl = document.getElementById("set-aiportrait");
+      const apkEl = document.getElementById("set-aiportrait-key");
+      const aplEl = document.getElementById("set-aiportrait-lib");
+      const aplbEl = document.getElementById("set-aiportrait-libbase");
+      localStorage.setItem("xianxia_ai_portrait", JSON.stringify({
+        enabled: !!(apEl && apEl.checked),
+        key: (apkEl && apkEl.value.trim()) || "",
+        libEnabled: !!(aplEl && aplEl.checked),
+        libBase: (aplbEl && aplbEl.value.trim()) || "",
+      }));
+    } catch (e) {}
 
     alert("设置已保存");
     this.show("menu");

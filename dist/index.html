@@ -181,8 +181,20 @@
       </div>
     </div>
     <div class="map-footer" id="map-footer">
+      <button class="btn btn-ghost" onclick="UI.showCodex()">群像图鉴</button>
       <button class="btn btn-primary" onclick="UI.startGameFromMap()">踏入仙途</button>
     </div>
+  </div>
+</div>
+
+<!-- ==================== 群像图鉴 ==================== -->
+<div id="screen-codex" class="screen">
+  <div class="codex-wrap">
+    <div class="codex-head">
+      <h2>群像图鉴 <span class="codex-count" id="codex-count"></span></h2>
+      <button class="btn btn-ghost" onclick="UI.showWorldMap()">← 返回大地图</button>
+    </div>
+    <div class="codex-grid" id="codex-grid"><!-- 立绘卡片注入处 --></div>
   </div>
 </div>
 
@@ -235,6 +247,16 @@
       <div class="form-group">
         <label class="form-label">界面风格</label>
         <label class="pixel-toggle"><input type="checkbox" id="set-pixel" onchange="UI.togglePixel(this.checked)"> 像素风（取消勾选恢复水墨风）</label>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">AI 立绘 · 精美人物生成</label>
+        <label class="pixel-toggle"><input type="checkbox" id="set-aiportrait" onchange="UI.toggleAiPortrait(this.checked)"> 启用 AI 立绘（需 Gemini API Key）</label>
+        <input type="password" id="set-aiportrait-key" class="form-input" placeholder="Gemini API Key（gemini-3-pro-image-preview 模型）" style="margin-top:8px">
+        <p class="settings-hint" style="margin-top:8px;margin-bottom:0">启用后，主角与 NPC 立绘由 AI 即时生成（中国仙侠 Galgame 风格），首次出现时生成并缓存于本地浏览器。需要 Google Gemini 图像 API Key。无 Key 或关闭时自动降级为程序化立绘，<b>绝不白屏</b>。</p>
+        <label class="pixel-toggle" style="margin-top:12px"><input type="checkbox" id="set-aiportrait-lib" onchange="UI.toggleAiPortraitLib(this.checked)"> 使用「立绘托管库」（玩家零 Key 也能看精美立绘）</label>
+        <input type="text" id="set-aiportrait-libbase" class="form-input" placeholder="托管库地址，如 https://你的账号.github.io/浮生仙途/portraits" style="margin-top:8px">
+        <p class="settings-hint" style="margin-top:8px;margin-bottom:0">把 <code>generate_portrait_pack.py</code> 生成的 <code>portraits/</code> 整个目录托管到任意静态网站（GitHub Pages / CloudStudio 均可），在此填入其 URL 前缀即可。优先级：托管库 &gt; 自用 Key 生成 &gt; 程序化立绘。</p>
       </div>
 
     <div class="form-actions">
@@ -394,6 +416,7 @@
 <script src="data.js"></script>
 <script src="ai.js"></script>
 <script src="art.js"></script>
+<script src="artengine.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

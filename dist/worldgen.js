@@ -272,6 +272,42 @@ const OMENS = [
   "九霄垂下一根银线，触者皆闻一声'归来'，如见故人。",
 ];
 
+// ---------- 下级地点（每域若干处，构成"几百个地方"的密集世界） ----------
+// 类型：hub=可歇脚/交易的平和点；其余按危险增量标定
+const SUBLOC_TYPES = [
+  { type: "村寨", suf: "村", dangerAdj: -1, hub: true,  flavor: ["炊烟袅袅，鸡犬相闻，村民多以渔猎耕织为生"] },
+  { type: "集镇", suf: "集", dangerAdj: 0,  hub: true,  flavor: ["三教九流汇聚，叫卖声不绝，暗中也做着见不得光的买卖"] },
+  { type: "客栈", suf: "驿", dangerAdj: -1, hub: true,  flavor: ["歇脚打尖之所，往来修士在此交换消息，酒肆后常藏着密谈"] },
+  { type: "茶楼", suf: "楼", dangerAdj: -1, hub: true,  flavor: ["一盏清茶听尽江湖事，说书人讲的尽是别处奇闻"] },
+  { type: "药市", suf: "市", dangerAdj: 0,  hub: true,  flavor: ["灵草丹丸琳琅，药香混杂汗气，懂行的方能淘到真宝"] },
+  { type: "书院", suf: "斋", dangerAdj: -1, hub: true,  flavor: ["朗朗书声里藏着道韵，寒门子弟于此借读书明理"] },
+  { type: "武馆", suf: "武馆", dangerAdj: 0, hub: true, flavor: ["演武场上拳脚生风，馆主多是身经百战的旧人"] },
+  { type: "医馆", suf: "医馆", dangerAdj: -1, hub: true, flavor: ["悬壶济世，亦有以人试药的邪医混迹其中"] },
+  { type: "船坞", suf: "津", dangerAdj: 0,  hub: true,  flavor: ["桅杆如林，船歌彻夜，水客们赌咒说见过水底古城"] },
+  { type: "渔村", suf: "渔村", dangerAdj: -1, hub: true, flavor: ["咸风裹腥，渔火点点，老渔夫的见闻比县志还厚"] },
+  { type: "猎户", suf: "猎庄", dangerAdj: -1, hub: true, flavor: ["猎户结庄而居，对地界险恶处了如指掌"] },
+  { type: "道观", suf: "观", dangerAdj: 0,  hub: false, flavor: ["香火缭绕，道韵悠长，观中人或已看破红尘，或另有所图"] },
+  { type: "剑坪", suf: "坪", dangerAdj: 1,  hub: false, flavor: ["断剑插地成林，杀气未散，是试剑者也在此印证剑心"] },
+  { type: "灵泉", suf: "泉", dangerAdj: 0,  hub: false, flavor: ["灵泉汩汩，雾气蒸腾，入浴可洗去一身尘秽与暗伤"] },
+  { type: "药谷", suf: "谷", dangerAdj: 1,  hub: false, flavor: ["灵药遍野却守护森严，采药人十去其三"] },
+  { type: "古墓", suf: "冢", dangerAdj: 3,  hub: false, flavor: ["封土之下埋着上古修士，陪葬的机缘与杀机同样可观"] },
+  { type: "妖洞", suf: "妖窟", dangerAdj: 3,  hub: false, flavor: ["腥风自洞中涌出，洞壁画满爪痕，深处似有绿瞳窥伺"] },
+  { type: "魔窟", suf: "魔窟", dangerAdj: 4,  hub: false, flavor: ["魔气渗壁，怨魂哀嚎，闯入者多被同化成了新的 guards"] },
+  { type: "残阵", suf: "残阵", dangerAdj: 3,  hub: false, flavor: ["上古杀阵余威尚在，一步踏错便万箭穿心"] },
+  { type: "祭坛", suf: "祭坛", dangerAdj: 2,  hub: false, flavor: ["血色符文在石上流转，似在等候某个被献祭的名字"] },
+  { type: "废墟", suf: "墟", dangerAdj: 2,  hub: false, flavor: ["倾颓的殿宇半埋黄沙，风穿过梁柱如泣如诉"] },
+  { type: "矿洞", suf: "矿", dangerAdj: 2,  hub: false, flavor: ["幽深矿道里灵矿与尸骨同眠，矿工满面尘灰"] },
+  { type: "秘洞", suf: "秘窟", dangerAdj: 2,  hub: false, flavor: ["洞壁生着发光苔痕，深处或有未醒的古修遗蜕"] },
+  { type: "古战场", suf: "古战场", dangerAdj: 3, hub: false, flavor: ["白骨露于野，断戟插满焦土，夜半犹闻金戈之声"] },
+  { type: "天梯", suf: "天梯", dangerAdj: 1,  hub: false, flavor: ["千级石阶直入云霄，每登一级便轻一寸，登顶者已历三世"] },
+  { type: "星台", suf: "星台", dangerAdj: 1,  hub: false, flavor: ["夜观星象的祭台，石面刻满失传的星官手札"] },
+  { type: "妖市", suf: "妖市", dangerAdj: 2,  hub: false, flavor: ["人妖杂处的暗市，只认暗号不认脸，交易皆以魂灯为凭"] },
+  { type: "鬼市", suf: "鬼市", dangerAdj: 2,  hub: false, flavor: ["惨绿灯笼照得每张脸都蒙了灰，摊主多无瞳孔"] },
+];
+// 雅致地名构件
+const SUBLOC_PREFIX = ["浣","听","栖","忘","落","归","漱","枕","沐","霁","岚","渚","岫","澧","潇","潆","潋","青","寒","烟","月","云","星","霜","雪","花","柳","桃","竹","松","枫","梅","兰","芷","蘅","萍","菱","荷","汀","沚","矶","溪","沧","苍","凌","碧","幽","玄","沉","栖","浮","澹"];
+const SUBLOC_MID = ["溪","谷","崖","渊","岭","峰","涧","林","浦","渡","关","城","镇","墟","寨","坊","市","巷","观","台","阁","亭","桥","洞","府","庄","院","庐","斋","馆","津","滨","畔","湄","浒"];
+
 // ---------- 生成器 ----------
 const WorldGen = {
   hashSeed,
@@ -366,17 +402,46 @@ const WorldGen = {
       });
     }
 
-    // 4) 名动人物
+    // 4) 名动人物（每个都有独立档案与立绘，可随剧情生长记忆）
     const npcs = [];
-    const ncount = ri(4, 5);
+    const ncount = ri(8, 12);
+    const titleGender = (t) => {
+      if (/圣女|仙子|女侠|妖姬|魔女|道姑|巫女|狐女|鬼姬|女帝|婆婆|娘/.test(t)) return "f";
+      if (/魔尊|道长|狂徒|侠客|书生|壮士|公子|大哥/.test(t)) return "m";
+      return rng() < 0.5 ? "m" : "f";
+    };
+    const titleArche = (t) => {
+      if (/圣女|仙子|女侠|妖姬|魔女|道姑|巫女|狐女|鬼姬|女帝/.test(t)) return "xianzi";
+      if (/魔尊|魔|邪/.test(t)) return "mo";
+      if (/道长|散人|真人|游侠/.test(t)) return "xia";
+      if (/剑痴|剑/.test(t)) return "sword";
+      if (/丹师|药|医/.test(t)) return "alchemist";
+      if (/妖王|妖/.test(t)) return "yaoxiu";
+      if (/鬼|幽|冥/.test(t)) return "ghost";
+      if (/器灵|器/.test(t)) return "spirit";
+      if (/神算|巡察|执事|护法|传人|长老/.test(t)) return "scholar";
+      return "scholar";
+    };
+    const npcGoal = ["寻回失落的本命法宝","参透一道悬而未解的古阵","了结百年前的一桩血仇","护佑门下弟子平安成长","窥破此界飞升之秘","积攒灵石重振门楣","寻访生死未卜的旧友","镇压体内躁动的凶煞之气","替恩主完成未竟遗愿","在乱世中为弱小者争一线生机","赎去年少时铸下的大错","等一个再也不会来的人"];
+    const npcBond = ["与" + pick(factions).name + "有旧","曾是" + pick(factions).name + "的死敌","暗中庇佑着一方凡俗村落","与某位名动人物有血缘之契","门下弟子遍及各域","似乎识得玩家前世残魂","背着一道不可言说的禁令"];
     for (let i = 0; i < ncount; i++) {
       let nm, g = 0;
       do { nm = pick(NPC_SURNAME) + pick(NPC_GIVEN); g++; } while (npcs.some((n) => n.name === nm) && g < 30);
+      const title = pick(NPC_TITLE);
+      const trait = pick(NPC_TRAIT);
+      const gender = titleGender(title);
+      const arche = titleArche(title);
       npcs.push({
         name: nm,
-        title: pick(NPC_TITLE),
-        trait: pick(NPC_TRAIT),
+        title, trait, gender, arche,
         where: pick(regions).name,
+        portraitSeed: hashSeed(nm) >>> 0,
+        appearance: (gender === "f" ? "身姿娉婷" : "风骨凛然") + "，着" + pick(["青","素","绯","玄","月白","黯","雪","朱"]) + "色衣袍，眉眼间自有" + pick(["清冷","倔强","忧郁","疏离","狡黠","悲悯","傲然"]) + "之色",
+        profile: {
+          backstory: `${nm}以${title}之姿行走世间，性情${trait}。`,
+          goal: pick(npcGoal),
+          bond: pick(npcBond),
+        },
       });
     }
 
@@ -403,6 +468,39 @@ const WorldGen = {
       const region = pick(regions).name;
       treasures.push({ name: item, where: region, desc: `于${region}的${spot}中，藏有${item}。` });
     }
+
+    // 6.5) 下级地点（每域若干处，构成"几百个地方"的密集世界版图）
+    const sublocations = [];
+    const subUsed = new Set();
+    const subName = (t) => {
+      let nm, g = 0;
+      do { nm = pick(SUBLOC_PREFIX) + pick(SUBLOC_MID) + t.suf; g++; }
+      while (subUsed.has(nm) && g < 40);
+      if (subUsed.has(nm)) nm = nm + ri(1, 99);
+      subUsed.add(nm);
+      return nm;
+    };
+    regions.forEach((r) => {
+      const n = 12 + Math.floor(rng() * 11); // 每域 12-22 处
+      for (let k = 0; k < n; k++) {
+        let t;
+        if (r.type === "凡俗" || r.type === "坊市") {
+          const pool = SUBLOC_TYPES.filter(x => x.hub);
+          t = pool[Math.floor(rng() * pool.length)];
+        } else if (r.type === "禁地" || r.type === "试炼" || r.type === "秘境") {
+          const pool = SUBLOC_TYPES.filter(x => !x.hub && x.dangerAdj >= 2);
+          t = pool[Math.floor(rng() * pool.length)] || SUBLOC_TYPES[Math.floor(rng() * SUBLOC_TYPES.length)];
+        } else {
+          t = SUBLOC_TYPES[Math.floor(rng() * SUBLOC_TYPES.length)];
+        }
+        const nm = subName(t);
+        const danger = Math.max(0, Math.min(10, r.danger + t.dangerAdj + (rng() < 0.3 ? (rng() < 0.5 ? -1 : 1) : 0)));
+        sublocations.push({
+          id: r.name + "::" + k, region: r.name, macro: r.macro, type: t.type, hub: !!t.hub,
+          name: nm, danger, desc: pick(t.flavor),
+        });
+      }
+    });
 
     // 7) 天地异象
     const omen = pick(OMENS);
@@ -473,6 +571,7 @@ const WorldGen = {
       npcs,
       rumors,
       treasures,
+      sublocations,
       startLocation,
       startMacro,
     };

@@ -181,8 +181,20 @@
       </div>
     </div>
     <div class="map-footer" id="map-footer">
+      <button class="btn btn-ghost" onclick="UI.showCodex()">群像图鉴</button>
       <button class="btn btn-primary" onclick="UI.startGameFromMap()">踏入仙途</button>
     </div>
+  </div>
+</div>
+
+<!-- ==================== 群像图鉴 ==================== -->
+<div id="screen-codex" class="screen">
+  <div class="codex-wrap">
+    <div class="codex-head">
+      <h2>群像图鉴 <span class="codex-count" id="codex-count"></span></h2>
+      <button class="btn btn-ghost" onclick="UI.showWorldMap()">← 返回大地图</button>
+    </div>
+    <div class="codex-grid" id="codex-grid"><!-- 立绘卡片注入处 --></div>
   </div>
 </div>
 
@@ -235,6 +247,16 @@
       <div class="form-group">
         <label class="form-label">界面风格</label>
         <label class="pixel-toggle"><input type="checkbox" id="set-pixel" onchange="UI.togglePixel(this.checked)"> 像素风（取消勾选恢复水墨风）</label>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">AI 立绘 · 精美人物生成</label>
+        <label class="pixel-toggle"><input type="checkbox" id="set-aiportrait" onchange="UI.toggleAiPortrait(this.checked)"> 启用 AI 立绘（需 Gemini API Key）</label>
+        <input type="password" id="set-aiportrait-key" class="form-input" placeholder="Gemini API Key（gemini-3-pro-image-preview 模型）" style="margin-top:8px">
+        <p class="settings-hint" style="margin-top:8px;margin-bottom:0">启用后，主角与 NPC 立绘由 AI 即时生成（中国仙侠 Galgame 风格），首次出现时生成并缓存于本地浏览器。需要 Google Gemini 图像 API Key。无 Key 或关闭时自动降级为程序化立绘，<b>绝不白屏</b>。</p>
+        <label class="pixel-toggle" style="margin-top:12px"><input type="checkbox" id="set-aiportrait-lib" onchange="UI.toggleAiPortraitLib(this.checked)"> 使用「立绘托管库」（玩家零 Key 也能看精美立绘）</label>
+        <input type="text" id="set-aiportrait-libbase" class="form-input" placeholder="托管库地址，如 https://你的账号.github.io/浮生仙途/portraits" style="margin-top:8px">
+        <p class="settings-hint" style="margin-top:8px;margin-bottom:0">把 <code>generate_portrait_pack.py</code> 生成的 <code>portraits/</code> 整个目录托管到任意静态网站（GitHub Pages / CloudStudio 均可），在此填入其 URL 前缀即可。优先级：托管库 &gt; 自用 Key 生成 &gt; 程序化立绘。</p>
       </div>
 
     <div class="form-actions">
@@ -389,11 +411,36 @@
 
 <!-- 世界种子分享功能已下架 -->
 
+<!-- ==================== 新手引导（首次进入一次性） ==================== -->
+<div id="onboarding-modal" class="onboarding-modal">
+  <div class="onboarding-card">
+    <button class="onboarding-close" onclick="closeOnboarding()">✕</button>
+    <div class="onboarding-title">初入仙途 · 三两句便懂</div>
+    <div class="onboarding-sub">天道不语，你每行一步皆由 AI 即时演绎。记住四件事：</div>
+    <div class="onboarding-grid">
+      <div class="ob-card"><div class="ob-ico">🌱</div><div class="ob-h">灵根 · 出身</div><div class="ob-t">决定你的起点与擅长。开局选好，往后皆是这副根基上的修行。</div></div>
+      <div class="ob-card"><div class="ob-ico">⚡</div><div class="ob-h">修炼 · 突破</div><div class="ob-t">打坐、历练、悟道皆积"突破进度"，满百可冲境。境界越高，天地越广。</div></div>
+      <div class="ob-card"><div class="ob-ico">⚖</div><div class="ob-h">抉择 · 因果</div><div class="ob-t">救人还是造孽、守诺还是背信，皆记因果。旧账日后会翻——你救的人会来，你负的誓会应。</div></div>
+      <div class="ob-card"><div class="ob-ico">☠</div><div class="ob-h">生死 · 有命</div><div class="ob-t">会受伤、会老、会死。死亡即终章，无重生。险字当头，掂量着来。</div></div>
+    </div>
+    <div class="onboarding-note">风险标签只在内部标注，你看到的只有文字里的凶险。下方选项与自由输入框，怎么走都由你。</div>
+    <button class="btn btn-primary btn-lg ob-start" onclick="closeOnboarding()">入了这局 →</button>
+  </div>
+</div>
+<script>
+(function(){
+  function _showOb(){ var m=document.getElementById('onboarding-modal'); if(m && !localStorage.getItem('fs_onboarded')) m.style.display='flex'; }
+  window.closeOnboarding=function(){ localStorage.setItem('fs_onboarded','1'); var m=document.getElementById('onboarding-modal'); if(m) m.style.display='none'; };
+  if(document.readyState!=='loading') _showOb(); else document.addEventListener('DOMContentLoaded', _showOb);
+})();
+</script>
+
 <script src="config.js"></script>
 <script src="worldgen.js"></script>
 <script src="data.js"></script>
 <script src="ai.js"></script>
 <script src="art.js"></script>
+<script src="artengine.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

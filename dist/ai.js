@@ -170,7 +170,7 @@ ${this.buildLifeSkillGraph()}
 8. 功法必须同步：剧情中玩家获得任何功法、残篇、传承时，必须同时在 state_changes.techniques_gained 里列出功法名；储物袋与功法栏会据此更新，不能只写在 narrative 里。
 8b. 金手指 / 系统必须同步：玩家自开局起即可拥有或中途觉醒「金手指 / 系统」（如天道面板、命格任务、签到仙缘、成就殿、气运值、诡则提示等，参见【与时俱进】系统流）。凡玩家在 premise 中声明、或剧情中觉醒 / 获得任何系统，必须同时在 state_changes.systems_gained 列出系统名；失去或崩解则在 systems_lost 列出。系统栏会据此更新，绝不能只写在 narrative 里。这些系统是玩家修行的重要组成部分，后续须持续登场、绝不可凭空遗忘。
 8a. 物品必须同步：剧情中玩家获得任何物品、材料、碎片、残卷、丹药、法器、灵石袋、符箓、地图、钥匙、玉简等，必须同时在 state_changes.items_gained 里列出物品名；失去或消耗物品时，必须在 state_changes.items_lost 里列出。储物袋会据此更新，绝不能只写在 narrative 里。若同一物品有多个，可写 "破界石碎片 x3" 或拆分为三条。凡获得之物，请在 items_gained 中一并给出 kind（物品/丹药/法宝/材料/符箓）与 grade（品级，如 玄阶上品），以便储物袋显示品级。
-9. 灵宠机制：剧情中玩家可能邂逅、收养灵兽/妖兽/仙禽/古灵。获得时在 state_changes.pet_gained 返回完整对象；成长或形态变化用 pet_updated；失去或放生用 pet_lost。
+9. 灵宠机制：灵宠须来自机缘、奇遇、秘境探幽、危难相救等特殊事件——玩家须先有所经历/付出才可获宠。**前 3 程内绝对不可返回 pet_gained / pet_updated**（玩家刚入世啥也没干就获宠不合逻辑）。获得时在 state_changes.pet_gained 返回完整对象；成长或形态变化用 pet_updated；失去或放生用 pet_lost。
 9b. 【战斗动画标记】当 narrative 中出现斗法、厮杀、与妖兽/邪修/鬼物交战时，必须在 state_changes.combat_encounter 填写敌人类型：beast（妖兽）、xiexiu（邪修）、ghost（鬼物），以便引擎播放对应的像素战斗动画。未交战时留空即可。
 ${this.buildVarietyBlock(state)}
 9c. 【场景与立绘 · 视觉呈现】每次回复须依本回合剧情在 state_changes.scene 选择最贴合的场景 slug（见字段说明列表）；玩家位置变化（location_change）或氛围转折时尤其要切换。若本回合有标志性同框 NPC，在 npc 字段给出其形象 slug（old_m/old_f/young_m/young_f）。引擎将据此实时更换背景场景图与立绘，使游玩从纯文字转为有画面的视觉小说式呈现——场景与立绘是氛围的核心，不可忽略。
@@ -226,6 +226,7 @@ ${this.buildVarietyBlock(state)}
     "cause_credit_change": 数字(因果力变化：守诺济世、护道了缘、善举记正数，如3；了结旧债记负数),
     "cause_debt_change": 数字(因果债变化：背信弃义、残害无辜、欠恩不报记正数；偿恩了债记负数，可使因果债归零),
     "npc_affinity_change": {"NPC名字": 好感增减数字(正为亲近、负为疏远，范围约-100~100)；可同时含多个NPC，如 {"苏璃": 10, "玄机子": -8}},
+    "npc_memory": {"NPC名字": {"note":"本回合与该人物发生的关键交集/新认知（一句话事实，须与日后其言行一致，如'已与历练者结为道侣'/'曾受历练者救命之恩'）", "flag":"可选·剧情标记（如 结仇/结缘/师徒/救命之恩），重复填写会累加", "relation":"可选·对其他目标的称呼或态度简述"}} 或 [{"name":"NPC名字","note":"...","flag":"...","relation":"..."}]（让该人物的独立记忆随剧情成长，勿让其忘记已发生之事）,
     "life_skill_changes": [{"name":"生活技能名（如 炼丹/炼器/符箓）","proficiency_change": 数字(熟练度增减，单轮通常 1-12，满 100 即登峰造极),"path":"选定/解锁的进阶之路名(如 丹王道，首次择路或强化时填，否则留空)"}],
     "location_change": "本回合剧情中若抵达了新地点，必须填写新地点名；若仍在原地，留空即可",
     "event_flag": "特殊事件标记：breakthrough_success / breakthrough_failed / near_death / death / fortuitous_encounter（奇遇或高光事件） / romance_union（结为道侣） / ascension（苦修飞升） / craft_ascension（以技证道·生活技能飞升） / 或不填。重大剧情转折可不填 flag，但须在 narrative 中充分呈现。",
@@ -233,11 +234,11 @@ ${this.buildVarietyBlock(state)}
     "scene": "场景标记：从固定列表选最贴合本回合剧情的场景 slug（mountain_gate 山门 / bamboo_forest 竹林 / sect_hall 宗门大殿 / market 坊市 / secret_realm 洞天秘境 / beast_wilds 妖兽荒原 / snow_peak 雪岭寒潭 / star_sky 星海 / ghost_realm 幽冥鬼域 / cloud_palace 云端仙宫）。每当玩家物理位置变化（见 location_change）或氛围转变时，须同步切换；引擎据此实时更换像素背景图。",
     "npc": "同框立绘标记：若本回合有重要 NPC 与玩家同框，填其形象 slug（old_m 老翁 / old_f 老妪 / young_m 少男 / young_f 少女），引擎会在场景中立绘其像；无则留空。",
     "main_plot": {"title":"可选·若主线名号被正式点明/揭示则填","conflict":"可选·中央冲突具体化（如揭示仇家真名、遗藏真相）","note":"本回合主线推进的一句话纪要（必填，便于状态栏追踪 spine）","revealedStage": "数字(可选)·揭示到的阶段","resolved": false},
-    "threads_planted": [{"hint":"本回合埋下的伏笔摘要（须与日后回收时写的文字高度一致，便于引擎配对）"}] 或 ["伏笔摘要1","伏笔摘要2"],
-    "threads_resolved": ["与 threads_planted 中完全一致的伏笔摘要文本（完成回收，引擎据文字配对）"]
+    "threads_planted": [{"hint":"本回合记录的关键信息摘要（须与日后回收时写的文字高度一致，便于引擎配对）"}] 或 ["关键信息摘要1","关键信息摘要2"],
+    "threads_resolved": ["与 threads_planted 中完全一致的关键信息文本（完成回收，引擎据文字配对）"]
   },
   "options": ["具体选项1 [风险标签]", "具体选项2 [风险标签]", "具体选项3 [风险标签]"],
-  "memory": "一句简短的剧情记忆，记录本回合重要事实（结识的人物、获得的关键物品、结下的仇怨、到达的地点、未解的伏笔）。无重要事件填空字符串。"
+  "memory": "一句简短的剧情记忆，记录本回合重要事实（结识的人物、获得的关键物品、结下的仇怨、到达的地点、未解的关键线索）。无重要事件填空字符串。"
 }
 
 若玩家尝试不可能之事，在narrative中描写失败的狼狈过程，state_changes留空或负面。
@@ -258,8 +259,22 @@ ${this.buildVarietyBlock(state)}
     gen.regions.forEach(r => lines.push(`  - 【${r.macro}】${r.name}（${r.type}·凶险${r.danger}）：${r.desc}`));
     lines.push("· 当世宗门势力：");
     gen.factions.forEach(f => lines.push(`  - ${f.name}（${f.disposition}），根基在${f.base}；${f.sigil}`));
-    lines.push("· 名动一方的人物：");
-    gen.npcs.forEach(n => lines.push(`  - ${n.name}（${n.title}·${n.trait}），常现于${n.where}`));
+    lines.push("· 名动一方的人物（每位皆有独立设定与记忆，请严格遵循其性格与过往，前后不可矛盾）：");
+    (gen.npcs || []).forEach(n => {
+      const mem = (state.npcMemory && state.npcMemory[n.name]) || null;
+      let s = `  - ${n.name}（${n.title}·${n.trait}），常现于${n.where}`;
+      const p = (n.profile) || (mem && mem.profile) || {};
+      if (p.backstory) s += `；来历：${p.backstory}`;
+      if (p.goal) s += `；所求/执念：${p.goal}`;
+      if (p.bond) s += `；牵绊：${p.bond}`;
+      if (mem && mem.notes && mem.notes.length) {
+        s += `；【已发生之交集·须牢记不可遗忘或矛盾】` + mem.notes.map(x => x.text).join("；");
+      }
+      if (mem && mem.flags && Object.keys(mem.flags).length) {
+        s += `；【剧情标记】` + Object.keys(mem.flags).map(k => k + (mem.flags[k] ? "(" + mem.flags[k] + ")" : "")).join("、");
+      }
+      lines.push(s);
+    });
     lines.push("· 江湖秘闻（可作剧情伏笔，由你自然引出）：");
     gen.rumors.forEach(r => lines.push(`  - ${r}`));
     lines.push("· 暗藏机缘（可让玩家探寻，但须付出努力方可获得）：");
@@ -279,7 +294,12 @@ ${this.buildVarietyBlock(state)}
       const pe = state.meta.pendingEvent;
       lines.push(`· 【本回合强制事件·因果反噬】上一程因果债索偿：${pe.type}（气血-${pe.hpLoss}${pe.stoneLoss ? "，灵石-" + pe.stoneLoss : ""}）。请在开场即以这场反噬续写剧情——仇家现身索命、旧誓反咬、或血光临头，须让玩家直面此劫之后果，不可假装无事发生；可顺势推动剧情或埋下了结旧债的契机。`);
     }
-    lines.push("· 玩家本质：一道神魂投影，魂穿此界，可为任意形态（人/妖/器/灵/草木……），不拘性别。请以'历练者'视角与之互动，尊重其形态与诉求。");
+    const _fc = state.character || {};
+    const _fk = _fc.form || "human";
+    const _formObj = (typeof FORMS !== "undefined" && FORMS[_fk]) ? FORMS[_fk] : (FORMS ? FORMS.human : null);
+    const _formName = _formObj ? _formObj.name : "人族";
+    const _formNote = _formObj ? _formObj.note : "";
+    lines.push(`· 玩家本质：一道神魂投影，魂穿此界，本世之形为【${_formName}】（当前境界「${_fc.realm || ""}」）。${_formNote}请以'历练者'视角与之互动，尊重其形态、天赋与诉求，绝不可一律以人族修士的举止预设其言行；其本体能力（如扎根、兽性、御器、穿壁、凝元素）应自然体现在描写与选项中。`);
     return lines.join("\n");
   },
 
@@ -311,15 +331,15 @@ ${this.buildVarietyBlock(state)}
     const threads = (state.meta && state.meta.threads) || [];
     const open = threads.filter(t => t.status === "planted");
     let s = "";
-    s += "- 仙途须有'草蛇灰线'：早段（炼气/筑基及前三十程）即应埋下若干伏笔——未解之谜、诡异征兆、旧人残念、悬而未决的仇怨、似有深意的预言或异物。伏笔让长线剧情有重量与回响。\n";
-    s += "- 每次埋下伏笔，必须同时在 state_changes.threads_planted 登记：[{ \"hint\":\"一句可辨识的伏笔摘要（须与日后回收时写的文字高度一致，便于引擎配对）\" }]（也可直接写字符串数组）。\n";
+    s += "- 仙途须有'草蛇灰线'：早段（炼气/筑基及前三十程）即应留下若干关键信息——未解之谜、诡异征兆、旧人残念、悬而未决的仇怨、似有深意的预言或异物。关键信息让长线剧情有重量与回响。\n";
+    s += "- 每次留下关键信息，必须同时在 state_changes.threads_planted 登记：[{ \"hint\":\"一句可辨识的信息摘要（须与日后回收时写的文字高度一致，便于引擎配对）\" }]（也可直接写字符串数组）。\n";
     s += "- 当剧情走到恰当时机（揭晓、转折、高光、突破余韵、或大结局），须在 state_changes.threads_resolved 登记对应 hint 文本，完成'回收'。回收时须在 narrative 中写足回响（人物恍然、因果闭合、情感落点），不可草草带过。\n";
-    s += "- 铁律：凡埋下的伏笔，终须回收；不可只埋不收，亦不可凭空'回收'一个从未埋过的伏笔。临近飞升时，所有未解伏笔须尽数回响。\n";
+    s += "- 铁律：凡留下的关键信息，终须回收；不可只留不收，亦不可凭空'回收'一个从未留过的信息。临近飞升时，所有未解信息须尽数回响。\n";
     if (open.length) {
-      s += `- 当前未解伏笔（${open.length} 条，须伺机回收）：\n`;
-      open.slice(0, 12).forEach(t => { s += `  · ${t.hint}（第 ${t.plantedTurn} 程埋下）\n`; });
+      s += `- 当前未解关键信息（${open.length} 条，须伺机回收）：\n`;
+      open.slice(0, 12).forEach(t => { s += `  · ${t.hint}（第 ${t.plantedTurn} 程记录）\n`; });
     } else {
-      s += "- 当前无未解伏笔，可据剧情需要新埋。\n";
+      s += "- 当前无未解关键信息，可据剧情需要新记录。\n";
     }
     return s;
   },
@@ -972,8 +992,8 @@ ${(() => {
   const _done = _th.filter(t => t.status === "resolved").map(t => t.hint);
   let _s = "";
   if (_mp && _mp.title) _s += `主线（中央冲突）：${_mp.title}——${_mp.conflict}${_mp.resolved ? "（已于飞升之刻收束）" : "（行进中）"}\n`;
-  if (_open.length) _s += "未解伏笔：" + _open.join("、") + "\n";
-  if (_done.length) _s += "已回收伏笔：" + _done.join("、") + "\n";
+  if (_open.length) _s += "未解关键信息：" + _open.join("、") + "\n";
+  if (_done.length) _s += "已闭合线索：" + _done.join("、") + "\n";
   return _s;
 })()}
 【本次仙途全记录（按时间先后）】
