@@ -3429,7 +3429,7 @@ const UI = {
       { slug: "mang",  name: "赤鳞蟒",   cfg: { body: "#3f8f4f", belly: "#cfe8c2", eye: "#ffd93d" }, feats: ["tail", "fangs"] },
       { slug: "hu",    name: "斑斓虎",   cfg: { body: "#e08a2b", belly: "#fbe6c8", eye: "#15110c" }, feats: ["stripes", "fangs"] },
       { slug: "ying",  name: "裂风鹰",   cfg: { body: "#7a5230", belly: "#e3cfa6", eye: "#ffce3a" }, feats: ["wings", "beak"] },
-      { slug: "lang",  name: "啸月狼",   file: "assets/enemy_wolf.webp" },
+      { slug: "lang",  name: "啸月狼" },
       { slug: "zhu",   name: "钢鬃野猪", cfg: { body: "#5b4636", belly: "#cdbfa8", eye: "#15110c" }, feats: ["tusks"] },
       { slug: "xie",   name: "毒尾蝎",   cfg: { body: "#6a3d8a", belly: "#caa6e0", eye: "#ff5b5b" }, feats: ["tail", "stinger"] },
       { slug: "xiong", name: "撼山熊",   cfg: { body: "#6b4a2f", belly: "#caa982", eye: "#15110c" }, feats: ["big"] },
@@ -3444,7 +3444,7 @@ const UI = {
       { slug: "gu2",   name: "白骨妖",   cfg: { body: "#cfc8b8", belly: "#efe8d8", eye: "#ff5b5b" }, feats: ["fangs", "horns"] },
     ],
     xiexiu: [
-      { slug: "jiexiu", name: "黑风劫修", file: "assets/enemy_xiexiu.webp" },
+      { slug: "jiexiu", name: "黑风劫修" },
       { slug: "xuexiu", name: "血刀魔修", cfg: { body: "#7a1f2b", robe: "#3a0d12", eye: "#ff5b5b" }, feats: ["cultivator", "blade"] },
       { slug: "duxiu",  name: "毒手邪修", cfg: { body: "#2f6b3a", robe: "#13301a", eye: "#a6e0b0" }, feats: ["cultivator"] },
       { slug: "xueying", name: "血影修士", cfg: { body: "#8a1f2b", robe: "#2a0a0a", eye: "#ff5b5b" }, feats: ["cultivator", "blade", "aura"] },
@@ -3454,7 +3454,7 @@ const UI = {
       { slug: "fentian", name: "焚天狂徒", cfg: { body: "#b05020", robe: "#3a1505", eye: "#ffb060" }, feats: ["cultivator", "horns", "aura"] },
     ],
     ghost: [
-      { slug: "yuanling", name: "含冤厉魄", file: "assets/enemy_ghost.webp" },
+      { slug: "yuanling", name: "含冤厉魄" },
       { slug: "yinhun",   name: "阴魂老者", cfg: { body: "#5a7fa8", eye: "#dfe9ff" }, feats: ["ghost", "wisp"] },
       { slug: "guhun",    name: "孤野游魂", cfg: { body: "#9aa0a8", eye: "#ffffff" }, feats: ["ghost", "wisp"] },
       { slug: "qixue",    name: "泣血女鬼", cfg: { body: "#7a2a4a", eye: "#ff9ab0" }, feats: ["ghost", "wisp", "aura"] },
