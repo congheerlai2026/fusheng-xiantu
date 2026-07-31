@@ -494,9 +494,7 @@ ${this.buildVarietyBlock(state)}
     return mode.rule;
   },
 
-  // 区域感官简报：把当前地点的氛围/气味/声响注入提示词，让 AI 写出有地点质感的文字
-  // 兼容两套地点来源：① 生成世界的地域（gen.regions，含本界独有地名+sensory）；② 静态 LOCATIONS（仅当地名恰好匹配时）。
-  // 关键：生成世界用的是本界独有地名，几乎不会命中静态 LOCATIONS——故必须优先读 gen.regions 的 sensory，否则地点质感整场丢失。
+  // 区域感官简报：把当前地点的氛围/气味/声响/钩子/赶路上下文注入提示词
   buildLocationBrief(state) {
     const loc = (state && state.world && state.world.location) || "";
     const gen = (state && state.world && state.world.gen);
@@ -504,7 +502,6 @@ ${this.buildVarietyBlock(state)}
     if (gen && gen.regions) entry = gen.regions.find(r => r.name === loc) || null;       // 生成世界地域（优先）
     if (!entry && typeof LOCATIONS !== "undefined") entry = LOCATIONS.find(l => l.name === loc) || null; // 静态回退
     if (!entry) {
-      // 即便两处都查不到，也保留分支节点提示（若有），避免分支叙事退化为主线
       return this._buildBranchNote(state, loc);
     }
     const danger = (entry.danger != null) ? entry.danger : 0;
@@ -516,6 +513,16 @@ ${this.buildVarietyBlock(state)}
         `请在描写中自然融此地的气息、声响与光影，使玩家"身临其境"。⚠ 严禁把上面"环境质感"原句照抄进 narrative——须化用为属于本回合的新描写：换角度、换感官、叠加角色当下的动作与情绪，写出你自己的句子。离开此地时，须同步切换氛围与 state_changes.scene。`;
     } else {
       base += `（此地为${type}，请在描写中自然呈现其氛围与凶险，使玩家身临其境。）`;
+    }
+    // —— 子地点专属故事钩子（每回合随机抽一条，AI 据此衍生本回合事件）
+    const subEntry = (gen && gen.sublocations) ? (gen.sublocations || []).find(s => s.name === loc) : null;
+    if (subEntry && subEntry.hook) {
+      base += `\n· 【本地点·专属钩子】${subEntry.hook}\n本回合须以此钩子为种子衍生一段独特事件（不要再写"路过此地无奇"的空场）；事件可大可小，但须让本回合有"只属于此地"的剧情回响，而非通用模板。`;
+    }
+    // —— 刚结束的赶路段（让 AI 自然衔接赶路→抵达，避免"瞬间转移"感）
+    const tl = state.world && state.world.travelLast;
+    if (tl && tl.to && (tl.to === loc || loc === subEntry)) {
+      base += `\n· 【赶路背景·勿丢】本回合前有 ${tl.days} 日跋涉（${tl.li} 里，${tl.terrain || "凡俗"}地形）：${tl.encounterHint || ""}。请在 narrative 开篇自然带出这次赶路的痕迹（一路风尘、步履反应、途中细物），绝不可写"瞬间抵达"或忽略这段时间。`;
     }
     const branchNote = this._buildBranchNote(state, loc, gen);
     const out = (base + branchNote).trim();
@@ -616,7 +623,7 @@ ${this.buildVarietyBlock(state)}
   // ============ 带超时 + 自动重试的 fetch（解决高峰期永久转圈） ============
   // 失败分类：超时/网络抖动/5xx/429 可重试；401/400/403 等不可重试（直接抛错给上层翻译）
   async _fetchJson(url, headers, bodyStr) {
-    const TIMEOUT_MS = 25000;       // 单次请求 25s 超时，避免高峰永久卡死
+    const TIMEOUT_MS = 45000;       // 单次请求 45s 超时（系统提示词长，高峰期真实需求超过 25s）
     const MAX_RETRY = 2;            // 最多重试 2 次（共 3 次尝试）
     let lastErr = null;
     for (let attempt = 0; attempt <= MAX_RETRY; attempt++) {
@@ -633,8 +640,8 @@ ${this.buildVarietyBlock(state)}
         // 可重试类：429 限流 / 500+ 服务抖动
         if (resp.status === 429 || resp.status >= 500) {
           const retryAfter = resp.headers.get("retry-after");
-          const wait = retryAfter ? (parseInt(retryAfter, 10) * 1000) : (800 * Math.pow(2, attempt) + Math.random() * 400);
-          if (attempt < MAX_RETRY) { lastErr = new Error(`API暂不可用(${resp.status})，稍后重试…`); await new Promise(r => setTimeout(r, Math.min(wait, 4000))); continue; }
+          const wait = retryAfter ? (parseInt(retryAfter, 10) * 1000) : (1200 * Math.pow(2, attempt) + Math.random() * 600);
+          if (attempt < MAX_RETRY) { lastErr = new Error(`API暂不可用(${resp.status})，稍后重试…`); await new Promise(r => setTimeout(r, Math.min(wait, 6000))); continue; }
           const errText = await resp.text().catch(() => "");
           throw new Error(`API请求失败 (${resp.status}): ${errText.slice(0, 200)}`);
         }
@@ -648,14 +655,14 @@ ${this.buildVarietyBlock(state)}
         clearTimeout(timer);
         // AbortController 触发 = 超时
         if (e && e.name === "AbortError") {
-          lastErr = new Error("网络超时（25秒未响应）");
-          if (attempt < MAX_RETRY) { await new Promise(r => setTimeout(r, 600 * (attempt + 1))); continue; }
-          throw new Error("网络超时（25秒未响应），请检查网络或稍后再试");
+          lastErr = new Error("网络超时（45秒未响应）");
+          if (attempt < MAX_RETRY) { await new Promise(r => setTimeout(r, 1200 * (attempt + 1) + Math.random() * 400)); continue; }
+          throw new Error("网络超时（45秒×3次未响应），请检查网络或稍后再试");
         }
         // 其他网络错误（断网/跨域/解析失败）
         if (e instanceof TypeError || (e && /Failed to fetch|NetworkError|load failed/i.test(e.message || ""))) {
           lastErr = new Error("网络连接失败");
-          if (attempt < MAX_RETRY) { await new Promise(r => setTimeout(r, 600 * (attempt + 1))); continue; }
+          if (attempt < MAX_RETRY) { await new Promise(r => setTimeout(r, 1200 * (attempt + 1) + Math.random() * 400)); continue; }
           throw new Error("网络连接失败，请检查网络后重试");
         }
         // 其他（含 401/400/403 原样错误）直接抛出
@@ -812,8 +819,8 @@ ${this.buildVarietyBlock(state)}
       } catch (e) { /* continue */ }
     }
 
-    // 3. 解析失败，尝试挽救：提取第一个 "narrative" 字段内容
-    const narrative = this._extractNarrativeFallback(text) || "本回合天地灵机微滞，剧情未能完整显化。";
+    // 3. 解析失败，尝试挽救：提取第一个 "narrative" 字段内容；若无则降级呈现（更柔和的兜底文案，不再是"灵机微滞"的玄学感）
+    const narrative = this._extractNarrativeFallback(text) || "本程推演稍迟，先给你一招应对——你环顾四周，先择一策而行；下一回合会补全此程。";
     return {
       narrative: narrative,
       state_changes: {},
@@ -841,7 +848,7 @@ ${this.buildVarietyBlock(state)}
     // narrative 绝不可回退为 rawText，否则玩家会直接看到 JSON 协议数据
     if (!parsed.narrative || !String(parsed.narrative).trim()) {
       console.error("[AIService] narrative 为空，原始响应：", rawText.slice(0, 800));
-      parsed.narrative = "（本回合剧情推演异常，未收到 narrative 内容。请尝试输入「刷新」重新生成本回合，或联系运营。）";
+      parsed.narrative = "（这一程推演稍迟，先为你开个场——你稳住心神，先择一策而行；下一回合会补全此程的天地变化。）";
     }
     // 解析选项风险标签（[平安]/[凶险]/[致命]）→ optionRisks，并把标签从选项文本中剥离
     const riskMap = { "致命": "lethal", "生死攸关": "lethal", "九死一生": "lethal", "凶险": "danger", "有凶险": "danger", "危险": "danger", "平安": "safe", "稳妥": "safe", "安全": "safe" };
