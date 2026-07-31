@@ -1033,6 +1033,7 @@ const Game = {
       if (!this.state.narrationMode) this.state.narrationMode = "standard";
       // 旧档兼容：补全诸天万界新增字段
       if (!this.state.world) this.state.world = { seed: "", location: "", gen: null };
+      if (typeof this.state.world.day !== "number") this.state.world.day = 1;
       if (typeof this.state.world.realmCapLevel !== "number") this.state.world.realmCapLevel = (typeof REALMS !== "undefined" && REALMS.length) ? REALMS.length : 9;
       if (typeof this.state.world.spirit !== "number") this.state.world.spirit = 6;
       if (!this.state.character.form) this.state.character.form = "human";
@@ -2229,7 +2230,12 @@ const UI = {
       const x0 = b.x0 - 55, y0 = b.y0 - 45, x1 = b.x1 + 55, y1 = b.y1 + 45;
       const cx = (x0 + x1) / 2;
       zones += `<rect class="map-zone" x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" rx="16"></rect>`;
-      zones += `<text class="map-zone-label" x="${cx}" y="${y0 + 24}" text-anchor="middle">${m.name}</text>`;
+      const labelText = m.name;
+      const lblW = labelText.length * 22 + 32;
+      const lblX = cx - lblW / 2;
+      const lblY = y0 + 14;
+      zones += `<rect class="map-zone-label-bg" x="${lblX}" y="${lblY}" width="${lblW}" height="26" rx="6"></rect>`;
+      zones += `<text class="map-zone-label" x="${cx}" y="${lblY + 18}" text-anchor="middle">${labelText}</text>`;
     });
 
     // 2) 灵脉连线（每个地域连最近的另一个地域）
@@ -2254,7 +2260,7 @@ const UI = {
       linkSvg += `<path class="map-link" d="M ${pts[a].x} ${pts[a].y} Q ${mx} ${my} ${pts[b].x} ${pts[b].y}"></path>`;
     });
 
-    // 3) 地域节点（域核：发光圆盘 + 类型篆字 + 当前位置脉冲 + 域内胜迹数）
+    // 3) 地域节点（域核：发光圆盘 + 类型篆字 + 当前位置脉冲 + 域内胜迹数 + 标签底牌防融合）
     let nodes = "";
     pts.forEach((r, i) => {
       const isCur = r.name === cur;
@@ -2264,22 +2270,40 @@ const UI = {
       const branchCls = isBranch ? ("map-branch map-branch-" + r.branch) : "";
       const glyph = TYPE_GLYPH[r.type] || "·";
       const subN = (gen.sublocations || []).filter(s => s.region === r.name).length;
+      // 标签底牌：宽 = 字符 × 14 + 18 内边距；高 17；圆角 8
+      const charW = 14;
+      const nameW = r.name.length * charW + 18;
+      const nameY = r.y + rad + 18;
+      const nameBgX = r.x - nameW / 2;
+      const nameBgY = nameY - 13;
+      const subTxt = subN ? (subN + " 处") : "";
+      const subW = subTxt.length * charW + 14;
+      const subY = nameY + 18;
+      const subBgX = r.x - subW / 2;
+      const subBgY = subY - 11;
       nodes += `<g class="map-node ${isCur ? "map-current" : ""} ${branchCls}" data-i="${i}" data-branch="${r.branch || ""}" onclick="UI.showRegionDetail(${i})">
         <circle class="node-glow" cx="${r.x}" cy="${r.y}" r="${rad + 11}" fill="${dangerColor(r.danger)}"></circle>
         <circle class="node-core" cx="${r.x}" cy="${r.y}" r="${rad}" fill="${dangerColor(r.danger)}" stroke="rgba(255,255,255,0.75)" stroke-width="2"></circle>
         <text x="${r.x}" y="${r.y + 5}" text-anchor="middle" font-size="14" fill="#fff" style="pointer-events:none;font-weight:bold;text-shadow:0 1px 2px rgba(0,0,0,.6)">${glyph}</text>
-        <text class="node-label" x="${r.x}" y="${r.y + rad + 15}" text-anchor="middle">${r.name}</text>
-        ${subN ? `<text class="node-sub" x="${r.x}" y="${r.y + rad + 28}" text-anchor="middle">${subN} 处</text>` : ""}
+        <rect class="node-label-bg" x="${nameBgX}" y="${nameBgY}" width="${nameW}" height="17" rx="8"></rect>
+        <text class="node-label" x="${r.x}" y="${nameY}" text-anchor="middle">${r.name}</text>
+        ${subN ? `<rect class="node-sub-bg" x="${subBgX}" y="${subBgY}" width="${subW}" height="13" rx="6"></rect>
+                 <text class="node-sub" x="${r.x}" y="${subY}" text-anchor="middle">${subTxt}</text>` : ""}
       </g>`;
     });
     // 本周秘境节点（确定性生成，整周稳定，金色高亮，作"回访理由"）
     if (typeof WorldGen !== "undefined") {
       try {
         const wk = WorldGen.weeklySecretRealm(gen.seed);
+        const wkName = wk.name;
+        const wkCharW = 14;
+        const wkNameW = wkName.length * wkCharW + 18;
+        const wkLabelY = wk.y + 30;
         nodes += `<g class="map-node map-weekly" data-weekly="1" onclick="UI.showWeeklyDetail()">`
           + `<circle class="node-core" cx="${wk.x}" cy="${wk.y}" r="13" fill="#ffd24a" stroke="#7a4b00" stroke-width="2"></circle>`
           + `<text x="${wk.x}" y="${wk.y + 5}" text-anchor="middle" font-size="13" fill="#3a2400" style="pointer-events:none;font-weight:bold">秘</text>`
-          + `<text class="node-label" x="${wk.x}" y="${wk.y + 29}" text-anchor="middle">${wk.name}</text>`
+          + `<rect class="node-label-bg" x="${wk.x - wkNameW / 2}" y="${wkLabelY - 13}" width="${wkNameW}" height="17" rx="8"></rect>`
+          + `<text class="node-label" x="${wk.x}" y="${wkLabelY}" text-anchor="middle">${wkName}</text>`
           + `</g>`;
       } catch (e) { /* 周秘生成失败不影响主图 */ }
     }
@@ -2342,7 +2366,7 @@ const UI = {
       html += `<div class="md-subs">` + subs.map((s, k) => {
         const visited = (Game.state.world.visited || []).indexOf(s.id) >= 0;
         const dangerTag = s.danger >= 7 ? " · 绝险" : (s.danger >= 5 ? " · 凶" : "");
-        return `<button class="md-sub-btn" onclick="UI.travelToSub(${i},${k})">${s.name}<span class="md-sub-d">${s.type}${dangerTag}</span>${visited ? '<span class="md-sub-v">✓已游</span>' : ''}</button>`;
+        return `<button class="md-sub-btn" onclick="UI.travelToSub(${i},${k})">${s.name}<span class="md-sub-d">${s.type}${dangerTag}${s.baseFromRegionCenter ? " · " + s.baseFromRegionCenter + "里" : ""}</span>${visited ? '<span class="md-sub-v">✓已游</span>' : ''}</button>`;
       }).join("") + `</div>`;
     }
     const curRegion = gen.regions.some(x => x.name === Game.state.world.location)
@@ -2353,7 +2377,41 @@ const UI = {
     if (detail) detail.innerHTML = html;
   },
 
-  // 前往某地域的子地点（胜迹）：直接更新所在地点，记录游历，返回游戏
+  // 计算当前所在 (地域/子地点) 与目标 sub 之间的「里数 / 脚程天数」
+  // 同 macro 内行走用 sub.baseFromRegionCenter 估算；跨 macro 用 macro 中心点距离 + 边境系数
+  _calcTravel(sub) {
+    const gen = (Game.state && Game.state.world && Game.state.world.gen);
+    if (!gen || !sub) return { li: 0, days: 1, speedLiPerDay: 80 };
+    const curName = Game.state.world.location || gen.startLocation;
+    const curSub = (gen.sublocations || []).find(s => s.name === curName);
+    const curRegion = Game.state.world.locationRegion || (curSub && curSub.region) || curName;
+    // 距离推断
+    let li = 0;
+    if (curSub && curSub.region === sub.region) {
+      // 同域内：取两者 baseFromRegionCenter 之差 + 域内抖动（确定性近似）
+      li = Math.max(60, Math.abs((sub.baseFromRegionCenter || 200) - (curSub.baseFromRegionCenter || 200)) + 80);
+    } else {
+      // 跨域：取 macro 中心点欧氏距离 × 18 里 + 边境系数
+      const macRegions = (gen.macroRegions || []).map(m => ({ name: m.name, ...((gen.regions.find(r => r.macro === m.name) || {})) }));
+      const here = macRegions.find(m => m.name === (curSub ? curSub.macro : curRegion));
+      const there = macRegions.find(m => m.name === sub.macro);
+      if (here && there && typeof here.x === "number" && typeof there.x === "number") {
+        li = Math.round(Math.hypot(there.x - here.x, there.y - here.y) * 18 + 200);
+      } else {
+        li = 800; // 兜底（约十日脚程）
+      }
+    }
+    // 地形系数（险峻地带走得慢）
+    const TERRAIN_FACTOR = { "凡俗":1.0, "宗门":1.0, "荒野":1.2, "坊市":1.0, "禁地":1.5, "秘境":1.8, "试炼":1.6, "仙迹":2.0 };
+    const subType = (gen.regions.find(r => r.name === sub.region) || {}).type || "凡俗";
+    const factor = TERRAIN_FACTOR[subType] || 1.2;
+    // 脚程：炼气期步行 80 里/日；休整日补 0.5 天/段；最少 1 日；最长 30 日
+    const speed = 80;
+    const days = Math.max(1, Math.min(30, Math.ceil((li / speed) * factor)));
+    return { li, days, speedLiPerDay: speed, terrain: subType, factor };
+  },
+
+  // 前往某地域的子地点（胜迹）：算里数/脚程 → 推进 day → 注入赶路上下文 → 触发 AI
   travelToSub(regionIdx, subIdx) {
     const gen = (Game.state && Game.state.world && Game.state.world.gen);
     if (!gen) return;
@@ -2363,16 +2421,34 @@ const UI = {
     const sub = subs[subIdx];
     if (!sub) return;
     const w = Game.state.world;
+    const prevLoc = w.location || "";
+    const prevRegion = w.locationRegion || "";
+    const travelInfo = this._calcTravel(sub);
+    // 移动记录
     w.location = sub.name;
     w.subLocation = sub.id;
     w.locationRegion = r.name;
     w.visited = w.visited || [];
     if (w.visited.indexOf(sub.id) < 0) w.visited.push(sub.id);
-    // 给一句系统提示，让玩家感知"已抵达"；renderHistory 会将其作为旁白渲染
-    try { Game.log.push({ role: "system", text: "你循着地势，来到了【" + sub.name + "】——" + (sub.desc || "") }); } catch (e) {}
+    // 推进天数（赶路时长）
+    w.day = (typeof w.day === "number" ? w.day : 1) + travelInfo.days;
+    // 赶路上下文：注入下一次 AI 调用，AI 据此写"经过 N 日赶路你来到此地"的真实叙事
+    w.travelLast = {
+      from: prevLoc, fromRegion: prevRegion, to: sub.name, toRegion: r.name,
+      li: travelInfo.li, days: travelInfo.days, terrain: travelInfo.terrain,
+      encounterHint: travelInfo.factor > 1.4 ? "沿途多险，宜提神戒备" : "沿途平和",
+    };
+    // 系统旁白：先抛出一行给玩家感知（让玩家在 AI 响应前就已看见"赶路时长"）
+    try {
+      Game.log.push({
+        role: "system",
+        text: `你跋涉 ${travelInfo.li} 里（约 ${travelInfo.days} 日脚程）抵达【${sub.name}】——${(sub.desc || "").slice(0, 50)}…`,
+      });
+    } catch (e) {}
     this.show("game");
-    // 自动触发一回合 AI，生成新地点的剧情与选项（否则玩家看到场景描述后无选项可点）
-    setTimeout(() => { try { this.sendAction("环顾【" + sub.name + "】，探索此地的风物与机缘"); } catch(e){} }, 120);
+    // 自动触发一回合 AI，把赶路上下文与目标地钩子喂入
+    const travelCtx = `经 ${travelInfo.days} 日跋涉（${travelInfo.li} 里，${travelInfo.terrain}地形）抵达${sub.name}；此地钩子：${sub.hook || sub.desc || ""}`;
+    setTimeout(() => { try { this.sendAction(travelCtx); } catch(e){} }, 120);
   },
 
   // ============ 群像图鉴 ============
