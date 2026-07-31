@@ -3384,29 +3384,12 @@ const UI = {
     return "人";
   },
   _heroSpec() {
-    const c = Game.state && Game.state.character; if (!c) return null;
-    const gender = (c.gender === "f" || c.gender === 1) ? "f" : "m";
-    const sys = (Game.state.world && Game.state.world.cultivationSystem) || "";
-    return {
-      kind: "hero", race: this._formToRace(c.form), gender,
-      system: sys, form: c.form || "human", arche: c.arche || "xianzi",
-      seed: (typeof hashSeed === "function") ? hashSeed(c.name || "道友") : 1,
-    };
+    // 角色立绘已移除：不再产出主角立绘规格（即便开启 ArtEngine 也不会出图）
+    return null;
   },
   _npcSpec(npc) {
-    let n = npc;
-    if (typeof npc === "string") {
-      const gen = Game.state && Game.state.world && Game.state.world.gen;
-      n = (gen && gen.npcs && gen.npcs.find(x => x.name === npc)) || { name: npc, gender: "m", arche: "" };
-    }
-    if (!n) return null;
-    const gender = (n.gender === "f") ? "f" : "m";
-    const sys = (Game.state.world && Game.state.world.cultivationSystem) || "";
-    return {
-      kind: "npc", race: this._archeToRace(n.arche), gender,
-      system: sys, form: "human", arche: n.arche || "",
-      seed: n.portraitSeed || ((typeof hashSeed === "function") ? hashSeed(n.name || "npc") : 1),
-    };
+    // 角色立绘已移除：不再产出 NPC 立绘规格
+    return null;
   },
 
   // 场景中立绘层：主角（依体系配色）+ 同框 NPC（依 AI 的 npc 标记）
@@ -3487,13 +3470,8 @@ const UI = {
   },
 
   enemyArtFor(entry) {
-    if (!entry) return "assets/enemy_wolf.webp";
-    if (entry.file) return entry.file;
-    // 优先尝试高清PNG立绘
-    if (entry.slug === "zhu" || entry.name === "钢鬃野猪") return "assets/portraits/enemy_beast.png";
-    if (entry.slug === "xuexiu" || entry.name === "血刀魔修") return "assets/portraits/enemy_xiexiu.png";
-    const c = entry.cfg || {};
-    return ArtGen.enemySvg({ body: c.body, belly: c.belly, eye: c.eye, robe: c.robe, c4: c.c4, feats: entry.feats || [] });
+    // 敌人立绘已移除：不再引用任何立绘文件
+    return "";
   },
 
   enemyEntryBySlug(slug, type) {
@@ -3561,8 +3539,8 @@ const UI = {
 
   // 根据敌人类型选择素材（保留作兜底）
   enemyImageFor(type) {
-    const map = { beast: "assets/enemy_wolf.webp", xiexiu: "assets/enemy_xiexiu.webp", ghost: "assets/enemy_ghost.webp" };
-    return map[type] || map.beast;
+    // 敌人立绘已移除
+    return "";
   },
 
   // 显示战斗舞台并播放一次战斗动画（enemy 为 resolveEnemy 返回的对象，含专属立绘与名字）
