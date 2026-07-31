@@ -371,12 +371,15 @@ body::before {
 .map-current .node-glow { opacity: .5; }
 @keyframes node-pulse { 0%,100% { opacity: .2; } 50% { opacity: .42; } }
 .node-core { filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
-.node-label { fill: #fbf4e2; font-size: 13px; font-weight: 700; paint-order: stroke; stroke: #16203a; stroke-width: 3.8px; }
-.node-sub { fill: #ffe6b0; font-size: 11px; font-weight: 600; paint-order: stroke; stroke: #16203a; stroke-width: 3px; }
+.node-label { fill: #fff7e6; font-size: 13px; font-weight: 800; paint-order: stroke; stroke: #16203a; stroke-width: 2.4px; letter-spacing: 1px; }
+.node-label-bg { fill: rgba(22,32,58,.86); stroke: rgba(255,210,160,.65); stroke-width: 1.2; }
+.node-sub { fill: #ffe1a8; font-size: 10.5px; font-weight: 700; paint-order: stroke; stroke: #16203a; stroke-width: 1.6px; letter-spacing: .5px; }
+.node-sub-bg { fill: rgba(255,210,74,.92); stroke: #7a4b00; stroke-width: .8; }
 .map-current-ring { fill: none; stroke: #ffd24a; stroke-width: 2.5; stroke-dasharray: 4 4; animation: ring-spin 6s linear infinite; transform-box: fill-box; transform-origin: center; }
 @keyframes ring-spin { to { transform: rotate(360deg); } }
 .map-zone { fill: rgba(255,255,255,.16); stroke: rgba(70,90,130,.4); stroke-width: 1.4; stroke-dasharray: 2 5; }
-.map-zone-label { fill: #fbf4e2; opacity: 1; font-size: 16px; font-weight: 800; letter-spacing: 4px; paint-order: stroke; stroke: #16203a; stroke-width: 4px; }
+.map-zone-label { fill: #fff7e6; opacity: 1; font-size: 18px; font-weight: 900; letter-spacing: 6px; paint-order: stroke; stroke: #16203a; stroke-width: 4.5px; }
+.map-zone-label-bg { fill: rgba(20,28,52,.78); stroke: rgba(255,210,160,.45); stroke-width: 1; }
 .map-body { background:
   radial-gradient(120% 80% at 50% -10%, rgba(255,255,255,.5), rgba(255,255,255,0) 60%),
   linear-gradient(180deg, #eaf1f4, #e7eef0 40%, #dfe8e6); }
@@ -389,12 +392,13 @@ body::before {
 /* 地域详情：域内胜迹（子地点） */
 .md-sub-title { margin-top: 8px; }
 .md-subs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
-.md-sub-btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 6px;
-  background: rgba(120,150,190,.14); border: 1px solid rgba(120,150,190,.4); color: #2a3a52;
-  font-size: 12px; cursor: pointer; transition: .15s; }
-.md-sub-btn:hover { background: rgba(120,150,190,.32); transform: translateY(-1px); border-color: var(--gold); }
-.md-sub-d { color: #8a6d3b; font-size: 10px; }
-.md-sub-v { color: #2e9e6b; font-size: 10px; }
+.md-sub-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px;
+  background: rgba(255,252,240,.94); border: 1.5px solid #b88a3e; color: #1a2538;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: .15s;
+  box-shadow: 0 1px 0 rgba(0,0,0,.06), inset 0 0 0 1px rgba(184,138,62,.15); }
+.md-sub-btn:hover { background: #fff7d0; transform: translateY(-1px); border-color: #d49a40; box-shadow: 0 2px 8px rgba(184,138,62,.35); }
+.md-sub-d { color: #b88a3e; font-size: 11px; font-weight: 600; }
+.md-sub-v { color: #2e7d4f; font-size: 11px; font-weight: 700; }
 
 /* 群像图鉴 */
 #screen-codex .codex-wrap { max-width: 1080px; margin: 0 auto; padding: 24px 20px 60px; }
