@@ -92,7 +92,7 @@ body::before {
   align-items: center; justify-content: center;
   padding: 40px 20px; text-align: center;
 }
-.title-area { margin-bottom: 50px; }
+.title-area { margin-bottom: 38px; }
 .game-title {
   font-size: 72px; font-weight: 300; letter-spacing: 16px;
   color: var(--gold-bright);
@@ -101,8 +101,30 @@ body::before {
 }
 .game-subtitle { color: var(--text-dim); font-size: 16px; letter-spacing: 4px; }
 .game-tagline { color: var(--gold); font-size: 15px; margin-top: 16px; font-style: italic; letter-spacing: 2px; }
-.menu-buttons { display: flex; flex-direction: column; gap: 12px; margin-bottom: 60px; }
+
+/* 简化主菜单（2026-07-31）：主行动 + 次要 + 折叠更多 */
+.menu-hero { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-bottom: 22px; }
+.btn-hero { min-width: 280px; font-size: 20px; padding: 16px 24px; letter-spacing: 6px; }
+.menu-secondary { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+.menu-secondary .btn { min-width: 140px; }
+.menu-more { max-width: 520px; margin: 0 auto 50px; border: 1px solid var(--border); border-radius: 8px; background: rgba(22,27,34,0.5); overflow: hidden; }
+.menu-more summary { cursor: pointer; padding: 12px 18px; color: var(--text-dim); font-size: 14px; letter-spacing: 2px; list-style: none; text-align: center; user-select: none; transition: color 0.2s; }
+.menu-more summary:hover { color: var(--gold); }
+.menu-more summary::-webkit-details-marker { display: none; }
+.menu-more summary::after { content: " ▾"; color: var(--gold); }
+.menu-more[open] summary::after { content: " ▴"; }
+.menu-more-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 16px 18px; }
+.menu-more-grid .btn { width: 100%; }
 .menu-footer { color: var(--text-dim); font-size: 12px; line-height: 1.8; max-width: 500px; }
+
+/* 手机端：主菜单按钮不溢出 */
+@media (max-width: 640px) {
+  .game-title { font-size: 48px; letter-spacing: 10px; }
+  .btn-hero { min-width: 0; width: 100%; max-width: 300px; font-size: 18px; }
+  .menu-secondary { width: 100%; max-width: 300px; }
+  .menu-secondary .btn { min-width: 0; flex: 1; }
+  .menu-more { margin-left: 12px; margin-right: 12px; }
+}
 
 /* ============ 角色创建 ============ */
 .create-container { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
@@ -271,6 +293,18 @@ body::before {
 }
 .delta-item:empty { display: none; }
 
+/* NPC 自主行为摘要：淡色斜体，区别于主线叙事，让玩家感知"世界在我之外运转" */
+.npc-tick {
+  margin: 8px 0 4px; padding: 8px 14px;
+  background: rgba(120,140,170,0.06); border-left: 3px solid rgba(140,160,190,0.5);
+  border-radius: 0 4px 4px 0;
+}
+.npc-tick-item {
+  font-size: 13px; font-style: italic; line-height: 1.8;
+  color: rgba(180,195,215,0.85); /* 淡色，弱化于主线叙事 */
+}
+.npc-tick-item::before { content: "◦ "; font-style: normal; opacity: 0.7; }
+
 .event-flag { padding: 8px 14px; margin: 8px 0; border-radius: 6px; font-weight: bold; text-align: center; letter-spacing: 3px; font-size: 14px; animation: flagPop 0.5s ease both; }
 .flag-success { background: linear-gradient(90deg, rgba(201,168,76,0.05), rgba(201,168,76,0.22), rgba(201,168,76,0.05)); color: var(--gold-bright); border: 1px solid var(--gold); box-shadow: 0 0 18px rgba(201,168,76,0.25); }
 .flag-danger  { background: linear-gradient(90deg, rgba(214,85,85,0.05), rgba(214,85,85,0.22), rgba(214,85,85,0.05)); color: var(--danger); border: 1px solid var(--danger); box-shadow: 0 0 18px rgba(214,85,85,0.2); animation: flagShake 0.6s ease both; }
@@ -384,7 +418,7 @@ body::before {
   radial-gradient(120% 80% at 50% -10%, rgba(255,255,255,.5), rgba(255,255,255,0) 60%),
   linear-gradient(180deg, #eaf1f4, #e7eef0 40%, #dfe8e6); }
 
-/* ArtGen 程序化立绘（人物/妹子/敌人） */
+/* ArtGen 程序化立绘（人物/敌人/图鉴）—— [保留] 图鉴用，立绘引擎休眠不影响 */
 .artgen-portrait { width: 120px; height: 180px; display: inline-block; }
 .artgen-portrait .ag-svg { width: 100%; height: 100%; display: block; }
 .npc-portrait .ag-svg, .vn-actor .ag-svg, .hero-portrait .ag-svg { width: 100%; height: 100%; }
@@ -924,7 +958,7 @@ body::before {
 .sys-wudao    { --pt-main:#3a3f4a; --pt-accent:#9aa3b0; --pt-dark:#1c1f26; --pt-light:#c9ced6; }
 .sys-default  { --pt-main:#5b7a8f; --pt-accent:#a8c8da; --pt-dark:#2f4453; --pt-light:#dde8ef; }
 
-/* 主角立绘（状态栏 hero-sprite / 手机抽屉）—— 古风平滑渲染 */
+/* [立绘已撤回 - 样式保留] 主角立绘样式（状态栏 hero-sprite / 手机抽屉）—— 引擎休眠，暂不使用 */
 .hero-portrait { width: 100%; max-width: 200px; margin: 0 auto 6px; }
 .hero-portrait .hp-svg { width: 100%; height: auto; display: block; filter: drop-shadow(0 4px 12px rgba(0,0,0,.3)) drop-shadow(0 0 20px var(--pt-accent, rgba(100,160,220,0.12))); }
 .hp-aura  { transform-box: fill-box; transform-origin: center; animation: hp-breathe 4.5s ease-in-out infinite; }
@@ -934,7 +968,7 @@ body::before {
 @keyframes hp-sway    { 0%,100% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.5deg); } }
 @keyframes hp-float   { 0% { transform: translateY(0); opacity:.25; } 50% { transform: translateY(-7px); opacity:.9; } 100% { transform: translateY(0); opacity:.25; } }
 
-/* 舞台立绘（GAL 形态：人物作为视觉重心，贴底放大）—— 古风平滑渲染 */
+/* [立绘已撤回 - 样式保留] 舞台立绘（GAL 形态）样式—— 引擎休眠，暂不使用 */
 .vn-actors .vn-actor { position: absolute; bottom: 0; height: 92%; width: auto; pointer-events: none; }
 .vn-actors .vn-actor.hero { left: 5%; }
 .vn-actors .vn-actor.npc  { right: 5%; transform: scaleX(-1); }
@@ -957,6 +991,7 @@ body::before {
   .mdrawer-hero .hero-portrait { max-width: 130px; }
 }
 
+/* [立绘引擎休眠 - 样式保留] AI 立绘样式，待美术资源就绪后启用 */
 /* ============ AI 立绘（ArtEngine 生成，淡入替换程序化 SVG） ============ */
 .ai-portrait-img { display: block; height: 100%; width: auto; object-fit: contain; filter: drop-shadow(0 4px 12px rgba(0,0,0,.35)); }
 .hero-portrait .ai-portrait-img, .npc-portrait .ai-portrait-img { width: 100%; height: 100%; }
@@ -992,6 +1027,7 @@ body::before {
 @media(max-width:560px){.onboarding-grid{grid-template-columns:1fr;}.onboarding-title{font-size:19px;}}
 
 
+/* [立绘已撤回 - 样式保留] 高清PNG立绘样式 */
 /* ===== 高清PNG立绘（替换SVG木偶人） ===== */
 .png-portrait { width: 100%; display: flex; align-items: center; justify-content: center; border-radius: 10px; }
 .png-portrait img { width: 100%; height: auto; object-fit: contain; image-rendering: auto; }
@@ -1017,3 +1053,65 @@ body::before {
 #map-canvas { position: relative; }
 #map-canvas .world-svg { position: relative; z-index: 1; }
 #map-canvas .terr-sky, #map-canvas .terr-sea, #map-canvas .terr-mtn-back, #map-canvas .terr-mtn-front, #map-canvas .terr-river[fill="rgba(0,0,0,0)"] { display: none; }
+
+/* ===== P2 · 江湖志业 / 天机盘 / 因果簿 / 自主拨弦（水墨原生，不抄刀锋外壳） ===== */
+/* 左右面板可滚动，承载新增的 P2 信息块而不挤压中栏叙事 */
+.panel-left, .panel-right { overflow-y: auto; }
+.panel-left::-webkit-scrollbar, .panel-right::-webkit-scrollbar { width: 6px; }
+.panel-left::-webkit-scrollbar-thumb, .panel-right::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* 江湖志业 · NPC 自驱议程 */
+.p2-npc-card { padding: 8px 0 10px; border-bottom: 1px dotted var(--border); font-size: 13px; }
+.p2-npc-card.p2-custom .p2-npc-name { color: var(--gold-bright); }
+.p2-npc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.p2-npc-name { color: var(--text); font-size: 14px; letter-spacing: 1px; }
+.p2-npc-zhiye { color: var(--jade); font-size: 12px; white-space: nowrap; }
+.p2-npc-meta { color: var(--text-dim); font-size: 11px; margin: 2px 0 5px; }
+/* 志业微光条：NPC 自驱议程进度，带微光呼吸 */
+.p2-progress { height: 5px; background: var(--bg-dark); border-radius: 3px; overflow: hidden; }
+.p2-progress-fill {
+  height: 100%; background: linear-gradient(90deg, var(--jade), var(--gold));
+  border-radius: 3px; transition: width 0.5s ease;
+  box-shadow: 0 0 6px rgba(201,168,76,0.5); animation: p2-glow 2.4s ease-in-out infinite;
+}
+@keyframes p2-glow { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
+
+/* 自主拨弦：傀儡 / 半醒 / 自在 */
+.p2-asis-switch { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+.p2-asis-label { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; white-space: nowrap; }
+.p2-asis-btns { display: flex; gap: 4px; flex: 1; }
+.p2-asis-btn {
+  flex: 1; padding: 4px 0; font-size: 11px; cursor: pointer;
+  background: var(--bg-card); color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 3px;
+  font-family: inherit; transition: all 0.18s;
+}
+.p2-asis-btn:hover { color: var(--text); border-color: var(--text-dim); }
+.p2-asis-btn.active { color: var(--gold-bright); border-color: var(--gold); background: rgba(201,168,76,0.12); }
+
+/* 天机盘 · 流言（神识串供扩散） */
+.p2-gossip-hint { font-size: 11px; color: var(--text-dim); line-height: 1.5; margin: 2px 0 6px; font-style: italic; }
+.p2-gossip-item { padding: 6px 0; border-bottom: 1px dotted rgba(45,53,72,0.5); font-size: 12px; }
+.p2-gossip-text { color: var(--text); line-height: 1.55; }
+.p2-gossip-meta { color: var(--text-dim); font-size: 10.5px; margin-top: 3px; }
+.p2-gossip-you { color: var(--crimson); }
+
+/* 因果簿 · 把柄 */
+.p2-ledger-item { padding: 6px 0; border-bottom: 1px dotted rgba(45,53,72,0.5); font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+.p2-ledger-fact { color: var(--crimson); line-height: 1.5; }
+.p2-ledger-item.resolved .p2-ledger-fact { color: var(--text-dim); text-decoration: line-through rgba(139,133,120,0.4); }
+.p2-ledger-tag { font-size: 10px; align-self: flex-start; padding: 0 6px; border-radius: 3px; }
+.p2-ledger-item:not(.resolved) .p2-ledger-tag { color: var(--crimson); border: 1px solid var(--crimson); }
+.p2-ledger-item.resolved .p2-ledger-tag { color: var(--jade); border: 1px solid var(--jade); opacity: 0.8; }
+.p2-ledger-meta { font-size: 10px; color: var(--text-dim); }
+
+/* 创建界面：自定义 NPC 一行四控件 */
+.cn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.cn-row .form-input { flex: 1; min-width: 120px; }
+@media (max-width: 640px) { .cn-row { flex-direction: column; } }
+
+/* 刀锋式：后端服务地址 + 邮箱账号区块 */
+.account-box { margin-top: 6px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.03); }
+.account-box .form-label { margin-bottom: 8px; }
+.account-email { font-size: 14px; color: var(--text); margin-right: 12px; }
+.account-email b { color: var(--gold-bright); }
