@@ -106,6 +106,7 @@ ${this.buildWorldBlock(state)}
 ${this.buildFactionStateBlock(state)}
 ${this.buildEconomyBlock(state)}
 ${this.buildEventChainBlock(state)}
+${this.buildDynastyBlock(state)}
 
 【当前地点 · 感官简报 · 须融于描写】
 ${this.buildLocationBrief(state)}
@@ -704,6 +705,27 @@ ${this.buildVarietyBlock(state)}
       return `${e.name}（已持续${dayN}日${extra}）`;
     });
     return "【天地异变】当前大事件：" + parts.join("；");
+  },
+
+  // 王朝态势注入：当前凡间王朝（朝名/年号/纪年/帝号/状态/短板/供奉派关系）
+  buildDynastyBlock(state) {
+    const w = (state && state.world) || {};
+    const dys = (w.dynasties || []).filter(d => d && d.status !== "fallen");
+    if (!dys.length) return "";
+    const lab = { new: "新立", rising: "复兴", prosper: "盛世", stable: "治世", decline: "中衰", crisis: "危局" };
+    const lines = ["【王朝态势 · 此界凡间王朝随时光自行兴衰易代，须据此让朝堂、市井与江湖门人言行贴合庙堂大势】"];
+    dys.forEach(d => {
+      const metrics = [["正统", d.legitimacy], ["国势", d.prosperity], ["社稷", d.stability], ["国祚", d.mandate]];
+      metrics.sort((a, b) => a[1] - b[1]);
+      const weak = metrics[0];
+      lines.push(`  - ${d.name}（年号${d.reign || "?"}·立国第${d.era || 1}年·${d.ruler || "今上"}御极·都${d.capital || "?"}）：时局「${lab[d.status] || "治世"}」｜国势${d.prosperity}/100｜社稷${d.stability}/100｜国祚${d.mandate}/100｜隐忧：${weak[0]}疲敝（${weak[1]}/100）`);
+    });
+    const gen = w.gen;
+    if (gen && Array.isArray(gen.factions)) {
+      const gong = gen.factions.filter(f => f.disposition === "皇朝供奉");
+      if (gong.length) lines.push(`· 朝堂与${gong.map(f => f.name).join("、")}互为奥援（国师/供奉之属），相关门人须贴合君国立场。`);
+    }
+    return lines.join("\n");
   },
 
   // 将地点名解析为所属 macro 域（供情报网定位）
