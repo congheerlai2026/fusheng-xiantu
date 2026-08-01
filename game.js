@@ -189,6 +189,10 @@ const Game = {
         factionTick: 0,       // 世界时钟累计推进天数
         alliancePairs: [],    // 当前同盟对（"A|B" 排序键）
         warPairs: [],         // 当前交战对（"A|B" 排序键）
+        // —— 世界自演化 · 经济层 + 事件链层 ——
+        economy: {},          // 经济层：六类商品行情 { base, price, trend }
+        events: [],           // 事件链层：当前活跃大事件
+        eventQueue: [],       // 事件链层：待触发大事件队列（仅存数据，行为回查 EVENT_CHAINS）
         // —— P2 · NPC 自驱议程 + 自定义 NPC 自主性 + 神识串供/因果把柄 ——
         npcLedger: [],        // 因果把柄簿：NPC 记下的玩家言行（可作日后把柄/宗门公审之证）
         npcGossip: [],        // NPC 间闲话/情报：玩家事迹依地缘逐 NPC 传播，NPC 据此串供识破
@@ -237,6 +241,10 @@ const Game = {
     if (gen.fixedLaws && Array.isArray(gen.fixedLaws.passiveSkills)) {
       gen.fixedLaws.passiveSkills = (this.state.character.techniques || []).slice();
     }
+
+    // 世界自演化 · 经济层 + 事件链层初始化（确保新档有行情与待触发大事件）
+    this._initEconomy(this.state.world);
+    this._initEventChain(this.state.world, gen);
 
     this.history = [];
     this.log = [];
@@ -972,6 +980,8 @@ const Game = {
     for (let i = 1; i <= d; i++) {
       const day = startDay + i - 1;
       this._evolveFactions(day, log);
+      this._evolveEconomy(day, log);   // 世界自演化·经济层：行情随光阴与战乱浮沉
+      this._tickEventChain(day, log);  // 世界自演化·事件链层：天地异变按期降临
       this._propagateIntel(day);
       this._evolveNPCs(day, log);        // P2：NPC 凭自身志业在世界时钟中自驱行动
       this._propagateNpcGossip(day);      // P2：NPC 闲话依地缘逐域传播，串供识破
@@ -1056,6 +1066,130 @@ const Game = {
     }
     newAllies.forEach(p => log.push(`· ${p}结为同道同盟`));
     newWars.forEach(p => log.push(`· ${p}反目成仇，兵戎相见`));
+    // 层1 增强：新开战则向江湖情报网推送一条战乱传闻（与现有 intel 结构一致）
+    if (newWars.length) {
+      const w2 = this.state.world;
+      const fs2 = (w2.gen && w2.gen.factions) || [];
+      newWars.forEach(p => {
+        const macs = [];
+        p.split("与").forEach(nm => {
+          const f = fs2.find(x => x.name === nm);
+          if (f && Array.isArray(f.territory)) f.territory.forEach(m => { if (macs.indexOf(m) < 0) macs.push(m); });
+        });
+        const macro = macs[0] || "中州";
+        if (!w2.intel) w2.intel = [];
+        const day2 = w2.day || day;
+        const id = "intel-war-" + day2 + "-" + w2.intel.length + "-" + Math.floor(Math.random() * 1e6);
+        w2.intel.push({
+          id, day: day2, origin: macro, type: "war",
+          text: `烽火连天：${p}反目，兵戎相见，战云笼罩${macro}一带。`,
+          weight: 2, spread: { [macro]: day2 }, spreadComplete: false, verified: true,
+        });
+        if (w2.intel.length > 200) w2.intel = w2.intel.slice(-200);
+      });
+    }
+  },
+
+  // ===================== 世界自演化 · 经济层 =====================
+  // 初始化六类商品基准行情（基准价 ±20% 随机，trend 平）
+  _initEconomy(w) {
+    if (!w) return;
+    const defs = [["灵石", 100], ["丹药", 80], ["灵材", 60], ["符箓", 50], ["法器", 200], ["粮草", 30]];
+    const eco = {};
+    defs.forEach(([name, base]) => {
+      const r = this._rng("eco-init|" + name + "|" + (w.seed || ""));
+      const jitter = 0.8 + r() * 0.4; // ±20%
+      const b = Math.max(1, Math.round(base * jitter));
+      eco[name] = { base: b, price: b, trend: "flat" };
+    });
+    w.economy = eco;
+  },
+
+  // 经济演化：行情每日浮动，战乱与灵力盛衰施加额外冲击
+  _evolveEconomy(day, log) {
+    const w = this.state.world;
+    if (!w) return;
+    const eco = w.economy;
+    if (!eco || !Object.keys(eco).length) return;
+    // 搜集处于战乱的 macro 集合（由 warPairs → 势力疆域反查）
+    const warMacros = {};
+    const gen = w.gen;
+    const fs = (gen && gen.factions) || [];
+    (w.warPairs || []).forEach(pk => {
+      pk.split("|").forEach(nm => {
+        const f = fs.find(x => x.name === nm);
+        if (f && Array.isArray(f.territory)) f.territory.forEach(m => { warMacros[m] = true; });
+      });
+    });
+    const warActive = Object.keys(warMacros).length > 0;
+    const spiritHigh = (typeof w.spirit === "number") && w.spirit >= 8;
+    const strategic = { "灵材": 1, "法器": 1, "丹药": 1, "粮草": 1 };
+    const names = Object.keys(eco);
+    names.forEach(name => {
+      const g = eco[name];
+      const r = this._rng("eco|" + name + "|" + day);
+      let mult = 1 + (r() * 0.09 + 0.03) * (r() < 0.5 ? -1 : 1); // ±3%~12%
+      if (strategic[name] && warActive) mult += (r() * 0.10 + 0.05); // 战略物资遇战乱额外 +5%~15%
+      if ((name === "灵材" || name === "灵石") && spiritHigh) mult += 0.03; // 灵力盛则灵材/灵石略涨
+      const newPrice = Math.max(1, Math.round(g.price * mult));
+      const pct = g.price > 0 ? (newPrice - g.price) / g.price : 0;
+      g.trend = pct > 0.01 ? "up" : (pct < -0.01 ? "down" : "flat");
+      g.price = newPrice;
+    });
+    // 约 6% 概率记一条行情传闻
+    if (this._rng("eco-log|" + day)() < 0.06) {
+      const name = names[Math.floor(this._rng("eco-pick|" + day)() * names.length)];
+      const g = eco[name];
+      const word = g.trend === "down" ? "回落" : (g.trend === "up" ? "上扬" : "平稳");
+      const why = (strategic[name] && warActive) ? "因战事紧缺" : "随市面供需";
+      log.push(`· 坊间传闻：${name}${why}，价格${word}`);
+    }
+  },
+
+  // ===================== 世界自演化 · 事件链层 =====================
+  // 从 EVENT_CHAINS 抽 5 条，排定触发日（15/35/60/90/130 带 ±10 扰动，单调递增）
+  _initEventChain(w, gen) {
+    if (!w) return;
+    if (typeof EVENT_CHAINS === "undefined" || !EVENT_CHAINS.length) { w.eventQueue = []; w.events = []; return; }
+    const pool = EVENT_CHAINS.slice();
+    const chosen = [];
+    const n = Math.min(5, pool.length);
+    for (let i = 0; i < n; i++) {
+      const idx = Math.floor(Math.random() * pool.length);
+      chosen.push(pool.splice(idx, 1)[0]);
+    }
+    const baseDays = [15, 35, 60, 90, 130];
+    const queue = chosen.map((e, i) => {
+      let triggerDay = baseDays[i] + Math.floor(Math.random() * 20 - 10); // ±10
+      if (triggerDay < 1) triggerDay = 1;
+      const macro = (e.scope === "macro" && typeof e.pickMacro === "function") ? e.pickMacro(gen) : null;
+      return { id: e.id, name: e.name, type: e.type, triggerDay, desc: e.desc, duration: e.duration || 30, scope: e.scope, macro };
+    });
+    queue.sort((a, b) => a.triggerDay - b.triggerDay); // 保证触发顺序单调递增
+    w.eventQueue = queue;
+    w.events = [];
+  },
+
+  // 事件链心跳：到期则触发（回查 EVENT_CHAINS 取 cond/apply），并清理已到期大事件
+  _tickEventChain(day, log) {
+    const w = this.state.world;
+    if (!w) return;
+    if (!Array.isArray(w.eventQueue)) w.eventQueue = [];
+    if (!Array.isArray(w.events)) w.events = [];
+    const remain = [];
+    w.eventQueue.forEach(it => {
+      if (day < it.triggerDay) { remain.push(it); return; }
+      const def = (typeof EVENT_CHAINS !== "undefined") ? EVENT_CHAINS.find(e => e.id === it.id) : null;
+      if (!def) return; // 找不到定义则丢弃该队列项
+      if (typeof def.cond === "function" && !def.cond(this.state, day)) { remain.push(it); return; } // 条件未满足则继续等待
+      const macro = it.macro || null;
+      if (typeof def.apply === "function") def.apply(this.state, day, macro);
+      w.events.push({ id: it.id, name: it.name, type: it.type, day0: day, dayEnd: day + (it.duration || 30), scope: it.scope, desc: it.desc, active: true });
+      log.push(`· 【天地异变】${it.name} 降临——${it.desc}`);
+    });
+    w.eventQueue = remain;
+    // 到期处理：仅保留仍活跃且在期内的事件，保持数组精简
+    w.events = w.events.filter(ev => ev.active && day <= ev.dayEnd);
   },
 
   // 传闻随地缘逐域传播（每日向相邻 macro 扩散一格）
@@ -1697,6 +1831,10 @@ const Game = {
       if (typeof this.state.world.factionTick !== "number") this.state.world.factionTick = 0;
       if (!Array.isArray(this.state.world.alliancePairs)) this.state.world.alliancePairs = [];
       if (!Array.isArray(this.state.world.warPairs)) this.state.world.warPairs = [];
+      // 旧档兼容：世界自演化 · 经济层 + 事件链层
+      if (!this.state.world.economy || typeof this.state.world.economy !== "object") this.state.world.economy = {};
+      if (!Array.isArray(this.state.world.events)) this.state.world.events = [];
+      if (!Array.isArray(this.state.world.eventQueue)) this.state.world.eventQueue = [];
       // 旧档兼容：P2 · NPC 自驱议程 + 神识串供/因果把柄 + 道心硬律
       if (!Array.isArray(this.state.world.npcLedger)) this.state.world.npcLedger = [];
       if (!Array.isArray(this.state.world.npcGossip)) this.state.world.npcGossip = [];
@@ -3679,20 +3817,45 @@ const UI = {
         const txt = bad.map(f => `${f.name}(恶名)`).join("、");
         return `<div class="stat-row"><span>市廛态度</span><span class="stat-val wound-val">${txt}·限售抬价</span></div>`;
       })()}
+      ${(() => {
+        const eco = (Game.state.world && Game.state.world.economy) || {};
+        const keys = ["灵石", "丹药", "灵材"];
+        const show = keys.filter(k => eco[k]).map(k => {
+          const t = eco[k].trend;
+          const arr = t === "up" ? "↑" : (t === "down" ? "↓" : "·");
+          return `${k}${arr}`;
+        });
+        if (!show.length) return "";
+        return `<div class="stat-row"><span>坊间行情</span><span class="stat-val">${show.join(" ")}</span></div>`;
+      })()}
       <hr class="divider">
       <div class="stat-row"><span>所在</span><span class="stat-val">${w.location}</span></div>
       <div class="stat-row"><span>时辰</span><span class="stat-val">${w.timeOfDay} · 第${w.day}日</span></div>
       <div class="stat-row"><span>天候</span><span class="stat-val">${w.weather.name}</span></div>
       <div class="stat-row"><span>江湖见闻</span><span class="stat-val">${(Game.state.world.intel||[]).length} 则传闻在野</span></div>
       ${(() => {
+        // 当前大事件横幅：读 w.events 中 active 为真者
+        const evs = ((Game.state.world.events) || []).filter(e => e && e.active);
+        let banner = "";
+        if (evs.length) {
+          const txt = evs.map(e => {
+            const dayN = (Game.state.world.day && e.day0) ? (Game.state.world.day - e.day0 + 1) : 1;
+            return `🔥 【大事件】${e.name} · 第${dayN}日`;
+          }).join("　");
+          banner = `<div class="event-banner">${txt}</div>`;
+        }
         const fs = (Game.state.world.gen && Game.state.world.gen.factions) || [];
-        if (!fs.length) return "";
+        if (!fs.length) return banner;
         const label = { rising:"崛起", stable:"守成", declining:"式微", war:"交战" };
         const rows = fs.map(f => {
           const cls = f.status === "war" ? "neg" : (f.status === "rising" ? "pos" : "neu");
           return `<div class="npc-row"><span class="npc-name">${UI.escapeHtml(f.name)}</span><span class="npc-senti ${cls}">${label[f.status]||"守成"}</span></div>`;
         }).join("");
-        return `<div class="npc-title">势力态势</div>${rows}`;
+        // 同盟/交战关系行（pairKey 为 "A|B" 排序键）
+        let rel = "";
+        (Game.state.world.alliancePairs || []).forEach(pk => { const parts = pk.split("|"); rel += `<div class="npc-row"><span class="npc-name">🤝 同盟</span><span class="npc-senti pos">${UI.escapeHtml(parts[0])}·${UI.escapeHtml(parts[1])}</span></div>`; });
+        (Game.state.world.warPairs || []).forEach(pk => { const parts = pk.split("|"); rel += `<div class="npc-row"><span class="npc-name">⚔️ 交战</span><span class="npc-senti neg">${UI.escapeHtml(parts[0])}·${UI.escapeHtml(parts[1])}</span></div>`; });
+        return banner + `<div class="npc-title">势力态势</div>${rows}${rel}`;
       })()}
       <hr class="divider">
       <div class="stat-row pet-row"><span>灵宠</span><span class="stat-val">${c.pet ? c.pet.name + " · " + (c.pet.type || "灵兽") : "暂无"}</span></div>
