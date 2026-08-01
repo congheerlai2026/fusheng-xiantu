@@ -134,6 +134,7 @@
         <button class="btn btn-sm btn-ghost" onclick="UI.show('settings')">⚙</button>
         <button class="btn btn-sm btn-ghost" onclick="UI.viewBiography()" title="仙途列传">📜</button>
         <button class="btn btn-sm btn-gold" onclick="UI.showSupport()" title="上香祈愿">☕</button>
+        <button class="btn btn-sm btn-craft" onclick="UI.openCraft()" title="修仙百艺 · 炼丹炼器符箓阵法">百艺</button>
         <button class="btn btn-sm btn-danger" onclick="UI.confirmReincarnate()" title="原地去世，转世投胎">☠</button>
         <button class="btn btn-sm btn-ghost" onclick="UI.show('menu')">≡</button>
       </div>
@@ -384,6 +385,18 @@
     <div class="bio-actions" style="display:none">
       <button class="btn btn-sm btn-ghost bio-copy">📋 复制传记</button>
       <button class="btn btn-sm btn-secondary bio-restart">重入轮回</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 修仙百艺（炼丹/炼器/符箓/阵法 · 确定性制作+采集+市集） ==================== -->
+<div id="craft-modal" class="modal" onclick="if(event.target===this)UI.closeCraft()">
+  <div class="modal-card bio-card">
+    <button class="bio-close" onclick="UI.closeCraft()">✕</button>
+    <div class="bio-title">修仙百艺</div>
+    <div class="bio-content" id="craft-content"></div>
+    <div class="bio-actions">
+      <button class="btn btn-sm btn-ghost" onclick="UI.closeCraft()">关闭</button>
     </div>
   </div>
 </div>
