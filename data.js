@@ -1052,6 +1052,39 @@ const EVENT_CHAINS = [
   },
 ];
 
+// ============================================================
+// 世界自演化 · 王朝层 · 凡间王朝数据
+// 凡间王朝与修真宗门并存：王朝随光阴自行兴衰、易代，构成「庙堂」一极。
+// DYNASTY_DEFS 为姓/朝名/年号/都城/帝号词库；DYNASTY_EVENTS 为离散王朝大事件
+// （宫变/民变/异族/祥瑞/天灾/封禅/恩科），由 _evolveDynasties 在「年界」按权重抽取并落地
+// （apply(state, cur, r) 直接改动当前王朝 cur 的数值，并返回一句叙事短句）。
+// ============================================================
+const DYNASTY_DEFS = {
+  dynNames: ["大周","大秦","大虞","大楚","大燕","大齐","大赵","大魏","大宋","大汉","大吴","大晋","大隋","大梁","大陈","大唐","大夏","大商"],
+  reigns:   ["太初","永昌","天授","开元","建元","贞观","熙宁","咸平","元丰","景明","承平","弘治","乾元","绍圣","大业","文景","永熙","兴和"],
+  capitals: ["神都","天京","洛邑","咸阳","临安","金陵","大兴","长安","邺城","江陵","广陵","云中","凤翔"],
+  houses:   ["姬","嬴","姚","芈","妫","姜","赵","魏","刘","李","朱","司马","杨","萧","陈","王","夏","商"],
+  rulerTitles: ["昭","景","宣","元","肃","宪","穆","懿","僖","哀","烈","惠","仁","英","神","哲","端","康"],
+};
+
+// 王朝大事件：apply(state, cur, r) 改动当前王朝 cur 的数值并返回一句叙事；r 为 0-1 随机函数
+const DYNASTY_EVENTS = [
+  { id:"gongbian", name:"宫闱之变", weight:3,
+    apply:(state,cur,r)=>{ const s=8+Math.floor(r()*12), m=4+Math.floor(r()*6); cur.stability=Math.max(0,cur.stability-s); cur.mandate=Math.max(0,cur.mandate-m); return `宫闱生变，权阉与外戚相争，朝纲紊乱，社稷为之动摇。`; } },
+  { id:"minbian", name:"民变烽火", weight:3,
+    apply:(state,cur,r)=>{ const s=14+Math.floor(r()*12), m=8+Math.floor(r()*10), p=4+Math.floor(r()*8); cur.stability=Math.max(0,cur.stability-s); cur.mandate=Math.max(0,cur.mandate-m); cur.prosperity=Math.max(0,cur.prosperity-p); return `赋敛繁重、连年失政，民变四起，烽烟遍地，州县多有陷落。`; } },
+  { id:"waidi", name:"异族入侵", weight:2,
+    apply:(state,cur,r)=>{ const s=12+Math.floor(r()*10), m=6+Math.floor(r()*8); cur.stability=Math.max(0,cur.stability-s); cur.mandate=Math.max(0,cur.mandate-m); return `边陲异族大举南下，连陷数州，边军告急，烽燧不绝。`; } },
+  { id:"xiangrui", name:"祥瑞现世", weight:2,
+    apply:(state,cur,r)=>{ const m=8+Math.floor(r()*9), l=5+Math.floor(r()*6); cur.mandate=Math.min(100,cur.mandate+m); cur.legitimacy=Math.min(100,cur.legitimacy+l); return `天降祥瑞，白鹿现于郊、嘉禾生于野，万民称颂，国祚稍振。`; } },
+  { id:"zainan", name:"天灾频仍", weight:3,
+    apply:(state,cur,r)=>{ const p=10+Math.floor(r()*9), m=6+Math.floor(r()*7); cur.prosperity=Math.max(0,cur.prosperity-p); cur.mandate=Math.max(0,cur.mandate-m); return `水旱频仍、蝗灾蔽日，赤地千里，饿殍载道，府库渐空。`; } },
+  { id:"fengchan", name:"封禅大典", weight:1,
+    apply:(state,cur,r)=>{ const m=10+Math.floor(r()*9), l=6+Math.floor(r()*7), p=3+Math.floor(r()*4); cur.mandate=Math.min(100,cur.mandate+m); cur.legitimacy=Math.min(100,cur.legitimacy+l); cur.prosperity=Math.min(100,cur.prosperity+p); return `天子东巡封禅，告成功于天地，扬威四海，国势为之一振。`; } },
+  { id:"keju", name:"恩科取士", weight:2,
+    apply:(state,cur,r)=>{ const l=4+Math.floor(r()*5), s=3+Math.floor(r()*4); cur.legitimacy=Math.min(100,cur.legitimacy+l); cur.stability=Math.min(100,cur.stability+s); return `开恩科、拔寒俊，天下士子归心，朝堂得添新血。`; } },
+];
+
 // ---- 地域规矩 / 本地风气（入乡随俗或犯忌）----
 // 每处子地点随机挂载一条，注入 AI 提示词；顺俗得人缘，犯忌引风波。
 const LOCAL_CUSTOMS = [
