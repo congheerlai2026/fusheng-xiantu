@@ -7,32 +7,42 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="theme-pixel.css">
 </head>
-<body class="pixel">
+<body>
   <div id="fx-layer"></div>
 
-<!-- ==================== 主菜单 ==================== -->
+<!-- ==================== 主菜单（精简版） ==================== -->
 <div id="screen-menu" class="screen active">
   <div class="menu-container">
     <div class="title-area">
       <h1 class="game-title">浮生仙途</h1>
-      <p class="game-subtitle">AI 驱动 · 仙侠文字 RPG</p>
-      <p class="game-tagline">大道三千，只取一瓢。生死轮回，因果自承。</p>
-      <div style="margin-top:16px"><span style="display:inline-block;padding:6px 24px;background:rgba(120,170,120,0.15);border:1px solid #6fae6f;color:#8fd08a;border-radius:20px;font-size:14px;letter-spacing:2px">AI 仙侠 · 文字修仙 · 无限世界</span></div>
+      <p class="game-tagline">大道三千，只取一瓢 · 生死轮回，因果自承</p>
     </div>
-    <div class="menu-buttons">
-      <button id="btn-continue" class="btn btn-primary btn-lg" onclick="UI.show('game')">继续仙途</button>
-      <button class="btn btn-play btn-lg" onclick="UI.startDirectPlay()">⚔ 直接玩</button>
-      <button class="btn btn-guest btn-lg" onclick="UI.startGuestPlay()">👁 游客试玩（免 Key）</button>
-      <button class="btn btn-wish btn-lg" onclick="UI.openWish()">✨ 许愿 · 自定义世界</button>
-      <button class="btn btn-ghost btn-lg" onclick="UI.showSoul()">📖 神魂册</button>
-      <button class="btn btn-ghost btn-lg" onclick="UI.showRank()">⚖ 因果力榜</button>
-      <button class="btn btn-ghost btn-lg" onclick="UI.show('settings')">设置 / API配置</button>
-      <button class="btn btn-ghost btn-lg" onclick="UI.show('help')">玩法说明</button>
-      <button class="btn btn-gold btn-lg" onclick="UI.showSupport()">☕ 上香祈愿</button>
+
+    <!-- 主行动：一眼就懂，三个就够 -->
+    <div class="menu-hero">
+      <button class="btn btn-primary btn-lg btn-hero" onclick="UI.show('create')">开始修仙</button>
+      <div class="menu-secondary">
+        <button id="btn-continue" class="btn btn-ghost" onclick="UI.show('game')">继续仙途</button>
+        <button class="btn btn-guest" onclick="UI.startGuestPlay()">游客试玩（免 Key）</button>
+      </div>
     </div>
+
+    <!-- 其余功能收进"更多"，默认不展开 -->
+    <details class="menu-more">
+      <summary>更多功能</summary>
+      <div class="menu-more-grid">
+        <button class="btn btn-ghost" onclick="UI.openWish()">✨ 许愿 · 自定义世界</button>
+        <button class="btn btn-ghost" onclick="UI.showSoul()">📖 神魂册</button>
+        <button class="btn btn-ghost" onclick="UI.showRank()">⚖ 因果力榜</button>
+        <button class="btn btn-ghost" onclick="UI.startDirectPlay()">🎲 快速开局（跳过捏脸）</button>
+        <button class="btn btn-ghost" onclick="UI.show('help')">玩法说明</button>
+        <button class="btn btn-ghost" onclick="UI.show('settings')">设置 / API 配置</button>
+        <button class="btn btn-gold" onclick="UI.showSupport()">☕ 上香祈愿</button>
+      </div>
+    </details>
+
     <div class="menu-footer">
-      <p>本游戏由 AI 驱动，需自行配置 API Key（支持 DeepSeek / Qwen / OpenAI 等）</p>
-      <p>数据仅存于本地浏览器，不会上传。</p>
+      <p>AI 驱动 · 数据仅存于本地浏览器，不会上传</p>
     </div>
   </div>
 </div>
@@ -70,6 +80,21 @@
       <div id="narration-mode-options" class="card-grid"></div>
     </div>
 
+    <div class="form-group">
+      <label class="form-label">自定义 NPC · 入局同伴（可选）<span class="hint-inline">（你立其名与志，引擎赋其性格；其行其终，未必由你掌控）</span></label>
+      <div class="cn-row">
+        <input type="text" id="cn-name" class="form-input" placeholder="同伴道号（如：墨羽）" maxlength="12">
+        <select id="cn-zhiye" class="form-input"></select>
+        <select id="cn-xingge" class="form-input"></select>
+        <select id="cn-asis" class="form-input">
+          <option value="2">自在（全凭己志）</option>
+          <option value="1">半醒（偶违己意）</option>
+          <option value="0">傀儡（唯命是从）</option>
+        </select>
+      </div>
+      <p class="hint-inline" style="margin-top:6px">可留空。若填道号，则这名同道将携你定的志向入局，其性格与因果由天地生成；你可在游戏中随时「拨弦」调其自主程度。</p>
+    </div>
+
     <input type="hidden" id="selected-root" value="0">
     <input type="hidden" id="selected-bg" value="0">
     <input type="hidden" id="selected-gender" value="0">
@@ -99,7 +124,7 @@
   <div class="game-layout">
     <!-- 左侧：状态面板 -->
     <aside class="panel panel-left">
-      <div id="hero-sprite" class="hero-sprite"></div>
+      <div id="hero-sprite" class="hero-sprite" style="display:none"></div><!-- [立绘已撤回] 主角立绘容器已隐藏 -->
       <div id="status-panel" class="status-panel"></div>
       <div class="panel-actions">
         <button class="btn btn-sm btn-map" onclick="UI.showWorldMap()" title="大地图">🗺 大地图</button>
@@ -114,15 +139,15 @@
       </div>
     </aside>
 
-    <!-- 中间：视觉小说式舞台（背景场景 + 立绘 + 对话框） -->
+    <!-- 中间：视觉小说式舞台（背景场景 + 对话框） -->
     <main class="panel panel-center vn-stage">
-      <!-- 手机端：场景折叠条（默认折叠，点开看立绘/大背景） -->
+      <!-- 手机端：场景折叠条（默认折叠，点开看大背景） -->
       <div id="vn-toggle" class="vn-toggle" onclick="UI.toggleVnStage()">
         <span id="vn-toggle-scene" class="vn-toggle-scene"></span>
         <span class="vn-toggle-icon">▼</span>
       </div>
       <div id="realm-scene" class="vn-bg"></div>
-      <div id="vn-actors" class="vn-actors"></div>
+      <div id="vn-actors" class="vn-actors" style="display:none"></div><!-- [立绘已撤回] NPC 立绘容器已隐藏 -->
       <div id="battle-stage" class="battle-stage" style="display:none">
         <div class="battle-floor"></div>
         <div class="battle-actor battle-hero" id="battle-hero"></div>
@@ -246,17 +271,33 @@
 
       <div class="form-group">
         <label class="form-label">界面风格</label>
-        <label class="pixel-toggle"><input type="checkbox" id="set-pixel" onchange="UI.togglePixel(this.checked)"> 像素风（取消勾选恢复水墨风）</label>
+        <label class="pixel-toggle"><input type="checkbox" id="set-pixel" onchange="UI.togglePixel(this.checked)"> 像素风（可选 · 默认水墨仙侠风，勾选切换）</label>
       </div>
 
+      <!-- [立绘已撤回] AI 立绘设置入口已随立绘功能一起移除（set-aiportrait* 等 DOM 不再存在） -->
+
       <div class="form-group">
-        <label class="form-label">AI 立绘 · 精美人物生成</label>
-        <label class="pixel-toggle"><input type="checkbox" id="set-aiportrait" onchange="UI.toggleAiPortrait(this.checked)"> 启用 AI 立绘（需 Gemini API Key）</label>
-        <input type="password" id="set-aiportrait-key" class="form-input" placeholder="Gemini API Key（gemini-3-pro-image-preview 模型）" style="margin-top:8px">
-        <p class="settings-hint" style="margin-top:8px;margin-bottom:0">启用后，主角与 NPC 立绘由 AI 即时生成（中国仙侠 Galgame 风格），首次出现时生成并缓存于本地浏览器。需要 Google Gemini 图像 API Key。无 Key 或关闭时自动降级为程序化立绘，<b>绝不白屏</b>。</p>
-        <label class="pixel-toggle" style="margin-top:12px"><input type="checkbox" id="set-aiportrait-lib" onchange="UI.toggleAiPortraitLib(this.checked)"> 使用「立绘托管库」（玩家零 Key 也能看精美立绘）</label>
-        <input type="text" id="set-aiportrait-libbase" class="form-input" placeholder="托管库地址，如 https://你的账号.github.io/浮生仙途/portraits" style="margin-top:8px">
-        <p class="settings-hint" style="margin-top:8px;margin-bottom:0">把 <code>generate_portrait_pack.py</code> 生成的 <code>portraits/</code> 整个目录托管到任意静态网站（GitHub Pages / CloudStudio 均可），在此填入其 URL 前缀即可。优先级：托管库 &gt; 自用 Key 生成 &gt; 程序化立绘。</p>
+        <label class="form-label">后端服务地址（刀锋式 · 可选）</label>
+        <input type="text" id="set-backend-url" class="form-input" placeholder="https://你的服务器域名 或 http://localhost:3000（留空=本地直连）">
+        <p class="settings-hint" style="margin-top:8px;margin-bottom:0">填了后端地址并登录账号后，AI 由<b>服务端 Key</b>驱动（玩家无需自备 Key），存档也绑定账号、跨设备同步。详见 <code>game/server/README.md</code>。</p>
+      </div>
+
+      <div class="account-box">
+        <label class="form-label">账号（邮箱登录 · 刀锋式）</label>
+        <div id="account-loggedout">
+          <div class="cn-row">
+            <input type="email" id="acc-email" class="form-input" placeholder="邮箱" maxlength="64">
+            <input type="password" id="acc-password" class="form-input" placeholder="密码（≥6位）" maxlength="64">
+          </div>
+          <div class="form-actions" style="margin-top:10px">
+            <button class="btn btn-sm btn-primary" onclick="UI.register()">注册</button>
+            <button class="btn btn-sm btn-ghost" onclick="UI.login()">登录</button>
+          </div>
+        </div>
+        <div id="account-loggedin" style="display:none">
+          <span class="account-email">已登录：<b id="acc-email-show"></b></span>
+          <button class="btn btn-sm btn-ghost" onclick="UI.logout()">退出</button>
+        </div>
       </div>
 
     <div class="form-actions">
