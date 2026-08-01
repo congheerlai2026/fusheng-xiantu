@@ -3712,47 +3712,6 @@ const UI = {
     setTimeout(() => { try { this.sendAction(travelCtx); } catch(e){} }, 120);
   },
 
-  // ============ 群像图鉴 ============
-  // 用 ArtGen 程序化生成本世界所有具名 NPC 的立绘，证明"几百个妹子/人物立绘"可凭种子组合而成
-  showCodex() {
-    this.renderCodex();
-    this.show("codex");
-  },
-  renderCodex() {
-    const gen = (Game.state && Game.state.world && Game.state.world.gen);
-    const wrap = document.getElementById("codex-grid");
-    if (!wrap) return;
-    if (!gen || !gen.npcs || !gen.npcs.length) {
-      wrap.innerHTML = '<div class="codex-empty">此界尚未生成人物。</div>';
-      return;
-    }
-    const cards = gen.npcs.map(n => {
-      const spec = ArtGen.specFromSeed(n.portraitSeed || hashSeed(n.name), n.arche, n.gender);
-      const portrait = ArtGen.npc(spec);
-      const mem = (Game.state.npcMemory && Game.state.npcMemory[n.name]) || null;
-      const notes = mem && mem.notes && mem.notes.length
-        ? mem.notes.map(x => x.text).slice(-3).join("；")
-        : (n.profile && n.profile.goal ? "所求：" + n.profile.goal : "尚未相交");
-      return `<div class="codex-card">
-        <div class="codex-portrait">${portrait}</div>
-        <div class="codex-name">${UI.escapeHtml(n.name)}</div>
-        <div class="codex-title">${UI.escapeHtml(n.title)}·${UI.escapeHtml(n.trait)}</div>
-        <div class="codex-where">常现于 ${UI.escapeHtml(n.where)}</div>
-        <div class="codex-note">${UI.escapeHtml(notes)}</div>
-      </div>`;
-    }).join("");
-    wrap.innerHTML = cards;
-    if (gen && gen.npcs) {
-      wrap.querySelectorAll(".codex-portrait").forEach((cell, i) => {
-        const n = gen.npcs[i];
-        const spec = this._npcSpec(n);
-        if (spec) ArtEngine.upgrade(cell, spec);
-      });
-    }
-    const count = document.getElementById("codex-count");
-    if (count) count.textContent = gen.npcs.length + " 位";
-  },
-
   // ============ 主菜单 ============
   renderMenu() {
     const hasSave = Game.hasSave();
