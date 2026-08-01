@@ -435,12 +435,15 @@ const WorldGen = {
   },
 
   // 由种子确定性生成整个世界（wish 为玩家许愿文本，可轻度偏置风土）
-  generateWorld(seed, wish) {
+  generateWorld(seed, wish, opts) {
     const s = (seed == null || seed === "") ? this.randomSeed() : String(seed);
     const rng = this.mulberry32(this.hashSeed(s));
     const pick = (a) => a[Math.floor(rng() * a.length)];
     const ri = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
     const fill = (tpl, map) => tpl.replace(/\$\{(\w+)\}/g, (_, k) => (map[k] != null ? map[k] : ""));
+    const p2opts = opts || {};
+    const heartOath = (p2opts.heartOath && typeof p2opts.heartOath === "string" && p2opts.heartOath.trim()) ? p2opts.heartOath.trim() : null;
+    const customNPCs = Array.isArray(p2opts.customNPCs) ? p2opts.customNPCs : [];
 
     // 许愿关键词 → 相关地域类型（轻度偏置，不喧宾夺主；精彩程度不因灵力值分级）
     const wishText = (wish && typeof wish === "string" && wish.trim()) ? wish.trim() : "";
@@ -507,13 +510,52 @@ const WorldGen = {
     for (let i = 0; i < fcount; i++) {
       let nm, g = 0;
       do { nm = pick(SECT_PREFIX) + pick(SECT_CORE) + pick(SECT_SUFFIX); g++; } while (factions.some((f) => f.name === nm) && g < 30);
+      const dao = (typeof DAO_CREEDS !== "undefined") ? pick(DAO_CREEDS).id : null;
       factions.push({
         name: nm,
         disposition: pick(SECT_DISPOSITION),
         base: pick(regions).name,
         sigil: pick(SECT_SIGIL),
+        // 道心体系：每势力信奉一道（剑来式内核），势力之争即"道理之争"
+        dao: dao,
+        // —— P1-A 势力演化初始态（世界时钟会据其自行演化）——
+        status: pick(["rising", "stable", "stable", "declining"]), // rising 崛起 / stable 守成 / declining 式微 / war 交战
+        resources: ri(45, 85),   // 资源 0-100
+        baseMacro: null,         // 根基所在 macro（下方填充）
+        territory: [],           // 控制疆域（macro 名数组）
+        agenda: (typeof FACTION_AGENDAS !== "undefined") ? pick(FACTION_AGENDAS) : "守成待变",
+        agendaProgress: ri(0, 30),
+        commerce: (dao === "shang") || /丹|商|市|盟|阁/.test(nm), // 市廛/丹盟类：其名下坊市会因你的恶名限售抬价（P1-C 经济回响）
+        relations: {},           // 运行时填充：{ 其他势力名: -100..100 }
       });
     }
+    // 保证至少一个市廛/丹盟类势力（P1-C 经济回响须有"掌坊市者"方可成立；否则恶名限售机制无对象）
+    if (!factions.some(f => f.commerce)) {
+      const pool = ["通宝商会", "丹鼎盟", "万货阁", "四海商盟", "灵材坊", "聚宝斋"];
+      let mn = pick(pool), guard = 0;
+      while (factions.some(f => f.name === mn) && guard < 20) { mn = pick(pool); guard++; }
+      factions[0].commerce = true;
+      factions[0].name = mn;
+      factions[0].dao = "shang";
+    }
+    // 填充势力根基 macro、初始疆域与控制关系（依据道心亲疏定初态关系）
+    const _regionMacro = {};
+    regions.forEach(r => { _regionMacro[r.name] = r.macro; });
+    const _daoById = {};
+    if (typeof DAO_CREEDS !== "undefined") DAO_CREEDS.forEach(d => { _daoById[d.id] = d; });
+    factions.forEach(f => {
+      f.baseMacro = _regionMacro[f.base] || "中州";
+      f.territory = [f.baseMacro];
+      factions.forEach(o => {
+        if (o.name === f.name) return;
+        let rel = Math.random() * 40 - 20; // 中立微扰
+        if (f.dao && o.dao) {
+          if (f.dao === o.dao) rel = 30 + Math.random() * 20;
+          else if (_daoById[f.dao] && _daoById[f.dao].opposed && _daoById[f.dao].opposed.indexOf(o.dao) >= 0) rel = -30 - Math.random() * 20;
+        }
+        f.relations[o.name] = Math.round(rel);
+      });
+    });
 
     // 4) 名动人物（每个都有独立档案与立绘，可随剧情生长记忆）
     const npcs = [];
@@ -550,6 +592,14 @@ const WorldGen = {
         where: pick(regions).name,
         portraitSeed: hashSeed(nm) >>> 0,
         appearance: (gender === "f" ? "身姿娉婷" : "风骨凛然") + "，着" + pick(["青","素","绯","玄","月白","黯","雪","朱"]) + "色衣袍，眉眼间自有" + pick(["清冷","倔强","忧郁","疏离","狡黠","悲悯","傲然"]) + "之色",
+        // —— P2 NPC 自驱议程：志业(所求)+性格(底层逻辑)+因果债，凭此在世界时钟自驱，玩家不可控其结局 ——
+        zhiye: (typeof NPC_ZHIYE !== "undefined") ? pick(NPC_ZHIYE) : "行走世间",
+        xingge: (typeof NPC_XINGGE !== "undefined") ? pick(NPC_XINGGE) : "隐忍",
+        yinguo: (typeof NPC_KARMA !== "undefined") ? pick(NPC_KARMA) : "未知之因",
+        autonomy: true,
+        agendaProgress: ri(0, 30),
+        status: "行走",
+        lastSeenDay: 1,
         profile: {
           backstory: `${nm}以${title}之姿行走世间，性情${trait}。`,
           goal: pick(npcGoal),
@@ -557,6 +607,37 @@ const WorldGen = {
         },
       });
     }
+
+    // 4.5) 玩家自定义 NPC（P2·自定义 NPC 自主性）：玩家立其"出身"，引擎赋其志业/性格，行为结局不可控
+    (customNPCs || []).forEach((cn) => {
+      if (!cn || !cn.name) return;
+      const g = (cn.gender === "m" || cn.gender === "f") ? cn.gender : (rng() < 0.5 ? "m" : "f");
+      npcs.push({
+        name: String(cn.name).slice(0, 12),
+        title: cn.title || "异客",
+        trait: cn.trait || pick(typeof NPC_TRAIT !== "undefined" ? NPC_TRAIT : ["神秘"]),
+        gender: g,
+        arche: "scholar",
+        where: pick(regions).name,
+        portraitSeed: hashSeed(String(cn.name)) >>> 0,
+        appearance: "来历成谜，眉眼间藏着不为人知的故事",
+        zhiye: cn.zhiye || ((typeof NPC_ZHIYE !== "undefined") ? pick(NPC_ZHIYE) : "行走世间"),
+        xingge: cn.xingge || ((typeof NPC_XINGGE !== "undefined") ? pick(NPC_XINGGE) : "隐忍"),
+        yinguo: cn.yinguo || "未知之因",
+        autonomy: true,
+        // 自主拨弦：0=傀儡(唯命是从) 1=半醒(偶违己意) 2=自在(全凭己志)
+        autonomyLevel: (typeof cn.autonomyLevel === "number") ? cn.autonomyLevel : 2,
+        customOrigin: cn.origin || "身世成谜，无人知晓其来处",
+        agendaProgress: ri(0, 20),
+        status: "行走",
+        lastSeenDay: 1,
+        profile: {
+          backstory: `${cn.name}：${cn.origin || "身世成谜"}。`,
+          goal: cn.zhiye || "行走世间，寻觅自身之道",
+          bond: "与历练者渊源未明",
+        },
+      });
+    });
 
     // 5) 江湖秘闻
     const rumors = [];
@@ -610,6 +691,8 @@ const WorldGen = {
         const danger = Math.max(0, Math.min(10, r.danger + t.dangerAdj + (rng() < 0.3 ? (rng() < 0.5 ? -1 : 1) : 0)));
         // 故事钩子：从该类型钩子池随机抽 1 个，让"古墓/妖洞/茶楼/药市"等不同类型自然衍生出截然不同的事件
         const hook = (t.hooks && t.hooks.length) ? t.hooks[Math.floor(rng() * t.hooks.length)] : "";
+        // 本地规矩：每处子地点随机挂载一条风俗/禁忌（入乡随俗或犯忌）
+        const custom = (typeof LOCAL_CUSTOMS !== "undefined" && LOCAL_CUSTOMS.length) ? LOCAL_CUSTOMS[Math.floor(rng() * LOCAL_CUSTOMS.length)] : "";
         // 距离（里）：按当前 macro 中心极坐标 + 当前 sub 极坐标粗算；以 1 单位 ≈ 18 里估算，便于与脚程比对
         const cx = (macroByName[r.macro].zone.x0 + macroByName[r.macro].zone.x1) / 2;
         const cy = (macroByName[r.macro].zone.y0 + macroByName[r.macro].zone.y1) / 2;
@@ -618,7 +701,7 @@ const WorldGen = {
         const baseFromRegionCenter = Math.round(Math.hypot(dx, dy) * 18);
         sublocations.push({
           id: r.name + "::" + k, region: r.name, macro: r.macro, type: t.type, hub: !!t.hub,
-          name: nm, danger, desc: pick(t.flavor), hook,
+          name: nm, danger, desc: pick(t.flavor), hook, custom,
           baseFromRegionCenter, // 距所属地域中心的里数（玩家从宗门/中心出发时用）
         });
       }
@@ -678,6 +761,41 @@ const WorldGen = {
     ensureBranch("试炼", "trial", 8);
     ensureBranch("坊市", "sidequest", 1);
 
+    // 道争：为本界立一桩贯穿的"道理之争"（剑来式内核）
+    let daoTension = null;
+    if (typeof DAO_CREEDS !== "undefined" && DAO_CREEDS.length && factions.length >= 2) {
+      const byId = {};
+      DAO_CREEDS.forEach(d => byId[d.id] = d);
+      const used = factions.map(f => f.dao).filter(Boolean);
+      let pair = null;
+      // 优先在已用道中找互斥对
+      for (let i = 0; i < used.length && !pair; i++) {
+        const a = byId[used[i]];
+        if (!a || !a.opposed) continue;
+        for (let j = 0; j < used.length; j++) {
+          if (j === i) continue;
+          const b = byId[used[j]];
+          if (b && a.opposed.indexOf(b.id) >= 0) { pair = [a, b]; break; }
+        }
+      }
+      // 退而求其次：任取两个互斥的道（不限于已用）
+      if (!pair) {
+        for (let i = 0; i < DAO_CREEDS.length && !pair; i++) {
+          if (!DAO_CREEDS[i].opposed) continue;
+          for (let j = 0; j < DAO_CREEDS.length; j++) {
+            if (i !== j && DAO_CREEDS[i].opposed.indexOf(DAO_CREEDS[j].id) >= 0) { pair = [DAO_CREEDS[i], DAO_CREEDS[j]]; break; }
+          }
+        }
+      }
+      if (pair) {
+        daoTension = {
+          a: pair[0].id, aName: pair[0].name,
+          b: pair[1].id, bName: pair[1].name,
+          text: `本界正酝酿一场「${pair[0].name}」与「${pair[1].name}」的道争——两道信徒各执一词，你的抉择将决定你站在光里还是影中。`,
+        };
+      }
+    }
+
     return {
       seed: s,
       id: this.hashSeed(s) >>> 0,
@@ -694,8 +812,12 @@ const WorldGen = {
       rumors,
       treasures,
       sublocations,
+      daoTension,
       startLocation,
       startMacro,
+      // —— P2-A 道心硬律：玩家所立"道心自述/命格"为不可改写之天地常法（非纯提示词）——
+      fixedLaws: { oath: heartOath, hardFacts: [], passiveSkills: [] },
+      customNPCs: (customNPCs || []).map((c) => (c && c.name) ? String(c.name).slice(0, 12) : null).filter(Boolean),
     };
   },
 
