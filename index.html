@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.6, viewport-fit=cover">
   <title>万界修真 · AI 仙侠文字RPG</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="theme-pixel.css">
@@ -207,20 +207,8 @@
       </div>
     </div>
     <div class="map-footer" id="map-footer">
-      <button class="btn btn-ghost" onclick="UI.showCodex()">群像图鉴</button>
       <button class="btn btn-primary" onclick="UI.startGameFromMap()">踏入仙途</button>
     </div>
-  </div>
-</div>
-
-<!-- ==================== 群像图鉴 ==================== -->
-<div id="screen-codex" class="screen">
-  <div class="codex-wrap">
-    <div class="codex-head">
-      <h2>群像图鉴 <span class="codex-count" id="codex-count"></span></h2>
-      <button class="btn btn-ghost" onclick="UI.showWorldMap()">← 返回大地图</button>
-    </div>
-    <div class="codex-grid" id="codex-grid"><!-- 立绘卡片注入处 --></div>
   </div>
 </div>
 
@@ -278,13 +266,13 @@
       <!-- [立绘已撤回] AI 立绘设置入口已随立绘功能一起移除（set-aiportrait* 等 DOM 不再存在） -->
 
       <div class="form-group">
-        <label class="form-label">后端服务地址（刀锋式 · 可选）</label>
+        <label class="form-label">后端服务地址（可选）</label>
         <input type="text" id="set-backend-url" class="form-input" placeholder="https://你的服务器域名 或 http://localhost:3000（留空=本地直连）">
         <p class="settings-hint" style="margin-top:8px;margin-bottom:0">填了后端地址并登录账号后，AI 由<b>服务端 Key</b>驱动（玩家无需自备 Key），存档也绑定账号、跨设备同步。详见 <code>game/server/README.md</code>。</p>
       </div>
 
       <div class="account-box">
-        <label class="form-label">账号（邮箱登录 · 刀锋式）</label>
+        <label class="form-label">账号（邮箱登录）</label>
         <div id="account-loggedout">
           <div class="cn-row">
             <input type="email" id="acc-email" class="form-input" placeholder="邮箱" maxlength="64">
@@ -468,7 +456,7 @@
 <!-- ==================== 新手引导（首次进入一次性） ==================== -->
 <div id="onboarding-modal" class="onboarding-modal">
   <div class="onboarding-card">
-    <button class="onboarding-close" onclick="closeOnboarding()">✕</button>
+    <button class="onboarding-close" onclick="closeOnboarding()" aria-label="关闭引导">✕</button>
     <div class="onboarding-title">初入仙途 · 三两句便懂</div>
     <div class="onboarding-sub">天道不语，你每行一步皆由 AI 即时演绎。记住四件事：</div>
     <div class="onboarding-grid">
@@ -479,6 +467,7 @@
     </div>
     <div class="onboarding-note">风险标签只在内部标注，你看到的只有文字里的凶险。下方选项与自由输入框，怎么走都由你。</div>
     <button class="btn btn-primary btn-lg ob-start" onclick="closeOnboarding()">入了这局 →</button>
+    <div style="text-align:center;margin-top:10px"><a href="javascript:closeOnboarding()" style="color:#8a7ab8;font-size:12px;text-decoration:none">跳过引导</a></div>
   </div>
 </div>
 <script>
