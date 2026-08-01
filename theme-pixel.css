@@ -912,3 +912,64 @@ body.pixel .npc-portrait .ai-portrait-img { width: 100%; height: 100%; }
 body.pixel .vn-actors .vn-actor .ai-portrait-img { height: 100%; width: auto; }
 body.pixel .ai-portrait-fade { animation: aiFade .6s ease both; }
 
+/* ============================================================
+   P2 · 江湖志业 / 天机盘 / 因果簿 / NPC 自主行为摘要（像素风）
+   设计：扁平双线框 / 硬阴影 / 锐利无圆角（全局已 border-radius:0）
+   —— 确保在像素主题下 P2 各组件与 .npc-tick 摘要均有一致且醒目的呈现
+   ============================================================ */
+body.pixel .npc-title { color: var(--text-dim); font-size: 12px; letter-spacing: 2px; margin-top: 6px; border-left: 3px solid var(--gold); padding-left: 6px; }
+body.pixel .npc-empty { color: var(--text-dim); font-size: 12px; padding: 4px 0; }
+
+/* 江湖志业 · NPC 自驱议程 */
+body.pixel .p2-npc-card { padding: 8px 0 10px; border-bottom: 2px solid var(--border); font-size: 13px; }
+body.pixel .p2-npc-card.p2-custom .p2-npc-name { color: var(--gold-bright); }
+body.pixel .p2-npc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+body.pixel .p2-npc-name { color: var(--text); font-size: 14px; letter-spacing: 1px; }
+body.pixel .p2-npc-zhiye { color: var(--jade); font-size: 12px; white-space: nowrap; }
+body.pixel .p2-npc-meta { color: var(--text-dim); font-size: 11px; margin: 2px 0 5px; }
+/* 志业微光条：像素风分段硬条 + 硬阴影 */
+body.pixel .p2-progress { height: 6px; background: var(--bg-dark); border: 1px solid var(--border); overflow: hidden; }
+body.pixel .p2-progress-fill { height: 100%; background: var(--jade); box-shadow: 0 0 0 1px rgba(224,182,76,0.6); animation: p2-glow 2.4s ease-in-out infinite; }
+
+/* 自主拨弦：傀儡 / 半醒 / 自在（硬边框按钮，选中态带金色硬阴影） */
+body.pixel .p2-asis-switch { display: flex; align-items: center; gap: 8px; margin-top: 7px; flex-wrap: wrap; }
+body.pixel .p2-asis-label { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; white-space: nowrap; }
+body.pixel .p2-asis-btns { display: flex; gap: 4px; flex: 1; }
+body.pixel .p2-asis-btn {
+  flex: 1; padding: 5px 0; font-size: 11px; cursor: pointer;
+  background: var(--bg-card); color: var(--text-dim);
+  border: 2px solid var(--border);
+  font-family: inherit; transition: all 0.18s;
+}
+body.pixel .p2-asis-btn:hover { color: var(--text); border-color: var(--text-dim); }
+body.pixel .p2-asis-btn.active { color: var(--gold-bright); border-color: var(--gold); background: rgba(224,182,76,0.18); box-shadow: 2px 2px 0 0 var(--gold); }
+body.pixel .p2-asis-desc { flex-basis: 100%; font-size: 10px; color: var(--text-dim); margin-top: 2px; letter-spacing: .5px; }
+
+/* 天机盘 · 流言（神识串供扩散） */
+body.pixel .p2-gossip-hint { font-size: 11px; color: var(--text-dim); line-height: 1.5; margin: 2px 0 6px; }
+body.pixel .p2-gossip-item { padding: 6px 0; border-bottom: 2px solid var(--border); font-size: 12px; }
+body.pixel .p2-gossip-text { color: var(--text); line-height: 1.55; }
+body.pixel .p2-gossip-meta { color: var(--text-dim); font-size: 10.5px; margin-top: 3px; }
+body.pixel .p2-gossip-you { color: var(--crimson); }
+
+/* 因果簿 · 把柄 */
+body.pixel .p2-ledger-item { padding: 6px 0; border-bottom: 2px solid var(--border); font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+body.pixel .p2-ledger-fact { color: var(--crimson); line-height: 1.5; }
+body.pixel .p2-ledger-item.resolved .p2-ledger-fact { color: var(--text-dim); text-decoration: line-through; }
+body.pixel .p2-ledger-tag { font-size: 10px; align-self: flex-start; padding: 0 6px; border: 2px solid var(--crimson); color: var(--crimson); }
+body.pixel .p2-ledger-item.resolved .p2-ledger-tag { color: var(--jade); border-color: var(--jade); }
+body.pixel .p2-ledger-meta { font-size: 10px; color: var(--text-dim); }
+
+/* NPC 自主行为摘要：淡色斜体 + 硬边框背景区分（区别于主线叙事，醒目但不抢戏） */
+body.pixel .npc-tick {
+  margin: 8px 0 4px; padding: 8px 12px;
+  background: rgba(120,140,170,0.08);
+  border-left: 4px solid var(--gold);
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+}
+body.pixel .npc-tick-item {
+  font-size: 13px; font-style: italic; line-height: 1.8;
+  color: rgba(180,195,215,0.85); /* 淡色，弱化于主线叙事 */
+}
+body.pixel .npc-tick-item::before { content: "◦ "; font-style: normal; opacity: 0.7; }
+
