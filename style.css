@@ -21,7 +21,9 @@
 
 body {
   font-family: "Songti SC", "STSong", "SimSun", "Noto Serif SC", serif;
+  background: #0d1117;
   background: var(--bg-dark);
+  color: #e6dcc8;
   color: var(--text);
   min-height: 100vh;
   overflow-x: hidden;
@@ -246,7 +248,7 @@ body::before {
 /* ============================================================
    视觉小说式舞台（背景氛围 + 立绘 + 底部大对话框）
    ============================================================ */
-.vn-stage { position: relative; overflow: hidden; background: var(--bg-dark); display: flex; flex-direction: column; }
+.vn-stage { position: relative; overflow: hidden; background: #0d1117; background: var(--bg-dark); display: flex; flex-direction: column; }
 .vn-bg {
   position: relative; flex: 0 0 13%; min-height: 64px; max-height: 120px;
   background-color: var(--bg-dark);
@@ -405,18 +407,21 @@ body::before {
 .map-current .node-glow { opacity: .5; }
 @keyframes node-pulse { 0%,100% { opacity: .2; } 50% { opacity: .42; } }
 .node-core { filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
-.node-label { fill: #fff7e6; font-size: 13px; font-weight: 800; paint-order: stroke; stroke: #16203a; stroke-width: 2.4px; letter-spacing: 1px; }
-.node-label-bg { fill: rgba(22,32,58,.86); stroke: rgba(255,210,160,.65); stroke-width: 1.2; }
-.node-sub { fill: #ffe1a8; font-size: 10.5px; font-weight: 700; paint-order: stroke; stroke: #16203a; stroke-width: 1.6px; letter-spacing: .5px; }
-.node-sub-bg { fill: rgba(255,210,74,.92); stroke: #7a4b00; stroke-width: .8; }
+.node-label { fill: #fff7e6; font-size: 13px; font-weight: 800; paint-order: stroke; stroke: #16203a; stroke-width: 3px; letter-spacing: 1px; }
+.node-label-bg { fill: rgba(22,32,58,.92); stroke: rgba(255,210,160,.75); stroke-width: 1.2; }
+.node-sub { fill: #ffe1a8; font-size: 10.5px; font-weight: 700; paint-order: stroke; stroke: #16203a; stroke-width: 2.2px; letter-spacing: .5px; }
+.node-sub-bg { fill: rgba(255,210,74,.95); stroke: #7a4b00; stroke-width: .8; }
 .map-current-ring { fill: none; stroke: #ffd24a; stroke-width: 2.5; stroke-dasharray: 4 4; animation: ring-spin 6s linear infinite; transform-box: fill-box; transform-origin: center; }
 @keyframes ring-spin { to { transform: rotate(360deg); } }
 .map-zone { fill: rgba(255,255,255,.16); stroke: rgba(70,90,130,.4); stroke-width: 1.4; stroke-dasharray: 2 5; }
-.map-zone-label { fill: #fff7e6; opacity: 1; font-size: 18px; font-weight: 900; letter-spacing: 6px; paint-order: stroke; stroke: #16203a; stroke-width: 4.5px; }
-.map-zone-label-bg { fill: rgba(20,28,52,.78); stroke: rgba(255,210,160,.45); stroke-width: 1; }
+.map-zone-label { fill: #fff7e6; opacity: 1; font-size: 18px; font-weight: 900; letter-spacing: 6px; paint-order: stroke; stroke: #16203a; stroke-width: 5.5px; }
+.map-zone-label-bg { fill: rgba(20,28,52,.88); stroke: rgba(255,210,160,.55); stroke-width: 1; }
 .map-body { background:
   radial-gradient(120% 80% at 50% -10%, rgba(255,255,255,.5), rgba(255,255,255,0) 60%),
   linear-gradient(180deg, #eaf1f4, #e7eef0 40%, #dfe8e6); }
+.map-detail { padding: 14px 18px; background: rgba(22,32,58,.75); color: #e6dcc8; font-size: 13.5px; line-height: 1.7; min-height: 60px; border-top: 1px solid rgba(255,210,160,.3); }
+.map-detail-empty { color: #8b8578; text-align: center; padding: 20px 0; }
+.map-footer { padding: 12px 18px; display: flex; gap: 10px; justify-content: flex-end; align-items: center; background: rgba(22,32,58,.7); border-top: 1px solid rgba(255,210,160,.25); }
 
 /* ArtGen 程序化立绘（人物/敌人/图鉴）—— [保留] 图鉴用，立绘引擎休眠不影响 */
 .artgen-portrait { width: 120px; height: 180px; display: inline-block; }
@@ -1011,20 +1016,33 @@ body::before {
 @media(max-width:560px){.ending-recap .er-grid{grid-template-columns:repeat(2,1fr);}}
 
 /* ===== 新手引导弹层（首次进入一次性） ===== */
-.onboarding-modal{display:none;position:fixed;inset:0;z-index:200;background:rgba(8,6,16,.78);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:18px;animation:aiFade .4s ease both;}
-.onboarding-card{position:relative;max-width:680px;width:100%;background:linear-gradient(160deg,#241b3c,#2e2350);border:1px solid #6b4fb0;border-radius:18px;padding:26px 26px 22px;box-shadow:0 16px 50px rgba(20,10,50,.5);}
-.onboarding-close{position:absolute;top:12px;right:14px;background:none;border:none;color:#b9a7e0;font-size:20px;cursor:pointer;line-height:1;}
-.onboarding-title{font-size:22px;font-weight:700;color:#fff;text-align:center;letter-spacing:2px;}
-.onboarding-sub{font-size:14px;color:#c9b8f0;text-align:center;margin:8px 0 18px;}
-.onboarding-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
-.ob-card{background:rgba(255,255,255,.05);border:1px solid rgba(140,110,200,.3);border-radius:12px;padding:14px;transition:transform .15s ease,border-color .15s ease;}
+.onboarding-modal{display:none;position:fixed;inset:0;z-index:200;background:rgba(8,6,16,.85);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:12px;animation:aiFade .4s ease both;}
+.onboarding-card{position:relative;max-width:680px;width:100%;background:linear-gradient(160deg,#241b3c,#2e2350);border:1px solid #6b4fb0;border-radius:18px;padding:22px 20px 18px;box-shadow:0 16px 50px rgba(20,10,50,.5);max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.onboarding-close{position:absolute;top:8px;right:10px;background:rgba(255,255,255,.1);border:1px solid rgba(180,150,220,.35);color:#e0d0f5;font-size:22px;cursor:pointer;line-height:1;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:10;flex-shrink:0;}
+.onboarding-close:active{background:rgba(255,255,255,.2);}
+.onboarding-title{font-size:20px;font-weight:700;color:#fff;text-align:center;letter-spacing:2px;}
+.onboarding-sub{font-size:13.5px;color:#c9b8f0;text-align:center;margin:6px 0 14px;line-height:1.55;}
+.onboarding-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+.ob-card{background:rgba(255,255,255,.05);border:1px solid rgba(140,110,200,.3);border-radius:12px;padding:12px;transition:transform .15s ease,border-color .15s ease;}
 .ob-card:hover{transform:translateY(-2px);border-color:#9b7be0;}
-.ob-ico{font-size:24px;margin-bottom:6px;}
-.ob-h{font-size:15px;font-weight:600;color:#fff;margin-bottom:5px;}
-.ob-t{font-size:12.5px;color:#c4b4e8;line-height:1.55;}
-.onboarding-note{font-size:12px;color:#a894d0;text-align:center;margin:16px 0 14px;line-height:1.6;}
-.ob-start{width:100%;font-size:16px;letter-spacing:2px;}
-@media(max-width:560px){.onboarding-grid{grid-template-columns:1fr;}.onboarding-title{font-size:19px;}}
+.ob-ico{font-size:22px;margin-bottom:4px;}
+.ob-h{font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;}
+.ob-t{font-size:12px;color:#c4b4e8;line-height:1.5;}
+.onboarding-note{font-size:11.5px;color:#a894d0;text-align:center;margin:14px 0 12px;line-height:1.55;}
+.ob-start{width:100%;font-size:16px;letter-spacing:2px;padding:14px 20px;margin-top:4px;}
+@media(max-width:560px){
+  .onboarding-modal{padding:8px;align-items:flex-start;padding-top:30px;}
+  .onboarding-card{padding:18px 16px 16px;border-radius:14px;max-height:calc(100vh - 60px);}
+  .onboarding-close{top:6px;right:6px;width:44px;height:44px;font-size:24px;}
+  .onboarding-grid{grid-template-columns:1fr;gap:8px;}
+  .onboarding-title{font-size:18px;letter-spacing:1px;}
+  .onboarding-sub{font-size:13px;margin-bottom:10px;}
+  .ob-card{padding:10px;border-radius:10px;}
+  .ob-ico{font-size:20px;}
+  .ob-h{font-size:13.5px;}
+  .ob-t{font-size:11.5px;line-height:1.45;}
+  .ob-start{font-size:15px;padding:13px 18px;}
+}
 
 
 /* [立绘已撤回 - 样式保留] 高清PNG立绘样式 */
