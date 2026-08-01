@@ -107,6 +107,7 @@ ${this.buildFactionStateBlock(state)}
 ${this.buildEconomyBlock(state)}
 ${this.buildEventChainBlock(state)}
 ${this.buildDynastyBlock(state)}
+${this.buildCraftBlock(state)}
 
 【当前地点 · 感官简报 · 须融于描写】
 ${this.buildLocationBrief(state)}
@@ -726,6 +727,29 @@ ${this.buildVarietyBlock(state)}
       const bound = gen.factions.filter(f => patrons.indexOf(f.name) >= 0);
       if (bound.length) lines.push(`· 气运相系：王朝国祚系于${bound.map(f => f.name).join("、")}之盛衰——该派鼎盛则国祚昌隆，式微或陷战则王朝气运消散；该派门人须同时贴合君国与宗门双重立场。`);
     }
+    return lines.join("\n");
+  },
+
+  buildCraftBlock(state) {
+    const c = (state && state.character) || {};
+    const skills = c.skills || {};
+    const craftNames = { "炼丹": "丹道", "炼器": "器道", "符箓": "符道", "阵法": "阵道" };
+    const known = Object.keys(skills).filter(k => (skills[k] && skills[k].proficiency > 0));
+    if (!known.length) return "";
+    const lines = ["【百艺修习 · 玩家已修习下列匠道，叙述须贴合其手中所能（自炼之物可入剧情、可赠可售）；提及丹药/法器/符箓/阵法时优先呼应玩家自产】"];
+    known.forEach(k => {
+      const p = skills[k].proficiency;
+      const lvl = p >= 80 ? "炉火纯青" : p >= 50 ? "渐入佳境" : p >= 20 ? "初通门径" : "初学";
+      lines.push(`  - ${craftNames[k] || k}（${k}）：熟练度${p}/100（${lvl}）`);
+    });
+    if (Array.isArray(c.craftLog) && c.craftLog.length) {
+      const recent = c.craftLog.slice(0, 4).map(e => `${e.win ? "成" : "败"}${e.name}`).join("、");
+      lines.push(`· 近事：${recent}（玩家亲手所为，可于叙事中呼应其匠名与手笔）`);
+    }
+    const econ = (state.world && state.world.economy) || {};
+    const goods = ["丹药", "符箓", "法器", "灵材", "粮草"];
+    const quote = goods.filter(g => econ[g]).map(g => `${g}${econ[g].price}`).join("·");
+    if (quote) lines.push(`· 市集行情（灵石计价）：${quote}；玩家可市售自产、市购灵材粮草。`);
     return lines.join("\n");
   },
 
