@@ -1131,6 +1131,45 @@ const FACTION_AGENDAS = [
   "寻回失落的本命传承",
 ];
 
+// ============================================================
+// 修仙百艺 · 配方库（炼丹/炼器/符箓/阵法）——确定性制作引擎的数据源
+// 字段：materials 材料清单｜grade 产物品级｜sBase 基础成功率｜diff 难度
+//      value 灵石估值｜fail 失败材料损耗比(0~1)｜effect 用途｜sellType 市售归属(对接经济层行情)
+// 成功率公式见 game.js _craft()：success = clamp(sBase + prof*0.003 + (spirit-6)*0.02 - diff*0.01, 0.10, 0.97)
+// ============================================================
+const RECIPES = {
+  "炼丹": [
+    { id:"juqi_dan",    name:"聚气丹",   materials:{ "灵草":2 },              grade:"黄阶中品", sBase:0.85, diff:8,  value:40,  fail:0.5, effect:"服之速复灵力",            sellType:"丹药" },
+    { id:"liaoshang_san",name:"疗伤散",   materials:{ "灵草":1, "粮草":1 },    grade:"黄阶下品", sBase:0.90, diff:5,  value:20,  fail:0.3, effect:"外伤止血生肌",          sellType:"丹药" },
+    { id:"peiyuan_dan", name:"培元丹",   materials:{ "灵草":3, "妖丹":1 },    grade:"玄阶下品", sBase:0.60, diff:20, value:120, fail:0.7, effect:"温养灵气，助突破",      sellType:"丹药" },
+  ],
+  "炼器": [
+    { id:"tiejing_jian",name:"铁精剑",   materials:{ "矿脉":2 },              grade:"黄阶上品", sBase:0.80, diff:10, value:80,  fail:0.5, effect:"增进斗法战力",          sellType:"法器" },
+    { id:"yufeng_xue",  name:"御风靴",   materials:{ "矿脉":2, "灵草":1 },    grade:"玄阶下品", sBase:0.65, diff:18, value:110, fail:0.6, effect:"身法轻灵，便于遁走",    sellType:"法器" },
+  ],
+  "符箓": [
+    { id:"huoqiu_fu",   name:"火球符",   materials:{ "灵草":1, "妖丹":1 },    grade:"黄阶中品", sBase:0.80, diff:10, value:50,  fail:0.5, effect:"战阵火攻之符",          sellType:"符箓" },
+    { id:"hushen_fu",   name:"护身符",   materials:{ "灵草":2 },              grade:"黄阶上品", sBase:0.85, diff:8,  value:70,  fail:0.4, effect:"临阵减伤护身",          sellType:"符箓" },
+  ],
+  "阵法": [
+    { id:"juling_zhen", name:"聚灵阵",   materials:{ "矿脉":3, "灵泉":1 },    grade:"玄阶中品", sBase:0.55, diff:22, value:150, fail:0.7, effect:"布于洞府，修炼加速",    sellType:"法器" },
+    { id:"mizong_zhen", name:"迷踪阵",   materials:{ "灵草":2, "矿脉":1 },    grade:"玄阶下品", sBase:0.60, diff:18, value:100, fail:0.6, effect:"布防迷踪，阻敌遁走",    sellType:"法器" },
+  ],
+};
+
+// 材料来源与行情兜底价（经济层六类商品已有行情者优先用行情价，其余用 fallback）
+// src: 采集(探索)/战斗(妖兽·邪修·鬼物)/市购(市集按行情)/赠予(剧情门派)
+const MATERIAL_SOURCES = {
+  "灵草":   { src:"采集", fallback:18 },
+  "矿脉":   { src:"采集", fallback:22 },
+  "灵泉":   { src:"采集", fallback:40 },
+  "粮草":   { src:"市购", fallback:30 },
+  "灵材":   { src:"市购", fallback:60 },
+  "妖丹":   { src:"战斗·妖兽", fallback:35 },
+  "魔核":   { src:"战斗·邪修", fallback:60 },
+  "阴魂珠": { src:"战斗·鬼物", fallback:55 },
+};
+
 // ---- 伤病学（P1-C·真实伤病学下沉的精髓落地）----
 // 借鉴「真实伤病学」之内核——伤分类型、须对症方速愈、延误则恶化、疗伤须耗时——落为修仙语境。
   // 注：刻意不沿用刀锋那套"凡躯久养、灵石延医"式写实伤病表述（其原词已规避），改以仙侠两层创伤呈现。仙侠之伤分两层：
@@ -1177,5 +1216,5 @@ const FACTION_AGENDAS = [
 
 // 导出
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { REALMS, SPIRITUAL_ROOTS, CULTIVATION_SYSTEMS, BREAKTHROUGH_BASE, TECHNIQUES, PILLS, LOCATIONS, BACKGROUNDS, GENDERS, TIMES_OF_DAY, WEATHERS, LIFE_SKILLS, CRAFT_DAO, MAIN_PLOT_ARCHETYPES, DAO_CREEDS, LOCAL_CUSTOMS, MACRO_ADJACENCY, FACTION_AGENDAS, WOUND_TYPES, NPC_ZHIYE, NPC_XINGGE, NPC_KARMA };
+  module.exports = { REALMS, SPIRITUAL_ROOTS, CULTIVATION_SYSTEMS, BREAKTHROUGH_BASE, TECHNIQUES, PILLS, LOCATIONS, BACKGROUNDS, GENDERS, TIMES_OF_DAY, WEATHERS, LIFE_SKILLS, CRAFT_DAO, MAIN_PLOT_ARCHETYPES, DAO_CREEDS, LOCAL_CUSTOMS, MACRO_ADJACENCY, FACTION_AGENDAS, RECIPES, MATERIAL_SOURCES, WOUND_TYPES, NPC_ZHIYE, NPC_XINGGE, NPC_KARMA };
 }
