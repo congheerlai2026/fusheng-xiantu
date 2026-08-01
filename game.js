@@ -2,6 +2,31 @@
 //  《浮生仙途》游戏引擎
 //  Game Engine & State Manager
 // ============================================================
+//
+// ┌──────────────────────────────────────────────────────────────────────┐
+// │ P1 联调验证报告 · 活名声系统 + 江湖情报网引擎（2026-08-01 审查）          │
+// ├──────────────────────────────────────────────────────────────────────┤
+// │ 验证项 / 结论：                                                        │
+// │ 1) 全局声望 reputation：applyChanges@470 增减，边界[-1e6,1e9]（有检查✓） │
+// │ 2) 活名声 repByFaction（按势力分维）：applyChanges@484 增减。          │
+// │    【缺陷·已修复】原无边界钳制，会无限增减 → 现夹至[-1e6,1e9]@489-492   │
+// │    消费端：renderStatus@3639 用于"市廛态度"（恶名≤-30 限售抬价）✓已连通 │
+// │ 3) 情报网收集：_spawnIntel@1058（起点=当前 macro）由 reputation_change │
+// │    ≥6@477 与 ch.intel@497 触发；传播：_propagateIntel@1036 每日向邻域扩 │
+// │    散，spreadComplete + 全域网上限做循环防护 ✓                         │
+// │ 4) NPC 闲话(神识串供)：_spawnNpcGossip@1079 + _propagateNpcGossip@1146  │
+// │    上限 6 域 + 去重，循环防护 ✓；AI 经 ch.intel/ch.npc_gossip 注入 ✓   │
+// │ 5) 战斗→活名声/情报：【缺口·已补】原 applyCombatResult 不改声望、不入   │
+// │    情报网。现胜/负均有界增减声望(-3~+8) 并 _spawnIntel 化作战传闻 ✓     │
+// │ 6) 旅行→情报收集：location_change@605 仅改地点，未主动"收集"当地传闻。  │
+// │    情报网随时间(advanceWorld)自动传播，但到达新域不主动回显本地 rumor。 │
+// │    【建议】可在抵达时把已传到本域 macro 的 intel 摘一条塞入 AI prompt，  │
+// │    让"初至某地便听见自己的传闻"成立（属体验增强，未强制改动）。          │
+// │ 7) NPC 交互→活名声/情报：经 AI 返回 ch.faction_reputation_change /     │
+// │    ch.reputation_change / ch.intel / ch.npc_gossip 四条通道，全连通 ✓  │
+// │ 总体结论：核心数据流闭环、边界与循环防护齐备；仅活名声边界与战斗联动两   │
+// │ 处为缺陷/缺口，已修复。                                                  │
+// └──────────────────────────────────────────────────────────────────────┘
 
 // 叙事节奏（篇幅档位）：由玩家在选人页/设置页选择，决定每回合文本长度与 max_tokens 上限
 // 注：原「短剧形式」与「电视剧形式」已融合为单一的「电视剧形式」（可长可短、快节奏到情景交融），
@@ -488,7 +513,8 @@ const Game = {
         if (!e || !e.faction) return;
         const inc = Math.max(-100000, Math.min(100000, Number(e.delta) || 0));
         const cur = (this.state.repByFaction[e.faction] || 0);
-        const nv = cur + inc;
+        // 边界检查：活名声按势力分维，须夹在合理区间，避免无限增减（与全局声望同量级）
+        const nv = Math.max(-1000000, Math.min(1000000000, cur + inc));
         this.state.repByFaction[e.faction] = nv;
         if (inc !== 0) deltas.push(`对${e.faction}名望 ${inc > 0 ? "+" : ""}${inc}`);
       });
@@ -2107,6 +2133,16 @@ const Game = {
         }
       }
     }
+    // P1-B 联调：斗法胜负亦属"显赫言行"，化作江湖传闻（依地缘逐域传播），并小幅、有界地影响声望
+    const _ename = (this.state.meta && this.state.meta.lastCombat && this.state.meta.lastCombat.name) || "一名修士";
+    const _ePow = result.enemyPower || 20;
+    const _repInc = result.win
+      ? Math.max(2, Math.min(8, Math.round(_ePow / 12)))    // 胜则扬名，强敌更显
+      : -Math.min(3, Math.max(1, Math.round(_ePow / 40)));  // 败则微损
+    const _repBefore = c.reputation;
+    c.reputation = Math.max(-1000000, Math.min(1000000000, _repBefore + _repInc));
+    if (c.reputation !== _repBefore) deltas.push(`声望 ${c.reputation - _repBefore > 0 ? "+" : ""}${c.reputation - _repBefore}`);
+    this._spawnIntel(`${_ename}与历练者${result.win ? "斗法，为其所败" : "一战，历练者落败"}（声望${_repInc > 0 ? "+" : ""}${_repInc}）`);
     let flag = null;
     if (c.hp <= 0) {
       const ename = (this.state.meta && this.state.meta.lastCombat && this.state.meta.lastCombat.name) || "强敌";
@@ -4649,10 +4685,14 @@ const UI = {
   _renderAutonomySwitch(npc, idx) {
     const lvl = (typeof npc.autonomyLevel === "number") ? npc.autonomyLevel : 2;
     const labels = ["傀儡", "半醒", "自在"];
+    // 悬停提示：言明三态之别，玩家一眼读懂当前所拨何弦
+    const hints = ["傀儡：唯命是从，绝不为其所动（从不自驱）", "半醒：偶有顿悟，十中二三能自作主张（约20%自驱）", "自在：灵性渐开，十中其五自行其是（约50%自驱）"];
+    // 当前层级释义：直接标注行为，免去玩家猜测
+    const desc = ["绝不自驱，全凭你令", "偶自发而动（约20%）", "时常自驱（约50%）"];
     const btns = labels.map((lab, i) =>
-      `<button class="p2-asis-btn${i === lvl ? ' active' : ''}" onclick="UI.setCustomNpcAutonomy(${idx}, ${i})">${lab}</button>`
+      `<button class="p2-asis-btn${i === lvl ? ' active' : ''}" title="${hints[i]}" onclick="UI.setCustomNpcAutonomy(${idx}, ${i})">${lab}</button>`
     ).join("");
-    return `<div class="p2-asis-switch"><span class="p2-asis-label">自主拨弦</span><div class="p2-asis-btns">${btns}</div></div>`;
+    return `<div class="p2-asis-switch"><span class="p2-asis-label">自主拨弦</span><div class="p2-asis-btns">${btns}</div><span class="p2-asis-desc">${desc[lvl]}</span></div>`;
   },
 
   // 玩家拨动自定义 NPC 的自主程度（即时生效 + 落库 + 重渲染）
@@ -4666,6 +4706,10 @@ const UI = {
       if (n) n.autonomyLevel = level;
       Game.save();
       this.renderStatus();
+      // 移动端：左右面板隐藏，自治度变更须同步刷新底部抽屉，否则玩家调了却看不到变化
+      if (window.matchMedia && window.matchMedia("(max-width: 640px)").matches) {
+        this.renderMobileDrawer();
+      }
     } catch (e) {}
   },
 
@@ -4870,7 +4914,14 @@ const UI = {
 
     // 抽屉顶部：主角立绘（手机端"呼出状态栏才看到人物形象"）
     const heroHtml = `<div class="mdrawer-hero">${this._heroPortrait()}</div>`;
-    body.innerHTML = heroHtml + progressHtml + npcHtml + factionHtml + woundHtml + skillHtml + invHtml + worldHtml;
+    // P2 · 江湖志业 / 天机盘 / 因果簿（移动端补齐：窄屏下左右面板隐藏，自治度须在此可调）
+    const p2Status = this._renderP2Status().replace('<hr class="divider">', '').replace(/<div class="npc-title">[^<]*<\/div>/, '');
+    const p2Right = this._renderP2Right();
+    const p2Html = (p2Status || p2Right)
+      ? `<div class="mdrawer-section"><div class="mdrawer-section-title">江湖志业 · 天机盘</div>${p2Status}${p2Right}</div>`
+      : '';
+
+    body.innerHTML = heroHtml + progressHtml + npcHtml + factionHtml + p2Html + woundHtml + skillHtml + invHtml + worldHtml;
   },
 
   // 切换底部抽屉
