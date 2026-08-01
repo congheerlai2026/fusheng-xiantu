@@ -525,6 +525,7 @@ const WorldGen = {
         territory: [],           // 控制疆域（macro 名数组）
         agenda: (typeof FACTION_AGENDAS !== "undefined") ? pick(FACTION_AGENDAS) : "守成待变",
         agendaProgress: ri(0, 30),
+        eraGen: 1,              // 剑来式：本宗已历 X 代（掌教在位动辄数百载，代际慢转）
         commerce: (dao === "shang") || /丹|商|市|盟|阁/.test(nm), // 市廛/丹盟类：其名下坊市会因你的恶名限售抬价（P1-C 经济回响）
         relations: {},           // 运行时填充：{ 其他势力名: -100..100 }
       });
