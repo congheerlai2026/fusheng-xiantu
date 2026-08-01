@@ -104,6 +104,8 @@ ${JSON.stringify((() => { const w = Object.assign({}, state.world); delete w.gen
 【本界天地 · 此界天地已锁定，务必遵循其设定，剧情须贴合同一方世界，不可随意切换世界背景】
 ${this.buildWorldBlock(state)}
 ${this.buildFactionStateBlock(state)}
+${this.buildEconomyBlock(state)}
+${this.buildEventChainBlock(state)}
 
 【当前地点 · 感官简报 · 须融于描写】
 ${this.buildLocationBrief(state)}
@@ -667,7 +669,41 @@ ${this.buildVarietyBlock(state)}
       lines.push("· 近来江湖生变（闭关/远游归来须以此写变迁）：");
       w.lastWorldShift.slice(-6).forEach(s => lines.push("  - " + s));
     }
+    // 同盟 / 交战关系（pairKey 为 "A|B" 排序键）
+    const ap = w.alliancePairs || [], wp = w.warPairs || [];
+    if (ap.length || wp.length) {
+      lines.push("· 势力关系（须让相关门人言行贴合恩怨）：");
+      ap.forEach(pk => { const p = pk.split("|"); lines.push(`  - 同道同盟：${p[0]} 与 ${p[1]}`); });
+      wp.forEach(pk => { const p = pk.split("|"); lines.push(`  - 兵戎相向：${p[0]} 与 ${p[1]}`); });
+    }
     return lines.join("\n");
+  },
+
+  // 经济层注入：仅列 trend 非 flat 的商品（行情平稳则省略/提示）
+  buildEconomyBlock(state) {
+    const w = (state && state.world) || {};
+    const eco = w.economy;
+    if (!eco || !Object.keys(eco).length) return "";
+    const names = Object.keys(eco).filter(n => eco[n].trend && eco[n].trend !== "flat");
+    if (!names.length) return "【坊间行情】平稳";
+    const arrow = { up: "↑", down: "↓" };
+    const txt = names.map(n => `${n}${arrow[eco[n].trend]}`).join("、");
+    return "【坊间行情】" + txt;
+  },
+
+  // 事件链层注入：列出当前活跃大事件
+  buildEventChainBlock(state) {
+    const w = (state && state.world) || {};
+    const evs = (w.events || []).filter(e => e && e.active);
+    if (!evs.length) return "";
+    const parts = evs.map(e => {
+      const dayN = (w.day && e.day0) ? (w.day - e.day0 + 1) : 1;
+      let extra = "";
+      if (e.type === "战乱") extra = "（战乱之地物价飞涨、流民四起）";
+      else if (e.type === "天灾") extra = "（灵脉凝滞、粮草腾贵）";
+      return `${e.name}（已持续${dayN}日${extra}）`;
+    });
+    return "【天地异变】当前大事件：" + parts.join("；");
   },
 
   // 将地点名解析为所属 macro 域（供情报网定位）
