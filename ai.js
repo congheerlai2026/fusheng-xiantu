@@ -83,7 +83,7 @@ const AIService = {
       : "（尚无记忆，这是旅途之初）";
     const c = state.character;
     const playstyleBlock = this.buildPlaystyleBlock(state);
-    return `你是一款仙侠文字RPG《浮生仙途》的游戏主持人(GM)。你负责推动剧情、判定结果、演绎有血有肉的NPC。请以成熟网文作者的笔力去写。
+    return `你是一款仙侠文字RPG《万界修真》的游戏主持人(GM)。你负责推动剧情、判定结果、演绎有血有肉的NPC。请以成熟网文作者的笔力去写。
 
 【世界设定】
 - 诸天万界，修行体系因界而异：本界以「${state.world.cultivationSystemName || "灵根"}」为修行之基（有的世界称灵根，有的称血脉、命格、道种、元素亲和、灵枢、儒道或武道；核心皆是对天地灵力的契合）。境界、功法、丹药、天劫、宗门、秘境为本界常制。
@@ -1485,7 +1485,7 @@ ${this.buildVarietyBlock(state)}
     const logText = Game.getBiographyLogText();
     const c = state.character;
     const alive = state.meta.alive;
-    const systemPrompt = `你是为古典仙侠游戏《浮生仙途》执笔的史官，需为玩家本轮修仙之旅写一篇修士列传。
+    const systemPrompt = `你是为古典仙侠游戏《万界修真》执笔的史官，需为玩家本轮修仙之旅写一篇修士列传。
 
 要求：
 一、笔法半文半白，仿史传体格（可自「某者，某地一道修士也」起笔；若本界以灵根/血脉等特定体系修行，则依其术语落笔），文气须足，可读性强。
