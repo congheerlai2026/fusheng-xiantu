@@ -52,8 +52,8 @@ const Game = {
     const FORM = (typeof FORMS !== "undefined" && FORMS[formKey]) ? FORMS[formKey] : (FORMS ? FORMS.human : null);
     const formRealm0 = (FORM && FORM.realms && FORM.realms[0]) ? FORM.realms[0] : realm0.name;
 
-    // 由世界种子确定性生成此界天地（许愿可轻度偏置风土）
-    const gen = WorldGen.generateWorld(seed, opts.wish);
+    // 由世界种子确定性生成此界天地（许愿可轻度偏置风土；P2 自定义 NPC/道心自述一并传入）
+    const gen = WorldGen.generateWorld(seed, opts.wish, opts);
 
     // 本界修炼体系（诸天万界各有其"方言"）：灵根/血脉/命格/道种/元素亲和/灵枢……
     const cultSystem = (typeof CULTIVATION_SYSTEMS !== "undefined" && CULTIVATION_SYSTEMS.find)
@@ -135,6 +135,8 @@ const Game = {
         pills: [],
         // 灵宠
         pet: null,
+        // 伤势（P1-C 真实伤病学下沉·仙侠两层）：肉身层（外伤/真元伤/毒伤）+ 道途层（神魂伤/灵脉滞/道基损/业障缠/劫数伤），各须对症、延误则恶化
+        wounds: [],
         // 金手指 / 系统：玩家觉醒或声明的外挂（天道面板、命格任务、签到仙缘等）。
         // 关键：这是【永久属性】，始终随 character 进入系统提示词，绝不依赖易失的 memory 滑窗，
         // 因此 AI 不会像忘记剧情记忆那样忘记玩家的系统。
@@ -156,11 +158,24 @@ const Game = {
         cultivationSystemName: cultivationSystemName,
         wish: gen.wish || null,
         gen: gen,                // 本界天地（确定性生成，随存档保存）
+        // —— P1-A/B 世界时钟 + 江湖情报网 ——
+        intel: [],            // 江湖情报网：玩家言行所化传闻库（依地缘逐域传播）
+        lastWorldShift: [],   // 最近的世界演化事件（供 AI 叙事"物是人非"）
+        factionTick: 0,       // 世界时钟累计推进天数
+        alliancePairs: [],    // 当前同盟对（"A|B" 排序键）
+        warPairs: [],         // 当前交战对（"A|B" 排序键）
+        // —— P2 · NPC 自驱议程 + 自定义 NPC 自主性 + 神识串供/因果把柄 ——
+        npcLedger: [],        // 因果把柄簿：NPC 记下的玩家言行（可作日后把柄/宗门公审之证）
+        npcGossip: [],        // NPC 间闲话/情报：玩家事迹依地缘逐 NPC 传播，NPC 据此串供识破
+        fixedLaws: gen.fixedLaws || { oath: null, hardFacts: [], passiveSkills: [] },  // 道心硬律：玩家所立不可改写之天地常法
       },
       // 各 NPC 好感度：以人物名为键；开局不预填，仅在剧情中真正结识的人物才入表（met:true）
       npcs: {},
       // 各 NPC 独立记忆：随剧情累积其见闻与标记，每回合注入 AI 提示词，使其"不忘设定、随剧情成长"
       npcMemory: {},
+      // 活名声：按"势力"分维的名望（江湖情报网据此让各派及相关 NPC 远近亲疏）
+      repByFaction: {},
+      customNPCs: (gen.customNPCs || []).slice(),  // 玩家自定义 NPC 之名册（P2·自定义 NPC 自主性）
       narrationMode: narrationMode || "standard",  // 叙事节奏档位：short / standard / immersive
       meta: {
         createdAt: Date.now(),
@@ -170,6 +185,8 @@ const Game = {
       pacing: { calmStreak: 0, peakStreak: 0 },
       mainPlot: mainPlot,
         threads: [],
+        // 道心 / 道理体系（剑来式内核）：玩家以言行所立 / 所趋之"道"
+        dao: { chosen: null, leanings: {} },
       },
       memory: [],
       biography: null,
@@ -190,6 +207,11 @@ const Game = {
         };
       }
     });
+
+    // P2-A 道心硬律：将玩家本命功法锁为"不可失之被动"（呼应刀锋"专属本领不退化"），写入 fixedLaws
+    if (gen.fixedLaws && Array.isArray(gen.fixedLaws.passiveSkills)) {
+      gen.fixedLaws.passiveSkills = (this.state.character.techniques || []).slice();
+    }
 
     this.history = [];
     this.log = [];
@@ -420,8 +442,9 @@ const Game = {
       const v = c.realmProgress - before;
       if (c.realmProgress >= 100) {
         const bf = this.handleBreakthrough();
-        if (bf === "max_realm") deltas.push("已臻至境，更进无门");
-        else deltas.push(bf === "breakthrough_success" ? "突破成功！境界提升" : "突破失败，反噬重伤");
+        if (bf === "max_realm") { deltas.push("已臻至境，更进无门"); return { flag: bf, deltas }; }
+        if (bf === "wound_blocked") { deltas.push("重伤未愈，强行冲关只会走火入魔——先疗伤要紧"); return { flag: "ok", deltas }; }
+        deltas.push(bf === "breakthrough_success" ? "突破成功！境界提升" : "突破失败，反噬重伤");
         return { flag: bf, deltas };
       }
       if (v !== 0) deltas.push(`突破进度 ${v > 0 ? "+" : ""}${v}`);
@@ -433,8 +456,9 @@ const Game = {
       c.realmProgress = clamp(c.realmProgress + baseline, 0, 100);
       if (c.realmProgress >= 100) {
         const bf = this.handleBreakthrough();
-        if (bf === "max_realm") deltas.push("已臻至境，更进无门");
-        else deltas.push(bf === "breakthrough_success" ? "突破成功！境界提升" : "突破失败，反噬重伤");
+        if (bf === "max_realm") { deltas.push("已臻至境，更进无门"); return { flag: bf, deltas }; }
+        if (bf === "wound_blocked") { deltas.push("重伤未愈，强行冲关只会走火入魔——先疗伤要紧"); return { flag: "ok", deltas }; }
+        deltas.push(bf === "breakthrough_success" ? "突破成功！境界提升" : "突破失败，反噬重伤");
         return { flag: bf, deltas };
       }
     }
@@ -449,6 +473,119 @@ const Game = {
       c.reputation = Math.max(-1000000, Math.min(1000000000, before + inc));
       const v = c.reputation - before;
       if (v !== 0) deltas.push(`声望 ${v > 0 ? "+" : ""}${v}`);
+      // 显赫声名/恶名会化作江湖传闻，依地缘传播（P1-B）
+      if (Math.abs(inc) >= 6) {
+        const nm = (this.state.character && this.state.character.name) || "一名修士";
+        const tone = inc > 0 ? "义名渐起" : "恶名昭彰";
+        this._spawnIntel(`${nm}之名传遍一方——${tone}（声望${v > 0 ? "+" : ""}${v}）`);
+      }
+    }
+    // —— P1-B 活名声：按势力分维的名望增减（江湖情报网据此让各派远近亲疏）——
+    if (ch.faction_reputation_change !== undefined) {
+      const fr = ch.faction_reputation_change;
+      const arr = Array.isArray(fr) ? fr : [fr];
+      arr.forEach(e => {
+        if (!e || !e.faction) return;
+        const inc = Math.max(-100000, Math.min(100000, Number(e.delta) || 0));
+        const cur = (this.state.repByFaction[e.faction] || 0);
+        const nv = cur + inc;
+        this.state.repByFaction[e.faction] = nv;
+        if (inc !== 0) deltas.push(`对${e.faction}名望 ${inc > 0 ? "+" : ""}${inc}`);
+      });
+    }
+    // —— P1-B 江湖情报网：显赫言行化作传闻（依地缘逐域传播）——
+    if (ch.intel !== undefined) {
+      const list = Array.isArray(ch.intel) ? ch.intel : [ch.intel];
+      list.forEach(t => {
+        if (!t || typeof t !== "string" || !t.trim()) return;
+        const tx = t.trim();
+        this._spawnIntel(tx);
+        this._spawnNpcGossip(tx); // NPC 间亦会传闲话、串供识破（P2·神识串供）
+      });
+    }
+    // —— P2·神识串供/因果把柄：NPC 记下的玩家言行（可作日后把柄/宗门公审之证）——
+    if (ch.npc_gossip !== undefined) {
+      const list = Array.isArray(ch.npc_gossip) ? ch.npc_gossip : [ch.npc_gossip];
+      list.forEach(t => {
+        if (!t || typeof t !== "string" || !t.trim()) return;
+        this._spawnNpcGossip(t.trim());
+      });
+    }
+    // —— P2·NPC 自驱行动记录（NPC 凭自身志业在世界时钟中主动作为，非仅回应玩家）——
+    if (ch.npc_agenda !== undefined) {
+      const list = Array.isArray(ch.npc_agenda) ? ch.npc_agenda : [ch.npc_agenda];
+      list.forEach(t => {
+        if (!t || typeof t !== "string" || !t.trim()) return;
+        const w = this.state.world;
+        if (!Array.isArray(w.npcLedger)) w.npcLedger = [];
+        w.npcLedger.push({ fact: t.trim(), byNpc: null, day: (w.day || 1), macro: this._locationMacro(this.state.world.location) });
+        if (w.npcLedger.length > 200) w.npcLedger = w.npcLedger.slice(-200);
+      });
+    }
+    // —— P2·玩家自定义 NPC（立其出身，引擎赋其志业/性格，行为结局不可控）——
+    if (ch.npc_spawn !== undefined) {
+      const list = Array.isArray(ch.npc_spawn) ? ch.npc_spawn : [ch.npc_spawn];
+      list.forEach(spec => {
+        if (!spec || !spec.name) return;
+        this._spawnCustomNpc(spec);
+      });
+    }
+    // —— P1-C 真实伤病学：伤有根由、须对症、误治恶化 ——
+    if (ch.wound !== undefined) {
+      const wlist = Array.isArray(ch.wound) ? ch.wound : [ch.wound];
+      wlist.forEach(e => {
+        if (!e) return;
+        const type = (typeof e === "string") ? e : (e.type || "");
+        const wt = (typeof WOUND_TYPES !== "undefined") ? WOUND_TYPES[type] : null;
+        if (!wt) return; // 仅接受已知伤型
+        // 道途层创伤须达相应境界；未达则降格为低层伤（仙侠"世界随境界变大"）
+        let effType = type;
+        if (wt.minRealm != null && c.realmLevel < wt.minRealm) {
+          const fb = (typeof WOUND_TIER_FALLBACK !== "undefined") ? WOUND_TIER_FALLBACK[type] : null;
+          if (fb) effType = fb;
+        }
+        const ewt = (typeof WOUND_TYPES !== "undefined") ? WOUND_TYPES[effType] : null;
+        if (!ewt) return;
+        const sev = (typeof e === "object" && e.severity != null) ? Math.max(1, Math.min(3, Number(e.severity) || 1)) : 1;
+        const existing = c.wounds.find(w => w.type === effType && w.healed < 100);
+        if (existing) {
+          existing.severity = Math.min(3, existing.severity + (sev - 1));
+          if (typeof e === "object" && e.source) existing.source = e.source;
+        } else {
+          c.wounds.push({ type: effType, severity: sev, healed: 0, source: (typeof e === "object" && e.source) || "未知", treated: false, worsened: false });
+        }
+        deltas.push(`受${effType}${sev >= 3 ? "（重）" : (sev === 2 ? "（中）" : "（轻）")}`);
+      });
+    }
+    if (ch.heal !== undefined) {
+      const hlist = Array.isArray(ch.heal) ? ch.heal : [ch.heal];
+      hlist.forEach(e => {
+        if (!e) return;
+        const type = (typeof e === "string") ? e : (e.type || "");
+        const idx = c.wounds.findIndex(w => w.type === type && w.healed < 100);
+        if (idx < 0) return; // 无对应伤而施术：或预防、或对症有误，不强行生效
+        const w = c.wounds[idx];
+        const wt = (typeof WOUND_TYPES !== "undefined") ? WOUND_TYPES[type] : null;
+        // 须对症：method 含该伤 remedyKinds 之一方速愈；误投（如业障缠投丹药）则收效甚微，重伤者反受其累
+        const method = (typeof e === "object" && e.method) ? e.method : null;
+        let rate;
+        if (method && wt && wt.remedyKinds && !wt.remedyKinds.some(k => method.indexOf(k) >= 0)) {
+          rate = Math.round((wt.healPerDay || 20) * 0.2);
+          if (w.severity >= 2) w.worsened = true;
+          deltas.push(`疗${type}之法不对症，收效甚微（+${rate}%）`);
+        } else {
+          rate = (wt ? wt.healPerDay : 25) + Math.round((c.constitution - 1) * 8);
+          w.treated = true;
+          w.worsened = false;
+          if (w.healed + rate >= 100) {
+            c.wounds.splice(idx, 1);
+            deltas.push(`伤势痊愈：已愈${type}`);
+          } else {
+            deltas.push(`疗${type}有方（+${rate}%，余${100 - Math.min(100, w.healed + rate)}%）`);
+          }
+        }
+        w.healed = Math.min(100, w.healed + rate);
+      });
     }
     if (ch.lifespan_change !== undefined) {
       const inc = Math.max(-100000, Math.min(100000, Number(ch.lifespan_change) || 0));
@@ -471,8 +608,10 @@ const Game = {
       if (this.currentScreen === "map") this.renderWorldMap(); // 地图打开时实时更新当前位置
     }
     if (ch.day_change !== undefined && typeof ch.day_change === "number" && ch.day_change !== 0) {
-      w.day = (w.day || 1) + ch.day_change;
-      deltas.push(`时间推进 ${ch.day_change > 0 ? "+" : ""}${ch.day_change} 日`);
+      const dc = ch.day_change;
+      const shift = this.advanceWorld(dc);
+      deltas.push(`时间推进 ${dc > 0 ? "+" : ""}${dc} 日`);
+      if (shift && shift.length) deltas.push(`· 江湖生变：${shift[shift.length - 1]}`);
     }
     if (ch.time_of_day_change !== undefined && ch.time_of_day_change !== w.timeOfDay) {
       w.timeOfDay = ch.time_of_day_change;
@@ -521,6 +660,30 @@ const Game = {
         this.state.meta.karmaLog.push({ turn: this.state.meta.playTurn, kind, cred, debt });
         if (this.state.meta.karmaLog.length > 40) this.state.meta.karmaLog.shift();
       }
+    }
+    // 道心 / 道理体系（剑来式内核）：累积玩家所趋向 / 所立之"道"
+    if (!this.state.meta.dao) this.state.meta.dao = { chosen: null, leanings: {} };
+    if (ch.dao_change) {
+      const daoArr = Array.isArray(ch.dao_change) ? ch.dao_change : [ch.dao_change];
+      daoArr.forEach(e => {
+        if (!e || typeof e !== "object") return;
+        let id = e.lean || null;
+        if (!id && e.leanName && typeof DAO_CREEDS !== "undefined") {
+          const f = DAO_CREEDS.find(d => d.name === e.leanName || d.id === e.leanName);
+          if (f) id = f.id;
+        }
+        if (id) {
+          this.state.meta.dao.leanings[id] = (this.state.meta.dao.leanings[id] || 0) + (Number(e.delta) || 0);
+        }
+        if (e.chosen) {
+          let cid = e.chosen;
+          if (typeof DAO_CREEDS !== "undefined") {
+            const f = DAO_CREEDS.find(d => d.name === e.chosen || d.id === e.chosen);
+            if (f) cid = f.id;
+          }
+          this.state.meta.dao.chosen = cid;
+        }
+      });
     }
     // NPC 好感度变更：支持对象 {名字: 增减} 或数组 [{name, change}]
     const npcChanges = ch.npc_affinity_change;
@@ -734,8 +897,439 @@ const Game = {
       });
     }
 
+    // P2-A 道心硬律：落库前确保本命功法（不可失被动）始终锁回，不被剧情/AI 覆盖
+    this._validateConsistency();
     this.save();
     return { flag: ch.event_flag || null, deltas };
+  },
+
+  // ============ P1-A/B 世界时钟 + 势力 AI + 江湖情报网 ============
+  // 确定性 RNG（自包含，不依赖外部 hashSeed，便于沙箱/浏览器复用）
+  _rng(seedStr) {
+    let h = 2166136261 >>> 0;
+    const s = String(seedStr);
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    let a = h >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  },
+
+  // 将地点名（地域或子地点）解析为其所属 macro 域
+  _locationMacro(loc) {
+    const gen = this.state && this.state.world && this.state.world.gen;
+    if (!gen || !loc) return null;
+    const sub = (gen.sublocations || []).find(s => s.name === loc);
+    if (sub) return sub.macro;
+    const reg = (gen.regions || []).find(r => r.name === loc);
+    if (reg) return reg.macro;
+    return null;
+  },
+
+  // 世界时钟：推进 days 日，期间诸派自行演化、传闻逐域传播。返回本段演化事件日志。
+  advanceWorld(days) {
+    const w = this.state.world;
+    const gen = w && w.gen;
+    const log = [];
+    const d = Math.max(0, Math.floor(Number(days) || 0));
+    if (!gen || !gen.factions) {
+      w.day = (w.day || 1) + d;
+      w.factionTick = (w.factionTick || 0) + d;
+      return log;
+    }
+    if (!Array.isArray(w.alliancePairs)) w.alliancePairs = [];
+    if (!Array.isArray(w.warPairs)) w.warPairs = [];
+    const startDay = (w.day || 1);
+    for (let i = 1; i <= d; i++) {
+      const day = startDay + i - 1;
+      this._evolveFactions(day, log);
+      this._propagateIntel(day);
+      this._evolveNPCs(day, log);        // P2：NPC 凭自身志业在世界时钟中自驱行动
+      this._propagateNpcGossip(day);      // P2：NPC 闲话依地缘逐域传播，串供识破
+      this._tickWounds(day, log); // 伤势随光阴流转：对症/静养则渐愈，延误重伤则恶化
+    }
+    w.day = startDay + d;
+    w.factionTick = (w.factionTick || 0) + d;
+    w.lastWorldShift = (w.lastWorldShift || []).concat(log).slice(-14);
+    return log;
+  },
+
+  // 势力演化：资源消长、目标推进、结盟/开战、态势变迁（确定性，按日播种）
+  _evolveFactions(day, log) {
+    const gen = this.state.world.gen;
+    const fs = gen.factions;
+    const label = { rising: "崛起", stable: "守成", declining: "式微", war: "交战" };
+    // 1) 每派资源与当前目标进度；目标达成则拓疆或丰收，并另立新标
+    fs.forEach(f => {
+      const r = this._rng(f.name + "|ev|" + day);
+      f.resources = Math.max(0, Math.min(100, (f.resources || 50) + Math.round(r() * 10 - 5)));
+      f.agendaProgress = Math.max(0, Math.min(100, (f.agendaProgress || 0) + Math.round(r() * 8 + 2)));
+      if (f.agendaProgress >= 100) {
+        const macs = (typeof MACRO_ADJACENCY !== "undefined") ? MACRO_ADJACENCY : {};
+        const held = f.territory || [];
+        const base = f.baseMacro || held[0] || null;
+        const cands = (macs[base] || []).filter(m => held.indexOf(m) < 0);
+        if (cands.length) {
+          const t = cands[Math.floor(r() * cands.length)];
+          f.territory = held.concat([t]);
+          f.resources = Math.max(0, f.resources - 10);
+          log.push(`· ${f.name}势盛，道场已拓展至【${t}】`);
+        } else {
+          f.resources = Math.min(100, f.resources + 15);
+          log.push(`· ${f.name}根基稳固，声威渐隆`);
+        }
+        f.agendaProgress = 0;
+        if (typeof FACTION_AGENDAS !== "undefined") f.agenda = FACTION_AGENDAS[Math.floor(r() * FACTION_AGENDAS.length)];
+      }
+    });
+    // 2) 关系随道心亲疏漂移 + 噪声
+    const byId = {}; if (typeof DAO_CREEDS !== "undefined") DAO_CREEDS.forEach(d => { byId[d.id] = d; });
+    for (let i = 0; i < fs.length; i++) {
+      for (let j = 0; j < fs.length; j++) {
+        if (i === j) continue;
+        const a = fs[i], b = fs[j];
+        if (!a.relations) a.relations = {};
+        let rel = (typeof a.relations[b.name] === "number") ? a.relations[b.name] : 0;
+        const r = this._rng(a.name + "|" + b.name + "|rel|" + day);
+        let drift = (r() * 4 - 2);
+        if (a.dao && b.dao) {
+          if (a.dao === b.dao) drift += 1.2;
+          else if (byId[a.dao] && byId[a.dao].opposed && byId[a.dao].opposed.indexOf(b.dao) >= 0) drift -= 1.5;
+        }
+        a.relations[b.name] = Math.round(Math.max(-100, Math.min(100, rel + drift)));
+      }
+    }
+    // 3) 由资源/关系推导态势，并侦测结盟/开战转变
+    const w = this.state.world;
+    fs.forEach(f => {
+      let atWar = false;
+      Object.keys(f.relations || {}).forEach(o => { if (f.relations[o] <= -60) atWar = true; });
+      const s = atWar ? "war" : (f.resources >= 72 ? "rising" : (f.resources <= 20 ? "declining" : "stable"));
+      if (s !== f.status) { log.push(`· ${f.name}由「${label[f.status] || "守成"}」转为「${label[s]}」`); f.status = s; }
+    });
+    const newAllies = [], newWars = [];
+    for (let i = 0; i < fs.length; i++) {
+      for (let j = 0; j < fs.length; j++) {
+        if (i >= j) continue;
+        const a = fs[i], b = fs[j];
+        const relA = (a.relations && typeof a.relations[b.name] === "number") ? a.relations[b.name] : 0;
+        const relB = (b.relations && typeof b.relations[a.name] === "number") ? b.relations[a.name] : 0;
+        const pairKey = [a.name, b.name].sort().join("|");
+        const allied = (relA >= 70 && relB >= 70);
+        let idx = w.alliancePairs.indexOf(pairKey);
+        if (allied && idx < 0) { w.alliancePairs.push(pairKey); newAllies.push(`${a.name}与${b.name}`); }
+        else if (!allied && idx >= 0) { w.alliancePairs.splice(idx, 1); }
+        const warred = (relA <= -60 && relB <= -60);
+        idx = w.warPairs.indexOf(pairKey);
+        if (warred && idx < 0) { w.warPairs.push(pairKey); newWars.push(`${a.name}与${b.name}`); }
+        else if (!warred && idx >= 0) { w.warPairs.splice(idx, 1); }
+      }
+    }
+    newAllies.forEach(p => log.push(`· ${p}结为同道同盟`));
+    newWars.forEach(p => log.push(`· ${p}反目成仇，兵戎相见`));
+  },
+
+  // 传闻随地缘逐域传播（每日向相邻 macro 扩散一格）
+  _propagateIntel(day) {
+    const w = this.state.world;
+    const list = w.intel || [];
+    const macs = (typeof MACRO_ADJACENCY !== "undefined") ? MACRO_ADJACENCY : {};
+    const allMacs = Object.keys(macs);
+    list.forEach(e => {
+      if (e.spreadComplete) return;
+      const reached = Object.keys(e.spread || {});
+      const origin = e.origin;
+      let cands = (macs[origin] || []).filter(m => reached.indexOf(m) < 0);
+      if (!cands.length) {
+        const rest = allMacs.filter(m => reached.indexOf(m) < 0 && m !== origin);
+        if (!rest.length) { e.spreadComplete = true; return; }
+        cands = rest;
+      }
+      const pick = cands[Math.floor(this._rng(e.id + "|sp|" + day)() * cands.length)];
+      e.spread[pick] = day;
+      if (Object.keys(e.spread).length >= allMacs.length) e.spreadComplete = true;
+    });
+  },
+
+  // 生成一则江湖传闻（起点为当前地点所属 macro）
+  _spawnIntel(text) {
+    const w = this.state.world;
+    if (!w.intel) w.intel = [];
+    const macro = this._locationMacro(w.location) || "中州";
+    const id = "intel-" + (w.day || 1) + "-" + w.intel.length + "-" + Math.floor(Math.random() * 1e6);
+    w.intel.push({
+      id, day: w.day || 1, origin: macro, type: "deed", text,
+      weight: 1, spread: { [macro]: (w.day || 1) }, spreadComplete: false, verified: true,
+    });
+    if (w.intel.length > 200) w.intel = w.intel.slice(-200);
+  },
+
+  // ===================== P2 · NPC 自驱议程 + 自定义 NPC 自主性 + 神识串供 =====================
+
+  // 当前所在 macro 域（供 NPC 闲话定位）
+  _curMacro() {
+    const w = this.state.world; if (!w) return null;
+    return this._locationMacro(w.location);
+  },
+
+  // NPC 间闲话/情报：玩家事迹化作 NPC  gossip，依地缘逐 NPC 传播（NPC 据此串供、识破布局）
+  _spawnNpcGossip(text) {
+    const w = this.state.world;
+    if (!w) return;
+    if (!Array.isArray(w.npcGossip)) w.npcGossip = [];
+    const macro = this._curMacro();
+    w.npcGossip.push({ text, about: "player", origin: macro, spread: macro ? { [macro]: (w.day || 1) } : {}, day: (w.day || 1) });
+    if (w.npcGossip.length > 200) w.npcGossip = w.npcGossip.slice(-200);
+  },
+
+  // 玩家自定义 NPC（P2·自定义 NPC 自主性）：立其出身，引擎赋其志业/性格，行为结局不可控
+  _spawnCustomNpc(spec) {
+    const gen = this.state.world.gen; if (!gen) return;
+    if (!Array.isArray(gen.npcs)) gen.npcs = [];
+    const nm = String(spec.name).slice(0, 12);
+    const g = (spec.gender === "m" || spec.gender === "f") ? spec.gender : "scholar";
+    const npc = {
+      name: nm, title: spec.title || "异客", trait: spec.trait || "神秘", gender: g, arche: "scholar",
+      where: (this.state.world.location || (gen.regions && gen.regions[0] && gen.regions[0].name) || "未知"),
+      portraitSeed: (nm.split("").reduce((a, c) => ((a * 31 + c.charCodeAt(0)) >>> 0), 7)),
+      appearance: spec.appearance || "来历成谜，眉眼间藏着不为人知的故事",
+      zhiye: spec.zhiye || "行走世间，寻觅自身之道",
+      xingge: spec.xingge || "隐忍",
+      yinguo: spec.yinguo || "未知之因",
+      autonomy: true,
+      // 自主拨弦：0=傀儡(唯命是从) 1=半醒(偶违己意) 2=自在(全凭己志)
+      autonomyLevel: (typeof spec.autonomyLevel === "number") ? spec.autonomyLevel : 2,
+      customOrigin: spec.origin || "身世成谜，无人知晓其来处",
+      agendaProgress: 0, status: "行走", lastSeenDay: this.state.world.day || 1,
+      profile: { backstory: `${nm}：${spec.origin || "身世成谜"}。`, goal: spec.zhiye || "行走世间", bond: "与历练者渊源未明" },
+    };
+    gen.npcs.push(npc);
+    if (!this.state.npcMemory[nm]) {
+      this.state.npcMemory[nm] = { profile: npc.profile, arche: npc.arche, gender: npc.gender, title: npc.title, trait: npc.trait, where: npc.where, notes: [], flags: {}, relations: {} };
+    }
+    if (!Array.isArray(this.state.customNPCs)) this.state.customNPCs = [];
+    if (this.state.customNPCs.indexOf(nm) < 0) this.state.customNPCs.push(nm);
+  },
+
+  // NPC 自驱议程：每个有自主性的 NPC 凭自身志业/性格在世界时钟中推进，结果可背离玩家预期
+  _evolveNPCs(day, log) {
+    const gen = this.state.world.gen; if (!gen || !Array.isArray(gen.npcs)) return;
+    gen.npcs.forEach(n => {
+      if (!n.autonomy || n.status === "陨落") return;
+      const r = this._rng(n.name + "|npc|" + day);
+      n.agendaProgress = Math.max(0, Math.min(100, (n.agendaProgress || 0) + Math.round(r() * 10 + 2)));
+      n.lastSeenDay = day;
+      // 依性格，部分 NPC 会主动游走（自驱议程的空间表现）
+      if (r() < 0.18 && gen.regions && gen.regions.length) {
+        n.where = gen.regions[Math.floor(r() * gen.regions.length)].name;
+      }
+      if (n.agendaProgress >= 100) {
+        n.agendaProgress = 0;
+        let ev = `${n.name}（志业·${n.zhiye}）已有所成`;
+        if (/报仇|债|仇/.test(n.zhiye + n.yinguo)) ev = `${n.name}循${n.yinguo}之因，暗中了结一桩旧怨`;
+        else if (/证道|飞升|参悟|问道/.test(n.zhiye)) ev = `${n.name}于修行上精进一层，道行愈深`;
+        else if (/守护|庇护|护道/.test(n.zhiye)) ev = `${n.name}庇佑的一方得以安泰，声名渐起`;
+        else if (/争雄|重振|天下/.test(n.zhiye)) ev = `${n.name}势力暗长，渐有问鼎之姿`;
+        else ev = `${n.name}依${n.xingge}之性，行了一桩只属自己的事`;
+        const reg = (gen.regions || []).find(x => x.name === n.where);
+        if (reg) ev += `（发生于${reg.macro}）`;
+        log.push(ev);
+        if (r() < 0.25) n.status = (n.status === "行走") ? "潜修" : "行走";
+      }
+    });
+  },
+
+  // NPC 闲话逐域传播：每日向一邻域扩散，最终六域皆知——玩家骗一个 NPC，会被一群串供识破
+  _propagateNpcGossip(day) {
+    const w = this.state.world; if (!w || !Array.isArray(w.npcGossip)) return;
+    const macs = (typeof MACRO_ADJACENCY !== "undefined") ? MACRO_ADJACENCY : {};
+    w.npcGossip.forEach(g => {
+      if (!g.spread || typeof g.spread !== "object") g.spread = {};
+      const known = Object.keys(g.spread);
+      if (known.length >= 6) return;
+      const from = known[Math.floor(this._rng(g.text + "|sp|" + day)() * known.length)] || g.origin;
+      const neigh = (macs[from] || []).filter(m => !g.spread[m]);
+      if (neigh.length) {
+        const tgt = neigh[Math.floor(this._rng(g.text + "|sp2|" + day)() * neigh.length)];
+        g.spread[tgt] = day;
+      }
+    });
+  },
+
+  // ===================== P2 · NPC 自主演化调度器（每回合主动拨弦）=====================
+  // 玩家之外，世界亦在自行运转：每个回合开始时，同地域的自主 NPC 会按自身层级概率自发行动，
+  // 写入 gossip / ledger / 位置 / 态度，并汇总成「世界动态」供下一轮 AI 叙事反映。
+  // 设计约束（数据一致性保障）：
+  //  - autonomyLevel 0(傀儡) 绝对不触发；
+  //  - 流言传播带上限(最多 6 域) 与去重，避免无限循环；
+  //  - NPC 仅移动到玩家可达的区域/子地点，不会瞬移至不可达处。
+
+  // 解析地点名对应的"地域"：子地点取其父地域（region），地域则直接用。用于匹配同框 NPC。
+  _regionOf(loc) {
+    const gen = this.state && this.state.world && this.state.world.gen;
+    if (!loc || !gen) return null;
+    const sub = (gen.sublocations || []).find(s => s.name === loc);
+    if (sub) return sub.region;
+    const reg = (gen.regions || []).find(r => r.name === loc);
+    if (reg) return reg.name;
+    return null;
+  },
+
+  // 主调度：遍历同地域在场自主 NPC，按层级概率触发行为，返回「NPC 自主行为摘要」字符串数组
+  _tickNPCAutonomy() {
+    const w = this.state.world;
+    const gen = w && w.gen;
+    if (!gen || !Array.isArray(gen.npcs)) return [];
+    const summaries = [];
+    const loc = w.location || "";
+    const curRegion = this._regionOf(loc);            // 玩家所在地域（兼容子地点）
+    if (!curRegion) return [];
+    const day = (w.day || 1);
+    const turn = (this.state.meta && this.state.meta.playTurn) || 0;
+    const macro = this._locationMacro(loc) || this._locationMacro(curRegion) || null;
+
+    gen.npcs.forEach(n => {
+      if (!n || !n.autonomy) return;                  // 无自主性者永不自驱
+      if (n.status === "陨落") return;                // 已殒落者不再行动
+      const lvl = (typeof n.autonomyLevel === "number") ? n.autonomyLevel : 2;
+      if (lvl <= 0) return;                           // 0=傀儡 绝不触发
+      if (n.where !== curRegion) return;              // 仅同地域在场 NPC 才拨弦
+      // 触发概率：半醒(1) 20% / 自在(2) 50%
+      const p = (lvl === 1) ? 0.20 : 0.50;
+      const r = this._rng(n.name + "|tick|" + day + "|" + turn);
+      if (r() >= p) return;
+      // 随机挑选一种自主行为：0 流言传播 / 1 主动行动 / 2 事件生成
+      const behavior = Math.floor(r() * 3);
+      const s = (behavior === 0) ? this._npcTickGossip(n, macro, day)
+                : (behavior === 1) ? this._npcTickAct(n, day)
+                : this._npcTickEvent(n, day);
+      if (s) summaries.push(s);
+    });
+    return summaries;
+  },
+
+  // 行为一·流言传播：把关于玩家的闲话扩散到新域，或凭自身志业生出新的传闻（已传满 6 域则止，去重防爆）
+  _npcTickGossip(n, macro, day) {
+    const w = this.state.world;
+    const r = this._rng(n.name + "|gossip|" + day + "|" + (this.state.meta.playTurn || 0));
+    if (!Array.isArray(w.npcGossip)) w.npcGossip = [];
+    const pool = w.npcGossip.filter(g => g.about === "player" && g.text);
+    // 60% 概率传播一条已有流言到相邻新域；否则凭自身志业生出一则新传闻
+    if (pool.length && r() < 0.6) {
+      const g = pool[Math.floor(r() * pool.length)];
+      if (g.spread && Object.keys(g.spread).length >= 6) return null; // 已传遍六域，避免无限循环
+      const macs = (typeof MACRO_ADJACENCY !== "undefined") ? MACRO_ADJACENCY : {};
+      const known = g.spread ? Object.keys(g.spread) : [];
+      const neigh = (macs[macro] || []).filter(m => known.indexOf(m) < 0);
+      const tgt = neigh.length ? neigh[Math.floor(r() * neigh.length)] : null;
+      if (!tgt) return null;
+      g.spread[tgt] = day;
+      return `【流言】${n.name}在${macro || "此界"}又提起关于你的闲话：「${g.text}」（已传到${tgt}）`;
+    }
+    // 生出一则新传闻并注入 gossip（去重：同文本已存在则不再写，防止重复堆积）
+    const tmpl = [
+      `${n.name}在${macro || "此界"}逢人便说你在${macro || "此界"}的行迹，言辞间颇有玩味`,
+      `${n.name}似乎对你（历练者）格外在意，已在${macro || "此界"}传开几分议论`,
+      `${n.name}以${n.xingge || "隐忍"}之性，在${macro || "此界"}留下了对你的一句评点`,
+    ];
+    const text = tmpl[Math.floor(r() * tmpl.length)];
+    if (w.npcGossip.some(g => g.text === text)) return null;
+    w.npcGossip.push({ text, about: "player", origin: macro, spread: macro ? { [macro]: day } : {}, day, byNpc: n.name });
+    if (w.npcGossip.length > 200) w.npcGossip = w.npcGossip.slice(-200);
+    return `【流言】${n.name}在${macro || "此界"}生出一则关于你的新传闻：「${text}」`;
+  },
+
+  // 行为二·主动行动：游走至同地域可达子地点，或凭性格改变对玩家态度（写入好感/账本）
+  _npcTickAct(n, day) {
+    const gen = this.state.world.gen;
+    const r = this._rng(n.name + "|act|" + day + "|" + (this.state.meta.playTurn || 0));
+    if (r() < 0.5) {
+      // 移动：优先同地域内一处可达子地点（玩家皆可抵达）；无子地点则换一地域
+      const subs = (gen.sublocations || []).filter(s => s.region === n.where);
+      let dest = null;
+      if (subs.length) dest = subs[Math.floor(r() * subs.length)].name;
+      else if (gen.regions && gen.regions.length) dest = gen.regions[Math.floor(r() * gen.regions.length)].name;
+      if (!dest || dest === n.where) return null;
+      const from = n.where;
+      n.where = dest;
+      n.lastSeenDay = day;
+      return `【行动】${n.name}离开了${from}，转往${dest}。`;
+    }
+    // 态度：凭性格对玩家好感浮动（写入好感表，影响日后互动），并记一笔账本供因果追溯
+    if (!this.state.npcs) this.state.npcs = {};
+    const rec = this.state.npcs[n.name] || (this.state.npcs[n.name] = { affinity: 0, met: true });
+    const dir = (r() < 0.5) ? -1 : 1;
+    const delta = dir * (1 + Math.floor(r() * 2));
+    rec.affinity = (rec.affinity || 0) + delta;
+    if (!Array.isArray(this.state.world.npcLedger)) this.state.world.npcLedger = [];
+    this.state.world.npcLedger.push({ fact: `${n.name}对你的观感生变（${delta > 0 ? "亲近" : "疏远"}）`, byNpc: n.name, day, macro: this._locationMacro(n.where) || null });
+    if (this.state.world.npcLedger.length > 200) this.state.world.npcLedger = this.state.world.npcLedger.slice(-200);
+    return `【态度】${n.name}对你的观感悄然生变（${delta > 0 ? "亲近了几分" : "疏远了几分"}）。`;
+  },
+
+  // 行为三·事件生成：NPC 自主触发一个小事件，写入 ledger（让世界"在我之外"运转）
+  _npcTickEvent(n, day) {
+    const w = this.state.world;
+    const r = this._rng(n.name + "|event|" + day + "|" + (this.state.meta.playTurn || 0));
+    const events = [
+      `${n.name}在${n.where}开了一间小铺，往来修士渐多`,
+      `${n.name}闭门谢客，于${n.where}静修不出`,
+      `${n.name}与人起了龃龉，在${n.where}生出一桩小冲突`,
+      `${n.name}于${n.where}寻得一丝机缘，道行微进`,
+      `${n.name}当众立下一言，似要在${n.where}做件大事`,
+    ];
+    const ev = events[Math.floor(r() * events.length)];
+    if (!Array.isArray(w.npcLedger)) w.npcLedger = [];
+    w.npcLedger.push({ fact: ev, byNpc: n.name, day, macro: this._locationMacro(n.where) || null });
+    if (w.npcLedger.length > 200) w.npcLedger = w.npcLedger.slice(-200);
+    // 偶发：志业小幅推进
+    n.agendaProgress = Math.max(0, Math.min(100, (n.agendaProgress || 0) + 5));
+    return `【事件】${ev}。`;
+  },
+
+  // P2-A 道心硬律：本命功法锁为"不可失之被动"，剧情/系统不可令其泯灭
+  _validateConsistency() {
+    const c = this.state.character; const w = this.state.world;
+    if (!w || !w.fixedLaws || !Array.isArray(w.fixedLaws.passiveSkills)) return;
+    const pf = w.fixedLaws.passiveSkills;
+    if (!Array.isArray(c.techniques)) c.techniques = [];
+    pf.forEach(p => { if (p && c.techniques.indexOf(p) < 0) c.techniques.push(p); });
+  },
+
+  // 伤势演化（世界时钟每推进一日即 tick 一次）：对症/静养则渐愈，延误重伤则恶化（P1-C）
+  _tickWounds(day, log) {
+    const c = this.state.character;
+    if (!c.wounds || !c.wounds.length) return;
+    for (let i = c.wounds.length - 1; i >= 0; i--) {
+      const w = c.wounds[i];
+      const wt = (typeof WOUND_TYPES !== "undefined") ? WOUND_TYPES[w.type] : null;
+      const base = wt ? wt.healPerDay : 22;
+      if (w.treated) {
+        const rate = Math.min(45, base + Math.round((c.constitution - 1) * 6));
+        w.healed = Math.min(100, w.healed + rate);
+        w.treated = false; // 一次性增益，下回合须再施方续疗
+        if (w.healed >= 100) { c.wounds.splice(i, 1); log.push(`· ${c.name}的${w.type}已痊愈`); continue; }
+      } else if (w.severity >= 2) {
+        // 重伤未对症：按伤型概率恶化（世界照走，你不疗伤，伤便咬你）
+        const worsen = wt ? wt.worsenChance : 0.2;
+        const r = this._rng("wound|" + w.type + "|" + day)();
+        if (r < worsen) {
+          w.healed = Math.max(0, w.healed - 12);
+          if (w.healed <= 0 && w.severity < 3) { w.severity += 1; w.healed = 30; }
+          w.worsened = true;
+          log.push(`· ${c.name}的${w.type}因延误而加重`);
+          if (w.severity >= 3 && typeof c.hp === "number") c.hp = Math.max(1, c.hp - 8);
+        } else {
+          w.healed = Math.min(100, w.healed + 5);
+        }
+      } else {
+        w.healed = Math.min(100, w.healed + 6); // 轻伤未治亦缓慢自愈
+      }
+      if (w.healed >= 100) { c.wounds.splice(i, 1); log.push(`· ${c.name}的${w.type}已痊愈`); }
+    }
   },
 
   // ============ 由选择生长规则：更新玩家风格画像 ============
@@ -773,6 +1367,9 @@ const Game = {
     const c = this.state.character;
     const RL = (typeof REALMS !== "undefined") ? REALMS : null;
     if (c.realmLevel >= (RL ? RL.length : 10)) { c.realmProgress = 0; return "max_realm"; }
+    // 重伤未愈不可强冲境界：P1-C 真实伤病学之硬约束（走火入魔之险）
+    const severeWound = (c.wounds || []).some(w => w.severity >= 2 && w.healed < 100);
+    if (severeWound) return "wound_blocked";
     const nextRealm = RL[c.realmLevel]; // 即将冲击的境界（其 level = realmLevel+1）
     // 形态专属境界名：鬼修→游魂期/厉鬼期…，妖兽→一阶妖兽…，而非一律"炼气/筑基"
     const fr = (typeof FORMS !== "undefined" && FORMS[c.form] && FORMS[c.form].realms) ? FORMS[c.form].realms : null;
@@ -882,6 +1479,11 @@ const Game = {
     const rollbackTurn = this.state.meta.playTurn;
     this.state.meta.playTurn++;
 
+    // P2·NPC 自主演化调度：每回合让同地点自主 NPC 自发行动，写入 state 并汇总供叙事反映
+    // （放在回滚点之后、AI 调用之前，保证行为能进入本轮 prompt 的「世界动态」）
+    const npcTickSummaries = this._tickNPCAutonomy();
+    this.state.world._npcTickSummary = npcTickSummaries; // 供 AI prompt 读取（仅保留最近一回合）
+
     try {
       // 游客离线模式：跳过真实 API，走本地脚本化剧情，零摩擦试玩（不写存档/神魂册）
       if (this._guestMode) {
@@ -889,7 +1491,7 @@ const Game = {
         const parsed = node;
         const { flag: eventFlag, deltas } = this.applyChanges(parsed.state_changes || {});
         if (!isOpening) this.log.push({ role: "user", text: action });
-        this.log.push({ role: "assistant", text: parsed.narrative, options: parsed.options, optionRisks: parsed.optionRisks || [], flag: eventFlag, deltas });
+        this.log.push({ role: "assistant", text: parsed.narrative, options: parsed.options, optionRisks: parsed.optionRisks || [], flag: eventFlag, deltas, npcTick: npcTickSummaries });
         this.advanceTime();
         return { parsed, eventFlag, deltas };
       }
@@ -966,7 +1568,7 @@ const Game = {
       if (!isOpening) {
         this.log.push({ role: "user", text: action });
       }
-      this.log.push({ role: "assistant", text: parsed.narrative, options: parsed.options, optionRisks: parsed.optionRisks || [], flag: eventFlag, deltas });
+      this.log.push({ role: "assistant", text: parsed.narrative, options: parsed.options, optionRisks: parsed.optionRisks || [], flag: eventFlag, deltas, npcTick: npcTickSummaries });
 
       this.advanceTime();
       this.save();
@@ -1008,6 +1610,33 @@ const Game = {
       log: this.log,
     }));
     this._upsertSoul();
+    this._syncSaveRemote();
+  },
+
+  // 刀锋式：存档同步到服务端（账号绑定，跨设备）。失败静默，不阻塞游戏。
+  _syncSaveRemote() {
+    try {
+      if (!AIService.isLoggedIn() || !AIService.getBackendUrl()) return;
+      const token = AIService.getAuthToken();
+      const payload = JSON.stringify({ state: this.state, history: this.history, log: this.log });
+      fetch(AIService.getBackendUrl().replace(/\/$/, "") + "/api/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: payload,
+      }).catch(() => {});
+    } catch (e) {}
+  },
+
+  async _loadRemoteSave() {
+    try {
+      if (!AIService.isLoggedIn() || !AIService.getBackendUrl()) return null;
+      const r = await fetch(AIService.getBackendUrl().replace(/\/$/, "") + "/api/save", {
+        headers: { "Authorization": "Bearer " + AIService.getAuthToken() },
+      });
+      if (!r.ok) return null;
+      const j = await r.json();
+      return j.save || null;
+    } catch (e) { return null; }
   },
 
   load() {
@@ -1036,6 +1665,20 @@ const Game = {
       if (typeof this.state.world.day !== "number") this.state.world.day = 1;
       if (typeof this.state.world.realmCapLevel !== "number") this.state.world.realmCapLevel = (typeof REALMS !== "undefined" && REALMS.length) ? REALMS.length : 9;
       if (typeof this.state.world.spirit !== "number") this.state.world.spirit = 6;
+      // 旧档兼容：P1-A/B 世界时钟 + 江湖情报网字段
+      if (!Array.isArray(this.state.world.intel)) this.state.world.intel = [];
+      if (!Array.isArray(this.state.world.lastWorldShift)) this.state.world.lastWorldShift = [];
+      if (typeof this.state.world.factionTick !== "number") this.state.world.factionTick = 0;
+      if (!Array.isArray(this.state.world.alliancePairs)) this.state.world.alliancePairs = [];
+      if (!Array.isArray(this.state.world.warPairs)) this.state.world.warPairs = [];
+      // 旧档兼容：P2 · NPC 自驱议程 + 神识串供/因果把柄 + 道心硬律
+      if (!Array.isArray(this.state.world.npcLedger)) this.state.world.npcLedger = [];
+      if (!Array.isArray(this.state.world.npcGossip)) this.state.world.npcGossip = [];
+      if (!this.state.world.fixedLaws || typeof this.state.world.fixedLaws !== "object") {
+        this.state.world.fixedLaws = (this.state.world.gen && this.state.world.gen.fixedLaws) || { oath: null, hardFacts: [], passiveSkills: [] };
+      }
+      if (!Array.isArray(this.state.customNPCs)) this.state.customNPCs = (this.state.world.gen && Array.isArray(this.state.world.gen.customNPCs)) ? this.state.world.gen.customNPCs.slice() : [];
+      if (!this.state.repByFaction || typeof this.state.repByFaction !== "object") this.state.repByFaction = {};
       if (!this.state.character.form) this.state.character.form = "human";
       if (!this.state.character.formName) {
         const _f0 = (typeof FORMS !== "undefined" && FORMS[this.state.character.form]) ? FORMS[this.state.character.form] : FORMS.human;
@@ -1047,9 +1690,56 @@ const Game = {
       if (!this.state.meta.projectionId) this.state.meta.projectionId = ((this.state.world.gen && this.state.world.gen.id) || "p") + "-" + Date.now();
       if (this.state.character.causeCredit == null) this.state.character.causeCredit = 0;
       if (this.state.character.causeDebt == null) this.state.character.causeDebt = 0;
+      if (!Array.isArray(this.state.character.wounds)) this.state.character.wounds = []; // P1-C 旧档补伤势栏
       // 旧档兼容：补全主线（中央冲突）与伏笔 ledger
       if (this.state.meta.mainPlot === undefined) this.state.meta.mainPlot = null;
       if (!this.state.meta.threads) this.state.meta.threads = [];
+      // 旧档兼容：补全道心体系状态 + 为世界势力补"道"
+      if (!this.state.meta.dao) this.state.meta.dao = { chosen: null, leanings: {} };
+      if (this.state.world.gen && this.state.world.gen.factions && typeof DAO_CREEDS !== "undefined" && DAO_CREEDS.length) {
+        const _gen = this.state.world.gen;
+        const _rm = {}; (_gen.regions || []).forEach(r => { _rm[r.name] = r.macro; });
+        _gen.factions.forEach(f => {
+          if (!f.dao) f.dao = DAO_CREEDS[Math.floor(Math.random() * DAO_CREEDS.length)].id;
+          // P1-A 势力演化字段回填
+          if (!f.status) f.status = "stable";
+          if (typeof f.resources !== "number") f.resources = 50;
+          if (!f.baseMacro) f.baseMacro = _rm[f.base] || "中州";
+          if (!Array.isArray(f.territory) || !f.territory.length) f.territory = [f.baseMacro];
+          if (typeof f.agenda !== "string") f.agenda = (typeof FACTION_AGENDAS !== "undefined" && FACTION_AGENDAS.length) ? FACTION_AGENDAS[0] : "守成待变";
+          if (typeof f.agendaProgress !== "number") f.agendaProgress = 0;
+          if (!f.relations || typeof f.relations !== "object") {
+            f.relations = {};
+            _gen.factions.forEach(o => { if (o.name !== f.name) f.relations[o.name] = 0; });
+          }
+          // P1-C 经济回响：旧档补全"市廛/丹盟"标记
+          if (typeof f.commerce !== "boolean") f.commerce = (f.dao === "shang") || /丹|商|市|盟|阁/.test(f.name);
+        });
+        // P2 旧档补全：NPC 自驱议程字段
+        (_gen.npcs || []).forEach(n => {
+          if (!n.zhiye) n.zhiye = (typeof NPC_ZHIYE !== "undefined" && NPC_ZHIYE.length) ? NPC_ZHIYE[0] : "行走世间";
+          if (!n.xingge) n.xingge = (typeof NPC_XINGGE !== "undefined" && NPC_XINGGE.length) ? NPC_XINGGE[0] : "隐忍";
+          if (!n.yinguo) n.yinguo = (typeof NPC_KARMA !== "undefined" && NPC_KARMA.length) ? NPC_KARMA[0] : "未知之因";
+          if (typeof n.autonomy !== "boolean") n.autonomy = true;
+          if (typeof n.agendaProgress !== "number") n.agendaProgress = 0;
+          if (!n.status) n.status = "行走";
+          if (typeof n.lastSeenDay !== "number") n.lastSeenDay = this.state.world.day || 1;
+        });
+        if (!_gen.daoTension) {
+          const byId = {}; DAO_CREEDS.forEach(d => byId[d.id] = d);
+          let pair = null;
+          for (let i = 0; i < _gen.factions.length && !pair; i++) {
+            const a = byId[_gen.factions[i].dao];
+            if (!a || !a.opposed) continue;
+            for (let j = 0; j < _gen.factions.length; j++) {
+              if (j === i) continue;
+              const b = byId[_gen.factions[j].dao];
+              if (b && a.opposed.indexOf(b.id) >= 0) { pair = [a, b]; break; }
+            }
+          }
+          if (pair) _gen.daoTension = { a: pair[0].id, aName: pair[0].name, b: pair[1].id, bName: pair[1].name, text: `本界正酝酿一场「${pair[0].name}」与「${pair[1].name}」的道争——两道信徒各执一词，你的抉择将决定你站在光里还是影中。` };
+        }
+      }
       // 旧档兼容：给已有 NPC 补 met 标记。预填且好感仍为 0 的视为"未谋面"隐藏；真正结识过（好感被改动过）的保留
       Object.keys(this.state.npcs).forEach(name => {
         const n = this.state.npcs[name];
@@ -1408,9 +2098,13 @@ const Game = {
       const v = c.realmProgress - before;
       if (v) deltas.push(`突破进度 +${v}`);
       if (c.realmProgress >= 100) {
-        const bf = this.handleBreakthrough();
-        if (bf === "max_realm") deltas.push("已臻至境，更进无门");
-        else deltas.push(bf === "breakthrough_success" ? "突破成功！境界提升" : "突破失败，反噬重伤");
+        const severeWound = (c.wounds || []).some(w => w.severity >= 2 && w.healed < 100);
+        if (severeWound) { deltas.push("重伤未愈，强行冲关只会走火入魔——先疗伤要紧"); }
+        else {
+          const bf = this.handleBreakthrough();
+          if (bf === "max_realm") deltas.push("已臻至境，更进无门");
+          else deltas.push(bf === "breakthrough_success" ? "突破成功！境界提升" : "突破失败，反噬重伤");
+        }
       }
     }
     let flag = null;
@@ -2589,6 +3283,15 @@ const UI = {
         if (m.key === curMode) { card.classList.add("selected"); document.getElementById("selected-narrative-mode").value = m.key; }
       });
     }
+    // 自定义 NPC：填充志业/性格下拉（P2·自定义 NPC 自主性）
+    const zhiyeBox = document.getElementById("cn-zhiye");
+    const xinggeBox = document.getElementById("cn-xingge");
+    if (zhiyeBox) {
+      zhiyeBox.innerHTML = '<option value="">志业·听天由命</option>' + (typeof NPC_ZHIYE !== "undefined" ? NPC_ZHIYE : []).map(z => `<option value="${z}">${z}</option>`).join("");
+    }
+    if (xinggeBox) {
+      xinggeBox.innerHTML = '<option value="">性格·听天由命</option>' + (typeof NPC_XINGGE !== "undefined" ? NPC_XINGGE : []).map(x => `<option value="${x}">${x}</option>`).join("");
+    }
   },
 
   confirmCreate() {
@@ -2601,7 +3304,19 @@ const UI = {
     const seed = WorldGen.randomSeed();
     const modeInput = document.getElementById("selected-narrative-mode");
     const modeKey = modeInput ? modeInput.value : "standard";
-    Game.createCharacter(name, rootIndex, bgIndex, genderIndex, seed, modeKey);
+    // 自定义 NPC（P2·自定义 NPC 自主性）：你立其名与志，其性格与因果由天地生成
+    const customNPCs = [];
+    const cnEl = document.getElementById("cn-name");
+    const cnName = cnEl ? cnEl.value.trim() : "";
+    if (cnName) {
+      customNPCs.push({
+        name: cnName.slice(0, 12),
+        zhiye: (document.getElementById("cn-zhiye") || {}).value || undefined,
+        xingge: (document.getElementById("cn-xingge") || {}).value || undefined,
+        autonomyLevel: parseInt((document.getElementById("cn-asis") || {}).value || "2") || 2,
+      });
+    }
+    Game.createCharacter({ name, rootIndex, bgIndex, genderIndex, seed, narrationMode: modeKey, customNPCs });
     this.showWorldMap(true); // 开局先生成并展示大地图
   },
 
@@ -2901,12 +3616,48 @@ const UI = {
         else if (j >= 10 && e >= 10) label = "亦正亦邪";
         return `<div class="stat-row"><span>正邪</span><span class="stat-val">${label}</span></div>`;
       })()}
+      ${(() => {
+        const dao = (state.meta && state.meta.dao) || {};
+        const chosen = dao.chosen;
+        const leanings = dao.leanings || {};
+        let top = null, topv = 0;
+        Object.keys(leanings).forEach(id => { if (leanings[id] > topv) { topv = leanings[id]; top = id; } });
+        const nameOf = (id) => (typeof DAO_CREEDS !== "undefined" ? (DAO_CREEDS.find(d => d.id === id) || {}).name : id) || id;
+        const txt = chosen ? nameOf(chosen) : (top ? nameOf(top) + `（趋向 ${topv > 0 ? "+" : ""}${topv}）` : "未立道");
+        return `<div class="stat-row"><span>道心</span><span class="stat-val">${txt}</span></div>`;
+      })()}
       <div class="stat-row"><span>因果力</span><span class="stat-val cause-credit-val">${c.causeCredit || 0}</span></div>
       <div class="stat-row"><span>因果债</span><span class="stat-val cause-debt-val">${c.causeDebt || 0}</span></div>
+      ${(() => {
+        const ws = (Game.state.character.wounds || []);
+        if (!ws.length) return `<div class="stat-row"><span>伤势</span><span class="stat-val">无伤</span></div>`;
+        const lab = { 1: "轻", 2: "中", 3: "重" };
+        const txt = ws.map(w => `${w.type}${lab[w.severity] || ""}(${100 - Math.round(w.healed)}%未愈)`).join("、");
+        return `<div class="stat-row"><span>伤势</span><span class="stat-val wound-val">${txt}</span></div>`;
+      })()}
+      ${(() => {
+        const rep = Game.state.repByFaction || {};
+        const facs = (Game.state.world.gen && Game.state.world.gen.factions) || [];
+        const bad = facs.filter(f => f.commerce && typeof rep[f.name] === "number" && rep[f.name] <= -30);
+        if (!bad.length) return "";
+        const txt = bad.map(f => `${f.name}(恶名)`).join("、");
+        return `<div class="stat-row"><span>市廛态度</span><span class="stat-val wound-val">${txt}·限售抬价</span></div>`;
+      })()}
       <hr class="divider">
       <div class="stat-row"><span>所在</span><span class="stat-val">${w.location}</span></div>
       <div class="stat-row"><span>时辰</span><span class="stat-val">${w.timeOfDay} · 第${w.day}日</span></div>
       <div class="stat-row"><span>天候</span><span class="stat-val">${w.weather.name}</span></div>
+      <div class="stat-row"><span>江湖见闻</span><span class="stat-val">${(Game.state.world.intel||[]).length} 则传闻在野</span></div>
+      ${(() => {
+        const fs = (Game.state.world.gen && Game.state.world.gen.factions) || [];
+        if (!fs.length) return "";
+        const label = { rising:"崛起", stable:"守成", declining:"式微", war:"交战" };
+        const rows = fs.map(f => {
+          const cls = f.status === "war" ? "neg" : (f.status === "rising" ? "pos" : "neu");
+          return `<div class="npc-row"><span class="npc-name">${UI.escapeHtml(f.name)}</span><span class="npc-senti ${cls}">${label[f.status]||"守成"}</span></div>`;
+        }).join("");
+        return `<div class="npc-title">势力态势</div>${rows}`;
+      })()}
       <hr class="divider">
       <div class="stat-row pet-row"><span>灵宠</span><span class="stat-val">${c.pet ? c.pet.name + " · " + (c.pet.type || "灵兽") : "暂无"}</span></div>
       <hr class="divider">
@@ -2947,7 +3698,8 @@ const UI = {
         return (pw.enabled && Game.state.meta.playTurn > (pw.freeTurns || 30))
           ? `<div class="stat-row paywall-hint"><span>仙缘</span><span class="stat-val">将尽 · 续缘解锁</span></div>`
           : "";
-      })()}`;
+      })()}
+      ${this._renderP2Status()}`;
     this.updateRealmScene();
     this.updateHeroSprite();
     this.updateActorSprite();
@@ -3133,6 +3885,7 @@ const UI = {
 
   // ============ 玩家立绘：按需求移除角色立绘（仅保留场景背景） ============
   _heroPortrait() {
+    // [立绘已撤回] 主角立绘已撤回，返回空（场景背景仍保留）
     return "";
   },
 
@@ -3426,6 +4179,7 @@ const UI = {
 
   // ============ NPC 立绘：按需求移除角色立绘（仅保留场景背景） ============
   _npcPortrait(kind) {
+    // [立绘已撤回] 角色立绘已移除：NPC 立绘不再渲染，返回空
     return "";
   },
 
@@ -3435,6 +4189,7 @@ const UI = {
     if (!el || !Game.state || !Game.state.character) return;
     el.innerHTML = this._heroPortrait();
     const spec = this._heroSpec();
+    // [立绘已撤回] _heroSpec 恒为 null，ArtEngine 不会被调用
     if (spec) ArtEngine.upgrade(el, spec);
   },
 
@@ -3460,11 +4215,11 @@ const UI = {
     return "人";
   },
   _heroSpec() {
-    // 角色立绘已移除：不再产出主角立绘规格（即便开启 ArtEngine 也不会出图）
+    // [立绘已撤回] 角色立绘已移除：不再产出主角立绘规格（即便开启 ArtEngine 也不会出图）
     return null;
   },
   _npcSpec(npc) {
-    // 角色立绘已移除：不再产出 NPC 立绘规格
+    // [立绘已撤回] 角色立绘已移除：不再产出 NPC 立绘规格
     return null;
   },
 
@@ -3474,7 +4229,7 @@ const UI = {
     const el = document.getElementById("vn-actors");
     const stage = document.querySelector(".vn-stage");
     if (!el || !Game.state || !Game.state.character) return;
-    // GAL 模式：中央舞台不常驻主角立绘；仅当 NPC 对话时弹出 NPC 立绘（带淡入）
+    // [立绘已撤回] GAL 模式立绘已撤回：NPC 立绘不再渲染（仅保留场景背景）
     let html = "";
     if (this.currentNpc) {
       const npcHtml = this._npcPortrait(this.currentNpc);
@@ -3485,6 +4240,7 @@ const UI = {
     if (this.currentNpc) {
       const actor = el.querySelector(".vn-actor.npc");
       const spec = this._npcSpec(this.currentNpc);
+      // [立绘已撤回] _npcSpec 恒为 null，ArtEngine 不会被调用
       if (actor && spec) ArtEngine.upgrade(actor, spec);
     }
   },
@@ -3849,7 +4605,110 @@ const UI = {
       });
     }
 
+    html += this._renderP2Right();
     document.getElementById("inventory-panel").innerHTML = html;
+  },
+
+  // ============ P2 · 江湖志业 / 天机盘 / 因果簿 可视化 ============
+  // 左侧状态面板：NPC 自驱议程（志业微光条）+ 自定义 NPC 自主拨弦
+  _renderP2Status() {
+    try {
+      const w = Game.state.world;
+      const customNames = (Game.state.customNPCs || []);
+      const npcs = (w && w.gen && Array.isArray(w.gen.npcs)) ? w.gen.npcs : [];
+      // 自定义同伴优先呈现（玩家立其名，理应最先可见），其余按原序补全，至多 6 位
+      const agendaNpcs = npcs.filter(n => n && n.autonomy && n.status !== "陨落");
+      agendaNpcs.sort((a, b) => {
+        const ai = customNames.indexOf(a.name), bi = customNames.indexOf(b.name);
+        if (ai >= 0 && bi < 0) return -1;
+        if (bi >= 0 && ai < 0) return 1;
+        return 0;
+      });
+      const shown = agendaNpcs.slice(0, 6);
+      let html = '<hr class="divider"><div class="npc-title">江湖志业 · NPC 自驱</div>';
+      if (!shown.length) {
+        html += '<div class="npc-empty">这方天地尚无行走的修士</div>';
+      } else {
+        shown.forEach(n => {
+          const prog = Math.max(0, Math.min(100, n.agendaProgress || 0));
+          const idx = customNames.indexOf(n.name);
+          const isCustom = idx >= 0;
+          html += `<div class="p2-npc-card${isCustom ? ' p2-custom' : ''}">
+            <div class="p2-npc-head"><span class="p2-npc-name">${UI.escapeHtml(n.name)}</span><span class="p2-npc-zhiye">${UI.escapeHtml(n.zhiye || '行走世间')}</span></div>
+            <div class="p2-npc-meta">性${UI.escapeHtml(n.xingge || '隐忍')}${n.yinguo && n.yinguo !== '未知之因' ? ' · 背' + UI.escapeHtml(n.yinguo) : ''}</div>
+            <div class="p2-progress" title="自驱议程进度 ${prog}%"><div class="p2-progress-fill" style="width:${prog}%"></div></div>
+            ${isCustom ? this._renderAutonomySwitch(n, idx) : ''}
+          </div>`;
+        });
+      }
+      return html;
+    } catch (e) { return ''; }
+  },
+
+  // 自主拨弦：傀儡 / 半醒 / 自在（玩家随时可拨的弦）
+  _renderAutonomySwitch(npc, idx) {
+    const lvl = (typeof npc.autonomyLevel === "number") ? npc.autonomyLevel : 2;
+    const labels = ["傀儡", "半醒", "自在"];
+    const btns = labels.map((lab, i) =>
+      `<button class="p2-asis-btn${i === lvl ? ' active' : ''}" onclick="UI.setCustomNpcAutonomy(${idx}, ${i})">${lab}</button>`
+    ).join("");
+    return `<div class="p2-asis-switch"><span class="p2-asis-label">自主拨弦</span><div class="p2-asis-btns">${btns}</div></div>`;
+  },
+
+  // 玩家拨动自定义 NPC 的自主程度（即时生效 + 落库 + 重渲染）
+  setCustomNpcAutonomy(idx, level) {
+    try {
+      level = Math.max(0, Math.min(2, level | 0));
+      const name = (Game.state.customNPCs || [])[idx];
+      if (!name) return;
+      const npcs = (Game.state.world && Game.state.world.gen && Game.state.world.gen.npcs) || [];
+      const n = npcs.find(x => x.name === name);
+      if (n) n.autonomyLevel = level;
+      Game.save();
+      this.renderStatus();
+    } catch (e) {}
+  },
+
+  // 右侧背包面板：天机盘·流言（神识串供扩散）+ 因果簿（把柄）
+  _renderP2Right() {
+    try {
+      const w = Game.state.world;
+      if (!w) return '';
+      // 天机盘·流言
+      const gossip = Array.isArray(w.npcGossip) ? w.npcGossip : [];
+      let ghtml = '<div class="inv-title" style="margin-top:16px">天机盘 · 流言</div>';
+      if (!gossip.length) {
+        ghtml += '<div class="inv-empty">江湖尚静，尚无闲话流传</div>';
+      } else {
+        ghtml += '<div class="p2-gossip-hint">你之言行，化入 NPC 闲话，依地缘流转</div>';
+        gossip.slice(-8).reverse().forEach(g => {
+          const origin = (typeof g.origin === 'string' && g.origin) ? g.origin : '未知';
+          const you = g.about === 'player' ? ' <span class="p2-gossip-you">· 与你有关</span>' : '';
+          const spreadN = (g.spread && typeof g.spread === 'object') ? Object.keys(g.spread).length : 0;
+          ghtml += `<div class="p2-gossip-item">
+            <div class="p2-gossip-text">${UI.escapeHtml(g.text || '')}</div>
+            <div class="p2-gossip-meta">源·${UI.escapeHtml(origin)} · 第${(g.day || 1)}日${spreadN ? ' · 已传' + spreadN + '域' : ''}${you}</div>
+          </div>`;
+        });
+      }
+      // 因果簿
+      const ledger = Array.isArray(w.npcLedger) ? w.npcLedger : [];
+      let lhtml = '<div class="inv-title" style="margin-top:16px">因果簿 · 把柄</div>';
+      if (!ledger.length) {
+        lhtml += '<div class="inv-empty">尚无因果在册</div>';
+      } else {
+        ledger.slice(-8).reverse().forEach(it => {
+          const resolved = it.resolved ? ' resolved' : '';
+          const tag = it.resolved ? '已偿' : '未了';
+          lhtml += `<div class="p2-ledger-item${resolved}">
+            <span class="p2-ledger-fact">${UI.escapeHtml(it.fact || '')}</span>
+            <span class="p2-ledger-tag">${tag}</span>
+            <span class="p2-ledger-meta">第${(it.day || 1)}日${it.macro ? ' · ' + UI.escapeHtml(it.macro) : ''}</span>
+          </div>`;
+        });
+      }
+      return ghtml + lhtml;
+    } catch (e) { return ''; }
   },
 
   // ============ 手机端：紧凑状态栏 ============
@@ -3928,6 +4787,40 @@ const UI = {
     }
     npcHtml += '</div></div>';
 
+    // 势力态势（P1-A）
+    const facs = (Game.state.world.gen && Game.state.world.gen.factions) || [];
+    const facLabel = { rising: "崛起", stable: "守成", declining: "式微", war: "交战" };
+    let factionHtml = '<div class="mdrawer-section"><div class="mdrawer-section-title">势力态势</div>';
+    if (facs.length === 0) {
+      factionHtml += '<div class="mdrawer-npc-empty">尚无宗门</div>';
+    } else {
+      factionHtml += facs.map(f => {
+        const cls = f.status === "war" ? "ms-evil" : (f.status === "rising" ? "ms-good" : "");
+        const clsAttr = cls ? ` class="${cls}"` : "";
+        const res = Math.max(0, Math.min(100, f.resources || 50));
+        return `<div class="mdrawer-npc-item"><span>${this.escapeHtml(f.name)}</span><span${clsAttr}>${facLabel[f.status] || "守成"} · 资源${res}</span></div>`;
+      }).join("");
+    }
+    factionHtml += `<div class="mdrawer-npc-empty" style="opacity:.7">江湖见闻 ${(Game.state.world.intel || []).length} 则</div></div>`;
+
+    // 伤势（P1-C 真实伤病学）
+    const ws = c.wounds || [];
+    let woundHtml = '<div class="mdrawer-section"><div class="mdrawer-section-title">伤势</div>';
+    if (ws.length === 0) {
+      woundHtml += '<div class="mdrawer-npc-empty">无伤在身</div>';
+    } else {
+      const lab = { 1: "轻", 2: "中", 3: "重" };
+      woundHtml += ws.map(w => {
+        const pct = 100 - Math.round(w.healed);
+        const wt = (typeof WOUND_TYPES !== "undefined") ? WOUND_TYPES[w.type] : null;
+        const remedy = wt ? wt.remedy : "对症疗治";
+        const cls = w.severity >= 2 ? "ms-evil" : "";
+        const clsAttr = cls ? ` class="${cls}"` : "";
+        return `<div class="mdrawer-npc-item"><span>${this.escapeHtml(w.type)}·${lab[w.severity] || ""}</span><span${clsAttr}>${pct}%未愈·须${this.escapeHtml(remedy)}</span></div>`;
+      }).join("");
+    }
+    woundHtml += '</div>';
+
     // 生活技能
     const skills = c.skills || {};
     const skillKeys = Object.keys(skills);
@@ -3977,7 +4870,7 @@ const UI = {
 
     // 抽屉顶部：主角立绘（手机端"呼出状态栏才看到人物形象"）
     const heroHtml = `<div class="mdrawer-hero">${this._heroPortrait()}</div>`;
-    body.innerHTML = heroHtml + progressHtml + npcHtml + skillHtml + invHtml + worldHtml;
+    body.innerHTML = heroHtml + progressHtml + npcHtml + factionHtml + woundHtml + skillHtml + invHtml + worldHtml;
   },
 
   // 切换底部抽屉
@@ -4047,6 +4940,10 @@ const UI = {
             entry.deltas.map(d => `<span class="delta-item">${this.escapeHtml(d)}</span>`).join("") +
             `</div>`;
         }
+        // NPC 自主行为摘要（淡色斜体，区别于主线叙事）
+        if (entry.npcTick && entry.npcTick.length) {
+          html += this._renderNPCTickSummary(entry.npcTick);
+        }
       }
     });
     storyEl.innerHTML = html;
@@ -4059,6 +4956,13 @@ const UI = {
     } else {
       this.renderOptionsFromList([], null);
     }
+  },
+
+  // 渲染本回合 NPC 自主行为摘要（特殊样式：淡色斜体，区别于主线叙事，让玩家感知"世界在我之外运转"）
+  _renderNPCTickSummary(summaries) {
+    if (!summaries || !summaries.length) return "";
+    const items = summaries.map(s => `<div class="npc-tick-item">${this.escapeHtml(s)}</div>`).join("");
+    return `<div class="npc-tick">${items}</div>`;
   },
 
   // 事件标记HTML
@@ -4149,9 +5053,13 @@ const UI = {
         `</div>`;
     }
 
+    // 本回合 NPC 自主行为摘要（从刚写入的 assistant 日志条目读取，保证实时显示且与重渲染一致）
+    const _last = Game.log[Game.log.length - 1];
+    const npcTickHtml = (_last && _last.npcTick && _last.npcTick.length) ? this._renderNPCTickSummary(_last.npcTick) : "";
+
     const finalHtml = this.flagHtmlFor(eventFlag) +
       `<div class="story-content">${this.escapeHtml(parsed.narrative)}</div>` +
-      deltaHtml;
+      deltaHtml + npcTickHtml;
 
     // 将流式“实时块”替换为最终文本（避免覆盖已有故事）
     const live = document.getElementById("live-story");
@@ -4344,6 +5252,9 @@ const UI = {
       if (apl) apl.checked = !!c.libEnabled;
       if (aplb) aplb.value = c.libBase || "";
     }
+    const bu = document.getElementById("set-backend-url");
+    if (bu) bu.value = AIService.getBackendUrl();
+    this.refreshAccountUI();
   },
 
   // 像素风开关：切换 body.pixel 并持久化
@@ -4393,6 +5304,8 @@ const UI = {
       maxTokens: parseInt(document.getElementById("set-maxtok").value),
     };
     AIService.saveConfig(cfg);
+    const bu = document.getElementById("set-backend-url");
+    if (bu) localStorage.setItem("xianxia_backend_url", bu.value.trim());
     const modeSel = document.getElementById("set-narrative-mode");
     if (modeSel && Game.state) {
       Game.state.narrationMode = modeSel.value || "standard";
@@ -4414,7 +5327,64 @@ const UI = {
     } catch (e) {}
 
     alert("设置已保存");
+    this.refreshAccountUI();
     this.show("menu");
+  },
+
+  // ============ 刀锋式账号（邮箱 + 后端） ============
+  async accountPost(path, payload) {
+    const base = AIService.getBackendUrl();
+    if (!base) { alert("请先在上方填写「后端服务地址」"); return null; }
+    try {
+      const r = await fetch(base.replace(/\/$/, "") + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { alert(d.error || ("请求失败(" + r.status + ")")); return null; }
+      return d;
+    } catch (e) { alert("网络错误：" + (e && e.message || e)); return null; }
+  },
+
+  async register() {
+    const email = (document.getElementById("acc-email") || {}).value || "";
+    const password = (document.getElementById("acc-password") || {}).value || "";
+    const d = await this.accountPost("/api/register", { email, password });
+    if (!d || !d.token) return;
+    localStorage.setItem("xianxia_jwt", d.token);
+    this.refreshAccountUI();
+    alert("注册成功，已登录。AI 将由服务端 Key 驱动，无需自备 Key。");
+  },
+
+  async login() {
+    const email = (document.getElementById("acc-email") || {}).value || "";
+    const password = (document.getElementById("acc-password") || {}).value || "";
+    const d = await this.accountPost("/api/login", { email, password });
+    if (!d || !d.token) return;
+    localStorage.setItem("xianxia_jwt", d.token);
+    this.refreshAccountUI();
+    alert("登录成功，AI 将由服务端 Key 驱动。");
+  },
+
+  logout() {
+    localStorage.removeItem("xianxia_jwt");
+    this.refreshAccountUI();
+  },
+
+  refreshAccountUI() {
+    const loggedIn = AIService.isLoggedIn();
+    const out = document.getElementById("account-loggedout");
+    const inn = document.getElementById("account-loggedin");
+    const show = document.getElementById("acc-email-show");
+    if (out) out.style.display = loggedIn ? "none" : "";
+    if (inn) inn.style.display = loggedIn ? "" : "none";
+    if (show && loggedIn) {
+      try {
+        const p = JSON.parse(atob((AIService.getAuthToken().split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")));
+        show.textContent = p.email || "";
+      } catch (e) { show.textContent = ""; }
+    }
   },
 
   // 快速预设
@@ -4863,9 +5833,9 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // 像素风偏好（默认开启，设置页可关）
+  // 像素风偏好（默认关闭，水墨仙侠风为默认；设置页勾选后存 fx_pixel=1 才启用）
   try {
-    if (localStorage.getItem("fx_pixel") === "0") document.body.classList.remove("pixel");
+    if (localStorage.getItem("fx_pixel") === "1") document.body.classList.add("pixel");
   } catch (e) {}
 
   UI.initPixelFx();
@@ -4889,5 +5859,15 @@ window.addEventListener("DOMContentLoaded", () => {
         UI.sendCustomAction();
       }
     });
+  }
+
+  // 刀锋式：已登录后端则拉取服务端存档覆盖本地（跨设备续玩），失败静默
+  if (AIService.isLoggedIn() && AIService.getBackendUrl()) {
+    Game._loadRemoteSave().then(remote => {
+      if (remote) {
+        try { localStorage.setItem("xianxia_save", JSON.stringify(remote)); } catch (e) {}
+      }
+      UI.renderMenu();
+    }).catch(() => {});
   }
 });
