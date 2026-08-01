@@ -906,123 +906,210 @@ ${this.buildVarietyBlock(state)}
     }).join("\n");
   },
 
-  // ============ 带超时 + 自动重试的 fetch（解决高峰期永久转圈） ============
-  // 失败分类：超时/网络抖动/5xx/429 可重试；401/400/403 等不可重试（直接抛错给上层翻译）
-  async _fetchJson(url, headers, bodyStr) {
-    const TIMEOUT_MS = 45000;       // 单次请求 45s 超时（系统提示词长，高峰期真实需求超过 25s）
-    const MAX_RETRY = 2;            // 最多重试 2 次（共 3 次尝试）
+  // ============ 传输层重试 / 超时 / 错误分类（P3 加固） ============
+  // 全部 AI 请求统一走 _fetchWithRetry：单次 45s 超时 + 指数退避重试。
+  // 错误分两类：
+  //   可重试(retryable)：timeout 超时 / network 网络抖动 / rate_limit 429 限流 / server 5xx / empty 空响应
+  //   不可重试(non-retryable)：auth 401/403 鉴权 / billing 402 余额 / bad_request 400 参数 → 直接抛友好文案
+
+  // 工具：睡眠
+  _sleep(ms) { return new Promise(r => setTimeout(r, ms)); },
+
+  // 给错误挂上类型标记，便于上层 _classifyError 直接识别「该重试还是该报错」
+  _attachKind(err, kind, status) {
+    err._kind = kind;
+    err._status = status;
+    return err;
+  },
+
+  // 统一错误分类：输入 (err, status) → { retryable, kind, status }
+  // kind: timeout | network | rate_limit | server | auth | billing | bad_request | empty | unknown
+  _classifyError(err, status) {
+    if (err && err._kind) {
+      const k = err._kind;
+      return { retryable: k !== "auth" && k !== "billing" && k !== "bad_request" && k !== "unknown", kind: k, status: err._status != null ? err._status : status };
+    }
+    if (status === 429) {
+      // 余额/配额耗尽时错误体常含 insufficient/balance/quota 等字样，与单纯限流区分
+      const msg = (err && err.message || "").toLowerCase();
+      if (/insufficient|balance|quota|余额|额度|充值/.test(msg)) return { retryable: false, kind: "billing", status };
+      return { retryable: true, kind: "rate_limit", status };
+    }
+    if (status === 402) return { retryable: false, kind: "billing", status };       // 余额不足
+    if (status >= 500)  return { retryable: true,  kind: "server", status };         // 服务抖动
+    if (status === 401 || status === 403) return { retryable: false, kind: "auth", status };
+    if (status && status >= 400) return { retryable: false, kind: "bad_request", status };
+    if (err && err.name === "AbortError") return { retryable: true, kind: "timeout" };
+    if (err instanceof TypeError || (err && /Failed to fetch|NetworkError|load failed|network/i.test(err.message || "")))
+      return { retryable: true, kind: "network" };
+    return { retryable: false, kind: "unknown", status };
+  },
+
+  // 退避计算（指数基线 + 抖动）。429 限流需让出更多配额，等待更久。
+  _backoff(kind, attempt) {
+    if (kind === "rate_limit") return 5000 * (attempt + 1) + Math.random() * 1000; // 限流：5s 起，逐次 +5s
+    return 1200 * Math.pow(2, attempt) + Math.random() * 600;                       // 其他：1.2s 起指数退避
+  },
+
+  // 对用户友好的最终文案（重试耗尽或不可重试时抛出）
+  _userMessage(kind, status, detail) {
+    switch (kind) {
+      case "rate_limit":   return "接口请求过于频繁（被限流），已自动重试仍失败，请稍候片刻再试。";
+      case "server":       return `AI 服务暂时不可用（${status}），已自动重试仍失败，请稍后重试。`;
+      case "timeout":      return "网络超时，已多次重试仍无响应，请检查网络或稍后再试。";
+      case "network":      return "网络连接失败，已多次重试仍未恢复，请检查网络后重试。";
+      case "auth":         return `API 鉴权失败（${status}），请检查 Key 是否正确或已失效（设置页）。`;
+      case "billing":      return `API 额度/余额不足（${status}），请充值或检查账户配额后重试。`;
+      case "bad_request":  return `请求被拒（${status}），可能是参数或模型名有误，请检查设置。`;
+      case "empty":        return "AI 返回内容为空，已多次重试仍无结果，请稍后重试。";
+      default:             return "AI 请求失败：" + (detail || "未知错误");
+    }
+  },
+
+  // 带超时 + 自动重试的 fetch（返回 Response）。所有 AI 请求的统一入口。
+  async _fetchWithRetry(url, headers, bodyStr, opts = {}) {
+    const TIMEOUT_MS = opts.timeout || 45000;        // 单次请求 45s 超时（系统提示词长，高峰期真实需求超过 25s）
+    const MAX_RETRY = opts.maxRetry != null ? opts.maxRetry : 2; // 最多重试 2 次（共 3 次尝试）
     let lastErr = null;
     for (let attempt = 0; attempt <= MAX_RETRY; attempt++) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
       try {
-        const resp = await fetch(url, {
-          method: "POST",
-          headers: headers,
-          body: bodyStr,
-          signal: controller.signal,
-        });
+        const resp = await fetch(url, { method: "POST", headers, body: bodyStr, signal: controller.signal });
         clearTimeout(timer);
-        // 可重试类：429 限流 / 500+ 服务抖动
-        if (resp.status === 429 || resp.status >= 500) {
-          const retryAfter = resp.headers.get("retry-after");
-          const wait = retryAfter ? (parseInt(retryAfter, 10) * 1000) : (1200 * Math.pow(2, attempt) + Math.random() * 600);
-          if (attempt < MAX_RETRY) { lastErr = new Error(`API暂不可用(${resp.status})，稍后重试…`); await new Promise(r => setTimeout(r, Math.min(wait, 6000))); continue; }
+        const info = this._classifyError(null, resp.status);
+        if (info.retryable) {
+          // 可重试类：429 限流 / 500+ 服务抖动 / 空响应
+          let wait = this._backoff(info.kind, attempt);
+          if (info.kind === "rate_limit") {
+            const ra = resp.headers.get("retry-after");
+            if (ra) wait = parseInt(ra, 10) * 1000;    // 优先尊重服务端 Retry-After 头
+          }
+          lastErr = this._attachKind(new Error(`API暂不可用(${resp.status})`), info.kind, resp.status);
+          if (attempt < MAX_RETRY) {
+            if (opts.onRetry) try { opts.onRetry({ attempt: attempt + 1, max: MAX_RETRY + 1, kind: info.kind, status: resp.status }); } catch (e) {}
+            await this._sleep(Math.min(wait, 15000));
+            continue;
+          }
           const errText = await resp.text().catch(() => "");
-          throw new Error(`API请求失败 (${resp.status}): ${errText.slice(0, 200)}`);
+          throw this._attachKind(new Error(this._userMessage(info.kind, resp.status, errText)), info.kind, resp.status);
         }
-        // 不可重试类：401/403 鉴权错 / 400 参数错 —— 原样抛出，由上层翻译
         if (!resp.ok) {
+          // 不可重试类（401/402/400 等）：翻译后直接抛出
           const errText = await resp.text().catch(() => "");
-          throw new Error(`API请求失败 (${resp.status}): ${errText.slice(0, 200)}`);
+          throw this._attachKind(new Error(this._userMessage(info.kind, resp.status, errText)), info.kind, resp.status);
         }
         return resp;
       } catch (e) {
         clearTimeout(timer);
-        // AbortController 触发 = 超时
-        if (e && e.name === "AbortError") {
-          lastErr = new Error("网络超时（45秒未响应）");
-          if (attempt < MAX_RETRY) { await new Promise(r => setTimeout(r, 1200 * (attempt + 1) + Math.random() * 400)); continue; }
-          throw new Error("网络超时（45秒×3次未响应），请检查网络或稍后再试");
+        const info = this._classifyError(e, e && e._status);
+        if (info.retryable && attempt < MAX_RETRY) {
+          lastErr = e;
+          if (opts.onRetry) try { opts.onRetry({ attempt: attempt + 1, max: MAX_RETRY + 1, kind: info.kind, status: info.status }); } catch (e2) {}
+          await this._sleep(Math.min(this._backoff(info.kind, attempt), 15000));
+          continue;
         }
-        // 其他网络错误（断网/跨域/解析失败）
-        if (e instanceof TypeError || (e && /Failed to fetch|NetworkError|load failed/i.test(e.message || ""))) {
-          lastErr = new Error("网络连接失败");
-          if (attempt < MAX_RETRY) { await new Promise(r => setTimeout(r, 1200 * (attempt + 1) + Math.random() * 400)); continue; }
-          throw new Error("网络连接失败，请检查网络后重试");
-        }
-        // 其他（含 401/400/403 原样错误）直接抛出
-        throw e;
+        // 不可重试 或 重试耗尽：抛友好文案
+        throw this._attachKind(new Error(this._userMessage(info.kind, info.status, e && e.message ? e.message : "")), info.kind, info.status);
       }
     }
-    throw lastErr || new Error("请求失败");
+    throw this._attachKind(new Error(lastErr && lastErr.message ? lastErr.message : "请求失败，请稍后重试"), (lastErr && lastErr._kind) || "unknown", lastErr && lastErr._status);
+  },
+
+  // 带空闲超时的流读取：流中途超过 idleMs 无新数据，视为断开并抛出 timeout 错误（解决 SSE 中途卡死）
+  async _readChunk(reader, idleMs) {
+    let timer = null;
+    const timeout = new Promise((_, rej) => {
+      timer = setTimeout(() => rej(this._attachKind(new Error("流读取超时"), "timeout", null)), idleMs);
+    });
+    const read = reader.read();
+    read.catch(() => {}); // 超时放弃后，吞掉底层可能的滞后拒绝，避免未处理异常
+    try {
+      return await Promise.race([read, timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
   },
 
   // 发送请求（流式，含解析失败重校）
   // 统一请求入口：后端模式走服务端代理（Key 不暴露前端），否则直连用户自带 Key
-  async _postChat(body) {
+  // 统一请求入口：后端模式走服务端代理（Key 不暴露前端），否则直连用户自带 Key。
+  // 内部经由 _fetchWithRetry，自动获得超时 / 重试 / 错误分类能力（解决此前完全无保护的问题）。
+  async _postChat(body, opts = {}) {
     const backendUrl = this.getBackendUrl();
     const useBackend = !!backendUrl && this.isLoggedIn();
+    let url, headers;
     if (useBackend) {
-      const resp = await fetch(backendUrl.replace(/\/$/, "") + "/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${this.getAuthToken()}` },
-        body: JSON.stringify(body),
-      });
-      if (!resp.ok) {
-        const errText = await resp.text().catch(() => "");
-        throw new Error("后端AI失败 (" + resp.status + "): " + errText.slice(0, 200));
-      }
-      return resp;
+      url = backendUrl.replace(/\/$/, "") + "/api/chat";
+      headers = { "Content-Type": "application/json", "Authorization": `Bearer ${this.getAuthToken()}` };
+    } else {
+      const cfg = this.getConfig();
+      url = cfg.baseURL.replace(/\/$/, "") + "/chat/completions";
+      headers = { "Content-Type": "application/json", "Authorization": `Bearer ${cfg.apiKey}` };
     }
-    const cfg = this.getConfig();
-    const resp = await fetch(cfg.baseURL.replace(/\/$/, "") + "/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${cfg.apiKey}` },
-      body: JSON.stringify(body),
-    });
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => "");
-      throw new Error("API请求失败 (" + resp.status + "): " + errText.slice(0, 200));
-    }
-    return resp;
+    return this._fetchWithRetry(url, headers, JSON.stringify(body), opts);
   },
 
-  async stream(messages, state, onChunk) {
+  // 流式主入口：传输层（超时/网络/限流/5xx/流中断/空响应）自动重试 + 应用层格式自愈。
+  // onRetry(可选)：向 UI 回传重试状态 { attempt, max, kind, status }，用于显示"正在重新连接第 N/3 次…"。
+  async stream(messages, state, onChunk, onRetry) {
     const cfg = this.getConfig();
     const useBackend = this.isLoggedIn() && !!this.getBackendUrl();
     if (!useBackend && !cfg.apiKey) throw new Error("未配置 API Key，请先在设置中填写（或登录后端账号使用服务端 Key）");
 
-    // 解析失败重校：偶发畸形 JSON（非截断）时，以更低温度重取一次，把毛刺压到近零。
-    // 传输层网络/超时已由 _fetchJson 内部重试，此处为应用层「格式自愈」，二者互不干扰。
-    const MAX_PARSE_RETRY = 1;
+    const MAX_TRANSPORT_RETRY = 2;  // 传输层最多重试 2 次（共 3 次尝试）
+    const MAX_PARSE_RETRY = 1;      // 格式自愈：偶发畸形 JSON 时降温度重校一次
     const systemPrompt = this.buildSystemPrompt(state);
     let lastRaw = "";
+    let transportAttempt = 0;
 
-    for (let attempt = 0; attempt <= MAX_PARSE_RETRY; attempt++) {
-      // 重校轮次降温度，让推理模型更「规矩」地产出合法 JSON
-      const temperature = attempt === 0
-        ? cfg.temperature
-        : Math.max(0.2, Math.min(cfg.temperature, 0.4));
-
-      const raw = await this._streamOnce(messages, systemPrompt, state, onChunk, temperature, cfg);
-      lastRaw = raw;
-
-      // 解析自检：成功则直接返回；失败且仍可重试则降温度重校
-      let ok = false;
-      try { ok = !this.parseResponse(raw).parseError; } catch (e) { ok = false; }
-      if (ok) return raw;
-
-      if (attempt < MAX_PARSE_RETRY && onChunk) {
-        // onStreamChunk 为 innerHTML 覆盖式，重校提示会被最终叙事覆盖，不会叠加
-        try { onChunk("", "推演微滞，重校中……"); } catch (e) {}
+    while (transportAttempt <= MAX_TRANSPORT_RETRY) {
+      let raw = null;
+      let transportErr = null;
+      // 同一传输尝试内先跑「格式自愈」：降温度重取，直到解析通过或重校次数耗尽
+      const parseTries = transportAttempt === 0 ? MAX_PARSE_RETRY : 0;
+      let parseOk = false;
+      try {
+        for (let p = 0; p <= parseTries; p++) {
+          // 重校轮次降温度，让推理模型更「规矩」地产出合法 JSON
+          const temperature = p === 0
+            ? cfg.temperature
+            : Math.max(0.2, Math.min(cfg.temperature, 0.4));
+          raw = await this._streamOnce(messages, systemPrompt, state, onChunk, temperature, cfg, { onRetry });
+          lastRaw = raw;
+          try { parseOk = !this.parseResponse(raw).parseError; } catch (e) { parseOk = false; }
+          if (parseOk) break;
+          if (p < parseTries && onChunk) {
+            // onStreamChunk 为覆盖式，重校提示会被最终叙事覆盖，不会叠加
+            try { onChunk("", "推演微滞，重校中……"); } catch (e) {}
+          }
+        }
+      } catch (e) {
+        transportErr = e;
       }
+
+      if (parseOk) return raw;
+
+      // 解析自愈后仍失败：不触发传输重试，直接返回兜底文案（parseResponse 已给柔和文案）
+      if (!transportErr) return lastRaw;
+
+      // 传输层错误：依据分类决定是否重试
+      const info = this._classifyError(transportErr, transportErr._status);
+      if (info.retryable && transportAttempt < MAX_TRANSPORT_RETRY) {
+        if (onRetry) try { onRetry({ attempt: transportAttempt + 1, max: MAX_TRANSPORT_RETRY + 1, kind: info.kind, status: info.status }); } catch (e) {}
+        await this._sleep(Math.min(this._backoff(info.kind, transportAttempt), 15000));
+        transportAttempt++;
+        continue;
+      }
+      // 不可重试 或 重试耗尽：抛友好错误
+      throw this._attachKind(new Error(this._userMessage(info.kind, info.status, transportErr.message || "")), info.kind, info.status);
     }
     return lastRaw;
   },
 
-  // 单次流式请求（被 stream() 调用，支持解析失败重校重试）
-  async _streamOnce(messages, systemPrompt, state, onChunk, temperature, cfg) {
+  // 单次流式请求（被 stream() 调用）。超时/重试已在 _postChat→_fetchWithRetry 内完成；
+  // 此处额外处理 SSE 流中途断开（空闲超时）与空响应，并对外抛出带类型标记的错误。
+  async _streamOnce(messages, systemPrompt, state, onChunk, temperature, cfg, opts = {}) {
     const body = {
       model: cfg.model,
       messages: [
@@ -1039,8 +1126,8 @@ ${this.buildVarietyBlock(state)}
       body.stream_options = { include_usage: true };
     }
 
-    // 刀锋式：后端模式走 /api/chat 代理（Key 不暴露），否则直连用户自带 Key
-    const resp = await this._postChat(body);
+    // 统一入口：后端模式走 /api/chat 代理（Key 不暴露），否则直连用户自带 Key；内置超时/重试
+    const resp = await this._postChat(body, opts);
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -1048,39 +1135,53 @@ ${this.buildVarietyBlock(state)}
     let rawFull = "";
     let lastDisplay = "";
     let lastUsage = null;
+    const STREAM_IDLE_MS = opts.streamIdleMs || 45000; // 流中途超过 45s 无新数据视为断开
+    let finished = false;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
+    try {
+      while (true) {
+        const { done, value } = await this._readChunk(reader, STREAM_IDLE_MS);
+        if (done) { finished = true; break; }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data:")) continue;
-        const data = trimmed.slice(5).trim();
-        if (data === "[DONE]") continue;
-        try {
-          const json = JSON.parse(data);
-          if (json.usage) lastUsage = json.usage; // 流式末块返回 token 用量
-          const delta = json.choices?.[0]?.delta?.content || "";
-          if (delta) {
-            rawFull += delta;
-            // 过滤 reasoning 模型的 <think>...</think> 思考过程，避免污染剧情与 JSON
-            const displayFull = rawFull.replace(/<think>[\s\S]*?<\/think>/g, "").trimStart();
-            // 只把 narrative 部分流式展示给玩家，避免原始 JSON 协议数据泄露到剧情区
-            const streamNarrative = this._extractStreamNarrative(displayFull);
-            if (streamNarrative !== lastDisplay) {
-              const displayDelta = streamNarrative.slice(lastDisplay.length);
-              lastDisplay = streamNarrative;
-              if (onChunk) onChunk(displayDelta, streamNarrative);
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data:")) continue;
+          const data = trimmed.slice(5).trim();
+          if (data === "[DONE]") continue;
+          try {
+            const json = JSON.parse(data);
+            if (json.usage) lastUsage = json.usage; // 流式末块返回 token 用量
+            const delta = json.choices?.[0]?.delta?.content || "";
+            if (delta) {
+              rawFull += delta;
+              // 过滤 reasoning 模型的 <think>...</think> 思考过程，避免污染剧情与 JSON
+              const displayFull = rawFull.replace(/<think>[\s\S]*?<\/think>/g, "").trimStart();
+              // 只把 narrative 部分流式展示给玩家，避免原始 JSON 协议数据泄露到剧情区
+              const streamNarrative = this._extractStreamNarrative(displayFull);
+              if (streamNarrative !== lastDisplay) {
+                const displayDelta = streamNarrative.slice(lastDisplay.length);
+                lastDisplay = streamNarrative;
+                if (onChunk) onChunk(displayDelta, streamNarrative);
+              }
             }
-          }
-        } catch (e) { /* skip */ }
+          } catch (e) { /* skip */ }
+        }
       }
+    } catch (e) {
+      // 中途断开/超时：释放 reader 并抛出带类型标记的错误，交由 stream() 决定重试
+      if (!finished) { try { await reader.cancel(); } catch (_) {} }
+      if (e && e._kind) throw e;
+      throw this._attachKind(e instanceof Error ? e : new Error(String(e)), "network", null);
     }
     this._reportUsage(cfg.model, lastUsage);
+
+    // 空响应（status 200 但无正文）：偶发服务端空输出，抛出 empty 让上层重试一次
+    if (!rawFull.trim()) {
+      throw this._attachKind(new Error("AI 返回内容为空"), "empty", 200);
+    }
     return rawFull;
   },
 
@@ -1376,8 +1477,8 @@ ${this.buildVarietyBlock(state)}
       .replace(/\\\\/g, "\\");
   },
 
-  // 生成修士列传（生平小传），流式输出
-  async generateBiography(state, onChunk) {
+  // 生成修士列传（生平小传），流式输出。享受与 stream() 同等的传输层重试/超时/错误分类保护。
+  async generateBiography(state, onChunk, onRetry) {
     const cfg = this.getConfig();
     if (!cfg.apiKey) throw new Error("未配置 API Key，请先在设置中填写");
 
@@ -1437,35 +1538,68 @@ ${logText}
       body.stream_options = { include_usage: true };
     }
 
-    const resp = await this._postChat(body);
+    // 列传同样享受传输层重试 / 流空闲超时 / 错误分类保护
+    const MAX_TRANSPORT_RETRY = 2; // 共 3 次尝试
+    let transportAttempt = 0;
+    let lastErr = null;
+    while (transportAttempt <= MAX_TRANSPORT_RETRY) {
+      try {
+        return await this._streamBiography(body, state, onChunk, { onRetry });
+      } catch (e) {
+        lastErr = e;
+        const info = this._classifyError(e, e._status);
+        if (info.retryable && transportAttempt < MAX_TRANSPORT_RETRY) {
+          if (onRetry) try { onRetry({ attempt: transportAttempt + 1, max: MAX_TRANSPORT_RETRY + 1, kind: info.kind, status: info.status }); } catch (e2) {}
+          await this._sleep(Math.min(this._backoff(info.kind, transportAttempt), 15000));
+          transportAttempt++;
+          continue;
+        }
+        throw this._attachKind(new Error(this._userMessage(info.kind, info.status, e && e.message ? e.message : "")), info.kind, info.status);
+      }
+    }
+    throw this._attachKind(new Error(lastErr && lastErr.message ? lastErr.message : "列传生成失败"), (lastErr && lastErr._kind) || "unknown", lastErr && lastErr._status);
+  },
+
+  // 单次列传流式读取（被 generateBiography 调用），含流空闲超时与空响应处理
+  async _streamBiography(body, state, onChunk, opts = {}) {
+    const resp = await this._postChat(body, opts);
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let fullText = '';
     let bioUsage = null;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data:')) continue;
-        const data = trimmed.slice(5).trim();
-        if (data === '[DONE]') continue;
-        try {
-          const json = JSON.parse(data);
-          if (json.usage) bioUsage = json.usage;
-          const delta = json.choices?.[0]?.delta?.content || '';
-          if (delta) {
-            fullText += delta;
-            if (onChunk) onChunk(delta, fullText);
-          }
-        } catch (e) { /* skip */ }
+    const STREAM_IDLE_MS = opts.streamIdleMs || 45000; // 流中途超过 45s 无新数据视为断开
+    let finished = false;
+    try {
+      while (true) {
+        const { done, value } = await this._readChunk(reader, STREAM_IDLE_MS);
+        if (done) { finished = true; break; }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data:')) continue;
+          const data = trimmed.slice(5).trim();
+          if (data === '[DONE]') continue;
+          try {
+            const json = JSON.parse(data);
+            if (json.usage) bioUsage = json.usage;
+            const delta = json.choices?.[0]?.delta?.content || '';
+            if (delta) {
+              fullText += delta;
+              if (onChunk) onChunk(delta, fullText);
+            }
+          } catch (e) { /* skip */ }
+        }
       }
+    } catch (e) {
+      if (!finished) { try { await reader.cancel(); } catch (_) {} }
+      if (e && e._kind) throw e;
+      throw this._attachKind(e instanceof Error ? e : new Error(String(e)), "network", null);
     }
-    this._reportUsage(cfg.model, bioUsage);
+    this._reportUsage(this.getConfig().model, bioUsage);
+    if (!fullText.trim()) throw this._attachKind(new Error("AI 返回内容为空"), "empty", 200);
     return fullText;
   },
 };
