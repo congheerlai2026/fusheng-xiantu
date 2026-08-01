@@ -1,5 +1,5 @@
 // ============================================================
-//  《浮生仙途》游戏引擎
+//  《万界修真》游戏引擎
 //  Game Engine & State Manager
 // ============================================================
 //
@@ -5619,7 +5619,7 @@ const UI = {
   showSupport() {
     const cfg = (window.GAME_CONFIG && window.GAME_CONFIG.incense) || {};
     const title = cfg.title || "上香祈愿";
-    const note = cfg.note || "若《浮生仙途》为你带来片刻仙缘，不妨燃一炷清香。此香不收银钱，只纳心意。";
+    const note = cfg.note || "若《万界修真》为你带来片刻仙缘，不妨燃一炷清香。此香不收银钱，只纳心意。";
     document.getElementById("support-title").textContent = title;
     document.getElementById("support-note").textContent = note;
     this.renderIncense();
