@@ -889,7 +889,7 @@ body.pixel .guest-banner {
 }
 body.pixel .guest-banner a { color: #fff; text-decoration: underline; cursor: pointer; }
 
-/* ============ 立绘系统·古风平滑渲染（像素主题覆盖） ============ */
+/* [立绘已撤回 - 样式保留] 立绘系统·古风平滑渲染（像素主题覆盖） */
 body.pixel .hero-portrait .hp-svg { filter: drop-shadow(0 4px 10px rgba(0,0,0,.4)) drop-shadow(0 0 16px var(--pt-accent, rgba(100,160,220,0.15))); }
 body.pixel .hp-aura { opacity: .9; }
 body.pixel .npc-portrait svg { }
@@ -905,7 +905,7 @@ body.pixel .sys-rudao    { --pt-main:#b0b0b8; --pt-accent:#ffffff; --pt-dark:#3a
 body.pixel .sys-wudao    { --pt-main:#3a3f4a; --pt-accent:#9aa3b0; --pt-dark:#121419; --pt-light:#1c2026; }
 body.pixel .sys-default  { --pt-main:#5b7a8f; --pt-accent:#a8c8da; --pt-dark:#22333f; --pt-light:#1a242a; }
 
-/* ============ AI 立绘（ArtEngine 生成；像素主题下保持写实，不像素化） ============ */
+/* [立绘引擎休眠 - 样式保留] AI 立绘（ArtEngine 生成；像素主题下保持写实，不像素化） */
 body.pixel .ai-portrait-img { image-rendering: auto; filter: drop-shadow(2px 2px 0 rgba(0,0,0,.5)); }
 body.pixel .hero-portrait .ai-portrait-img,
 body.pixel .npc-portrait .ai-portrait-img { width: 100%; height: 100%; }
