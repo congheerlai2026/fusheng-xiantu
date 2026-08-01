@@ -713,17 +713,18 @@ ${this.buildVarietyBlock(state)}
     const dys = (w.dynasties || []).filter(d => d && d.status !== "fallen");
     if (!dys.length) return "";
     const lab = { new: "新立", rising: "复兴", prosper: "盛世", stable: "治世", decline: "中衰", crisis: "危局" };
-    const lines = ["【王朝态势 · 此界凡间王朝随时光自行兴衰易代，须据此让朝堂、市井与江湖门人言行贴合庙堂大势】"];
+    const lines = ["【王朝态势 · 此界凡间王朝随时光自行兴衰易代；修真宗门以「甲子」为节点、掌教在位动辄数百载，一宗可跨越数个乃至十数王朝——叙述须体现此二极时间尺度之差：王朝是过客，宗门是恒常。】"];
     dys.forEach(d => {
       const metrics = [["正统", d.legitimacy], ["国势", d.prosperity], ["社稷", d.stability], ["国祚", d.mandate]];
       metrics.sort((a, b) => a[1] - b[1]);
       const weak = metrics[0];
-      lines.push(`  - ${d.name}（年号${d.reign || "?"}·立国第${d.era || 1}年·${d.ruler || "今上"}御极·都${d.capital || "?"}）：时局「${lab[d.status] || "治世"}」｜国势${d.prosperity}/100｜社稷${d.stability}/100｜国祚${d.mandate}/100｜隐忧：${weak[0]}疲敝（${weak[1]}/100）`);
+      lines.push(`  - ${d.name}（年号${d.reign || "?"}·立国第${d.era || 1}年·${d.ruler || "今上"}御极·都${d.capital || "?"}·护国宗门${d.patron || "无"}）：时局「${lab[d.status] || "治世"}」｜国势${d.prosperity}/100｜社稷${d.stability}/100｜国祚${d.mandate}/100｜隐忧：${weak[0]}疲敝（${weak[1]}/100）`);
     });
     const gen = w.gen;
     if (gen && Array.isArray(gen.factions)) {
-      const gong = gen.factions.filter(f => f.disposition === "皇朝供奉");
-      if (gong.length) lines.push(`· 朝堂与${gong.map(f => f.name).join("、")}互为奥援（国师/供奉之属），相关门人须贴合君国立场。`);
+      const patrons = dys.map(d => d.patron).filter(Boolean);
+      const bound = gen.factions.filter(f => patrons.indexOf(f.name) >= 0);
+      if (bound.length) lines.push(`· 气运相系：王朝国祚系于${bound.map(f => f.name).join("、")}之盛衰——该派鼎盛则国祚昌隆，式微或陷战则王朝气运消散；该派门人须同时贴合君国与宗门双重立场。`);
     }
     return lines.join("\n");
   },
