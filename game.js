@@ -2421,6 +2421,165 @@ const Game = {
     return body;
   },
 
+  // ===== 修仙百艺 · 确定性制作/采集/市集引擎（与战斗引擎同构：引擎算定，AI 只叙事）=====
+  // 设计：玩家主动动作不经 AI 写 state_changes，改由本引擎确定性结算后落地；
+  // AI 仅通过 buildCraftBlock 注入 state（已掌握技艺/熟练度/近期制作/市集行情）在下一轮贴合叙事。
+  _itemCount(name) {
+    const inv = (this.state.character.inventory) || [];
+    return inv.filter(i => i.name === name).length;
+  },
+  _removeItem(name, n) {
+    const inv = this.state.character.inventory;
+    let removed = 0;
+    for (let i = inv.length - 1; i >= 0 && removed < n; i--) {
+      if (inv[i].name === name) { inv.splice(i, 1); removed++; }
+    }
+    return removed;
+  },
+  _gradeMul(grade) {
+    const m = { "黄阶下品":0.6, "黄阶中品":0.8, "黄阶上品":1.0, "玄阶下品":1.2, "玄阶中品":1.5, "玄阶上品":1.8, "地阶下品":2.2 };
+    return m[grade] || 1.0;
+  },
+  _itemPrice(name) {
+    const econ = (this.state.world.economy) || {};
+    if (econ[name] && econ[name].price) return econ[name].price;
+    const ms = (typeof MATERIAL_SOURCES !== "undefined") ? MATERIAL_SOURCES[name] : null;
+    return ms ? ms.fallback : 25;
+  },
+  _addProf(craftType, gain) {
+    const c = this.state.character;
+    c.skills = c.skills || {};
+    if (!c.skills[craftType]) c.skills[craftType] = { proficiency: 0, path: null };
+    c.skills[craftType].proficiency = Math.min(100, (c.skills[craftType].proficiency || 0) + gain);
+  },
+  _pushCraftLog(craft, name, win) {
+    const c = this.state.character;
+    c.craftLog = c.craftLog || [];
+    c.craftLog.unshift({ craft, name, win, day: (this.state.world.day || 1) });
+    if (c.craftLog.length > 8) c.craftLog = c.craftLog.slice(0, 8);
+  },
+  // 成功率（确定性，种子化）：sBase + 熟练度加成 + 灵气加成 - 难度惩罚，封顶 0.97 永无必成
+  _craftChance(recipe, prof, spirit) {
+    let s = recipe.sBase + (prof || 0) * 0.003 + ((spirit || 6) - 6) * 0.02 - (recipe.diff || 0) * 0.01;
+    return Math.max(0.10, Math.min(0.97, s));
+  },
+  _craft(craftType, recipeId, rng) {
+    rng = rng || Math.random;
+    const c = this.state.character, w = this.state.world;
+    const recipe = ((typeof RECIPES !== "undefined" && RECIPES[craftType]) || []).find(r => r.id === recipeId);
+    if (!recipe) return { ok: false, msg: "无此配方" };
+    const miss = [];
+    for (const [mat, qty] of Object.entries(recipe.materials || {})) {
+      const have = this._itemCount(mat);
+      if (have < qty) miss.push(`${mat}(需${qty}/有${have})`);
+    }
+    if (miss.length) return { ok: false, consumed: false, msg: "材料不足：" + miss.join("、") };
+    for (const [mat, qty] of Object.entries(recipe.materials || {})) this._removeItem(mat, qty);
+    const prof = (c.skills && c.skills[craftType] && c.skills[craftType].proficiency) || 0;
+    const chance = this._craftChance(recipe, prof, w.spirit);
+    const win = rng() < chance;
+    const deltas = [];
+    if (win) {
+      c.inventory.push({ name: recipe.name, type: recipe.sellType, grade: recipe.grade, desc: recipe.effect });
+      const gain = 4 + Math.floor(rng() * 3);
+      this._addProf(craftType, gain);
+      deltas.push(`炼成 ${recipe.name}·${recipe.grade}`);
+      deltas.push(`熟练 +${gain}`);
+      this._pushCraftLog(craftType, recipe.name, true);
+      return { ok: true, win: true, msg: `炉火纯青，${recipe.name}炼成！`, deltas };
+    } else {
+      const boom = rng() < (recipe.diff || 0) * 0.005;
+      const ratio = boom ? 1 : (recipe.fail || 0.5);
+      const refund = 1 - ratio;
+      for (const [mat, qty] of Object.entries(recipe.materials || {})) {
+        const back = Math.floor(qty * refund);
+        for (let i = 0; i < back; i++) c.inventory.push({ name: mat, type: "材料", grade: "", desc: "" });
+      }
+      const gain = 1 + Math.floor(rng() * 2);
+      this._addProf(craftType, gain);
+      deltas.push(`炼制失败${boom ? "（炸炉！材料尽毁）" : ""}`);
+      deltas.push(`熟练 +${gain}`);
+      this._pushCraftLog(craftType, recipe.name, false);
+      return { ok: true, win: false, msg: boom ? `丹炉轰然炸裂，材料尽毁，然手法略熟。` : `火候有差，${recipe.name}未成，折损些许材料，手法略熟。`, deltas };
+    }
+  },
+  _gather(rng) {
+    rng = rng || Math.random;
+    const w = this.state.world, c = this.state.character;
+    const cost = 5;
+    if ((c.qi || 0) < cost) return { ok: false, msg: "灵力不足，难以凝神采撷" };
+    c.qi = Math.max(0, c.qi - cost);
+    const loc = w.location || "荒野";
+    const r = this._rng("gather|" + ((w.day || 1) + loc.length * 7));
+    const roll = r();
+    let mat, qty;
+    if (roll < 0.55) { mat = "灵草"; qty = 1 + Math.floor(r() * 2); }
+    else if (roll < 0.85) { mat = "矿脉"; qty = 1 + Math.floor(r() * 2); }
+    else {
+      mat = "灵泉"; qty = ((w.spirit || 6) >= 8 && r() < 0.6) ? 1 : 0;
+      if (qty === 0) { mat = "矿脉"; qty = 1; }
+    }
+    for (let i = 0; i < qty; i++) c.inventory.push({ name: mat, type: "材料", grade: "", desc: "" });
+    return { ok: true, mat, qty, msg: `于${loc}采得${mat}×${qty}`, deltas: [`${mat} +${qty}`, `灵力 -${cost}`] };
+  },
+  _marketBuy(item, qty) {
+    qty = qty || 1;
+    const BUYABLE = { "灵材": 1, "粮草": 1 };
+    if (!BUYABLE[item]) return { ok: false, msg: `${item}非市集常货，须自行采集或猎取` };
+    const price = this._itemPrice(item);
+    const total = price * qty;
+    const c = this.state.character;
+    if ((c.spiritualStones || 0) < total) return { ok: false, msg: `灵石不足（需${total}）` };
+    c.spiritualStones -= total;
+    for (let i = 0; i < qty; i++) c.inventory.push({ name: item, type: "材料", grade: "", desc: "" });
+    return { ok: true, msg: `购得 ${item}×${qty}`, deltas: [`${item} +${qty}`, `灵石 -${total}`] };
+  },
+  _marketSell(item, qty) {
+    qty = qty || 1;
+    const c = this.state.character;
+    const have = this._itemCount(item);
+    if (have < qty) return { ok: false, msg: `持有不足（有${have}）` };
+    const it = c.inventory.find(i => i.name === item);
+    const grade = it ? it.grade : "";
+    const baseType = it ? it.type : "物品";
+    const econ = (this.state.world.economy) || {};
+    let unit;
+    if (econ[baseType] && econ[baseType].price) unit = Math.round(econ[baseType].price * this._gradeMul(grade) * 0.8);
+    else unit = Math.round(this._itemPrice(item) * 0.8);
+    const total = unit * qty;
+    this._removeItem(item, qty);
+    c.spiritualStones = (c.spiritualStones || 0) + total;
+    return { ok: true, msg: `售出 ${item}×${qty}，得灵石${total}`, deltas: [`灵石 +${total}`, `${item} -${qty}`] };
+  },
+  // 高层入口：确定性落地 + 推进世界时钟（制作/采集耗光阴）+ 写日志（不调 AI，零额外成本）
+  craftAction(craftType, recipeId) {
+    if (this.isProcessing) return { ok: false, msg: "正在处理其他事务" };
+    this.isProcessing = true;
+    try {
+      const res = this._craft(craftType, recipeId, Math.random);
+      if (res.ok) { this.advanceTime(); this.save(); }
+      return res;
+    } finally { this.isProcessing = false; }
+  },
+  gatherAction() {
+    if (this.isProcessing) return { ok: false, msg: "正在处理其他事务" };
+    this.isProcessing = true;
+    try {
+      const res = this._gather(Math.random);
+      if (res.ok) { this.advanceTime(); this.save(); }
+      return res;
+    } finally { this.isProcessing = false; }
+  },
+  marketAction(kind, item, qty) {
+    if (this.isProcessing) return { ok: false, msg: "正在处理其他事务" };
+    this.isProcessing = true;
+    try {
+      const res = (kind === "buy") ? this._marketBuy(item, qty) : this._marketSell(item, qty);
+      if (res.ok) this.save();
+      return res;
+    } finally { this.isProcessing = false; }
+  },
+
   // ===== 确定性战斗结算引擎（纯逻辑，置于 Game，供 processAction 调用）=====
   // 玩家战力由境界/灵力/功法/悟性/金手指真实派生，使"功法、修炼、金手指"不再只是收藏品，
   // 敌人战力由类型+个体强度+世界灵气派生。胜负、伤害、掉落全部由本引擎算定，不再任由 AI 随口编造——
@@ -6270,6 +6429,108 @@ const UI = {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
+  },
+
+  // ============ 修仙百艺 · 确定性玩法 UI（制作/采集/市集，不走 AI 结算）============
+  openCraft() {
+    const modal = document.getElementById('craft-modal');
+    if (!modal) return;
+    this._craftTab = '炼丹';
+    modal.classList.add('active');
+    this.renderCraft();
+    this.renderStatus();
+  },
+  closeCraft() {
+    const modal = document.getElementById('craft-modal');
+    if (modal) modal.classList.remove('active');
+  },
+  renderCraft(tab) {
+    const el = document.getElementById('craft-content');
+    if (!el || !Game.state) return;
+    if (tab) this._craftTab = tab;
+    const c = Game.state.character, w = Game.state.world;
+    const spirit = w.spirit || 6;
+    const tabs = ['炼丹', '炼器', '符箓', '阵法', '采集', '市集'];
+    let html = '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">';
+    tabs.forEach(t => {
+      html += `<span onclick="UI.renderCraft('${t}')" style="cursor:pointer;padding:4px 10px;border-radius:8px;font-size:13px;${this._craftTab === t ? 'background:#534AB7;color:#fff' : 'background:#EEEDFE;color:#3C3489'}">${t}</span>`;
+    });
+    html += '</div>';
+    if (this._craftTab === '采集') {
+      const qi = c.qi || 0;
+      html += `<div style="font-size:13px;line-height:1.7"><p style="color:#3C3489">于当前所在「${UI.escapeHtml(w.location || '荒野')}」凝神采撷，耗灵力 5。灵气越盛，越易得灵泉。</p>`;
+      html += `<button class="btn btn-primary" onclick="UI.doGather()">采集一次（灵力 ${qi}/100）</button></div>`;
+    } else if (this._craftTab === '市集') {
+      html += this._renderMarket(c, w);
+    } else {
+      const craft = this._craftTab;
+      const prof = (c.skills && c.skills[craft] && c.skills[craft].proficiency) || 0;
+      html += `<div style="font-size:13px;line-height:1.7"><p style="color:#3C3489">${craft}熟练 ${prof}/100。成功率随熟练与灵气(${spirit})提升，高阶配方天然更难，封顶 97% 永无必成。</p>`;
+      const recipes = ((typeof RECIPES !== 'undefined' && RECIPES[craft]) || []);
+      recipes.forEach(r => {
+        const chance = Game._craftChance(r, prof, spirit);
+        const mats = Object.entries(r.materials).map(([m, q]) => {
+          const have = Game._itemCount(m);
+          const ok = have >= q;
+          return `<span style="margin-right:8px;${ok ? 'color:#3B6D11' : 'color:#A32D2D'}">${UI.escapeHtml(m)} ${have}/${q}</span>`;
+        }).join('');
+        const can = Object.entries(r.materials).every(([m, q]) => Game._itemCount(m) >= q);
+        html += `<div style="border:1px solid #CECBF6;border-radius:10px;padding:10px;margin:8px 0">`;
+        html += `<div style="font-weight:500">${UI.escapeHtml(r.name)} <span style="color:#854F0B">${r.grade}</span></div>`;
+        html += `<div style="margin:4px 0">${mats}</div>`;
+        html += `<div style="color:#888780;font-size:12px">成功率 ${(chance * 100).toFixed(0)}% · 估值 ${r.value}灵石 · ${UI.escapeHtml(r.effect)}</div>`;
+        html += `<button class="btn btn-sm btn-primary" style="margin-top:6px" ${can ? '' : 'disabled'} onclick="UI.doCraft('${craft}','${r.id}')">炼制</button></div>`;
+      });
+      html += `</div>`;
+    }
+    el.innerHTML = html;
+  },
+  _renderMarket(c, w) {
+    const econ = w.economy || {};
+    let html = '<div style="font-size:13px;line-height:1.7">';
+    html += '<h4 style="margin:6px 0;color:#3C3489">售卖（换灵石 · 行情价×品级×0.8）</h4>';
+    const sellable = {};
+    (c.inventory || []).forEach(i => { if (['丹药', '符箓', '法器', '材料'].includes(i.type)) sellable[i.name] = i; });
+    const names = Object.keys(sellable);
+    if (!names.length) html += '<p style="color:#888780">储物袋中暂无可售之物。</p>';
+    names.forEach(n => {
+      const it = sellable[n];
+      let unit;
+      if (econ[it.type] && econ[it.type].price) unit = Math.round(econ[it.type].price * Game._gradeMul(it.grade || '') * 0.8);
+      else unit = Math.round(Game._itemPrice(n) * 0.8);
+      html += `<div style="display:flex;align-items:center;gap:10px;margin:4px 0"><span style="flex:1">${UI.escapeHtml(n)}·${it.grade || ''}（${Game._itemCount(n)}）</span><span style="color:#854F0B">单价${unit}</span><button class="btn btn-sm btn-primary" onclick="UI.doMarket('sell','${UI.escapeHtml(n)}',1)">卖1</button></div>`;
+    });
+    html += '<h4 style="margin:10px 0 6px;color:#3C3489">采购（灵材·粮草 · 行情价）</h4>';
+    ['灵材', '粮草'].forEach(g => {
+      const price = Game._itemPrice(g);
+      html += `<div style="display:flex;align-items:center;gap:10px;margin:4px 0"><span style="flex:1">${g}</span><span style="color:#854F0B">单价${price}</span><button class="btn btn-sm btn-ghost" onclick="UI.doMarket('buy','${g}',1)">买1</button></div>`;
+    });
+    html += `<p style="margin-top:8px;color:#3C3489">当前灵石：${c.spiritualStones || 0}</p></div>`;
+    return html;
+  },
+  doCraft(craft, recipeId) {
+    if (!Game.state || !Game.state.meta.alive) return;
+    const res = Game.craftAction(craft, recipeId);
+    if (!res.ok) { this.showToast(res.msg); return; }
+    this.showToast(res.msg + (res.deltas ? ' ' + res.deltas.join('，') : ''));
+    this.renderCraft();
+    this.renderStatus();
+  },
+  doGather() {
+    if (!Game.state || !Game.state.meta.alive) return;
+    const res = Game.gatherAction();
+    if (!res.ok) { this.showToast(res.msg); return; }
+    this.showToast(res.msg + (res.deltas ? ' ' + res.deltas.join('，') : ''));
+    this.renderCraft();
+    this.renderStatus();
+  },
+  doMarket(kind, item, qty) {
+    if (!Game.state || !Game.state.meta.alive) return;
+    const res = Game.marketAction(kind, item, qty);
+    if (!res.ok) { this.showToast(res.msg); return; }
+    this.showToast(res.msg + (res.deltas ? ' ' + res.deltas.join('，') : ''));
+    this.renderCraft();
+    this.renderStatus();
   },
 };
 
