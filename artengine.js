@@ -13,6 +13,9 @@
 //    { enabled: true, key: "你的 Gemini API Key" }
 //  与 DeepSeek Key 同理：用户自填，风险自担，不联网上传任何游戏数据。
 // ============================================================
+// [立绘引擎已休眠 - 待美术资源就绪后启用]
+// 注意：当前游戏已撤回人物立绘功能（_heroSpec / _npcSpec 恒返回 null），
+// 所有 ArtEngine.upgrade() 调用均被 `if (spec)` 守卫拦截，本引擎不会被主动调用。
 const ArtEngine = {
   LS_CFG: "xianxia_ai_portrait",
   LS_PREFIX: "pt_",
