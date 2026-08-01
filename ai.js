@@ -27,6 +27,17 @@ const AIService = {
     return !!this.getConfig().apiKey;
   },
 
+  // 刀锋式后端：前端只读访问器（不暴露 Key）
+  getBackendUrl() {
+    return (localStorage.getItem("xianxia_backend_url") || "").trim();
+  },
+  getAuthToken() {
+    return localStorage.getItem("xianxia_jwt") || "";
+  },
+  isLoggedIn() {
+    return !!this.getAuthToken();
+  },
+
   // 构建系统提示词：定义仙侠世界规则
   // ============ 玩家身份卡 / 灵宠卡 · 固定锚定（根治人设漂移） ============
   // 上方【当前角色状态】已全量灌入 character JSON，但机器可读的 JSON 混在易变数值里，
@@ -92,6 +103,7 @@ ${JSON.stringify((() => { const w = Object.assign({}, state.world); delete w.gen
 
 【本界天地 · 此界天地已锁定，务必遵循其设定，剧情须贴合同一方世界，不可随意切换世界背景】
 ${this.buildWorldBlock(state)}
+${this.buildFactionStateBlock(state)}
 
 【当前地点 · 感官简报 · 须融于描写】
 ${this.buildLocationBrief(state)}
@@ -113,6 +125,29 @@ ${this.buildMainPlotBlock(state)}
 
 【伏笔 · 暗线编织与回收 · 务必遵循】
 ${this.buildThreadBlock(state)}
+
+【道心 · 道理之争 · 剑来式内核 · 务必遵循】
+${this.buildDaoBlock(state)}
+
+【真实江湖 · 沉浸式铁律 · 务必遵循】
+- 光阴有重量：须让"时间"真实流过。静修、赶路、养伤、参悟皆可耗去数日乃至经月；state_changes.day_change 可大于 1。你闭关静养疗伤的三月里，江湖的风云与你无关，却仍在转动——归来时，物是人非。
+- 身体会记仇：伤须对症（外伤金创、真元伤温养、毒伤解毒、神魂伤安神、灵脉滞引灵、道基损重凝、业障缠了结因果、劫数伤应劫，各有其法），非一丹通治；重伤须静养，期间行动受限。请把"疗伤养病"写成一段有重量的日子，而非一句带过。
+- 银钱有压力：灵石非无穷，穷则寸步难行；赊账、借贷、盘缠皆可是剧情张力。恶名在身者，商铺可能拒赊、熟人可能避见。
+- 不标正确：系统不为玩家预标"正确选项"。善恶一念，后果自担；NPC 记得你做过什么，并据之对待你（亲/疏/惧/仇）。
+- 涌现优先：玩家任意自然语言输入（包括看似无意义的举动）都应被认真对待并触发真实反应；越是出乎意料的坚持，越可能引爆涌现式剧情（如以荒唐举动逼退强敌）。
+
+【世界会自行演化 · 势力与名声皆活 · 务必遵循】
+- 时光流逝时（state_changes.day_change 多日），诸派会自行演化：资源消长、道场扩张、结盟或开战、式微或中兴。你闭关 / 远游归来，须据【势力态势】写出"物是人非"的变迁感，绝不可假装世界静止不变；可在叙事开篇点出"某派已据某域""某派与某派开战"等此界新局。
+- 江湖情报网：玩家显赫言行会化作传闻，依地缘逐域传播（见【当前地点】本地点·江湖见闻）。NPC 据其所闻与玩家在各派之名望行事——美名者得助、恶名者遭避或袭、陌生者淡然。须让 NPC 反应"有迹可循"，而非凭空敌友。
+- 玩家在【势力态势】可见各派当前状态（崛起/守成/式微/交战）与资源强弱、疆域、当务之标，与之相关的门人、散修言行须贴合其派当下处境（守成者谨慎、崛起者雄心、交战者枕戈、式微者自保）。市廛/丹盟类（标记"市廛"）掌此界坊市，其态度直接关系到你能否交易。
+- 伤有根由，分两层（P1-C 真实伤病学·仙侠适配）：①肉身层——外伤/真元伤/毒伤（凡躯皮肉气血之伤，武侠同源）；②道途层——神魂伤/灵脉滞/道基损/业障缠/劫数伤（仙侠独有之"更大世界"创伤，随境界解锁，低境同类威胁降格为肉身/神魂层）。各伤须对症方速愈：外伤金创外敷、真元伤温养归元、毒伤解毒、神魂伤安神问心、灵脉滞引灵温养、道基损重凝道基、业障缠须了结因果（非丹药可医！）、劫数伤须应劫续命。延误则恶化，重伤未愈不可强冲境界（突破将被挡下）。疗伤须耗时（day_change 多日），养伤时世界照走——归来须写清伤愈或恶化，绝不可假装无伤。
+
+${this.buildFixedLawsBlock(state)}
+
+【NPC 自驱 · 写得了开局，写不了结局 · 务必遵循】
+- 本界名动人物各有自身【志业】(所求之目标)与【性格】(底层逻辑)，凭此在世界时钟中自驱行动，不待你触发；你闭关/远游归来，须据【在场人物·其志业性格】写出"人已自走其路"的变迁感。
+- 玩家可立一名自定义 NPC 的"出身/来处"（state_changes.npc_spawn），但【绝不可替其决定结局】——其后续言行须由其自身志业/性格推演，哪怕背离玩家期待（呼应"写得了开局，写不了结局"）。
+- 神识串供：玩家显赫/恶劣言行会化作 NPC 闲话，依地缘逐 NPC 传播；在场 NPC 据此"串供识破"——你骗一人，他日可能被一群人联手揭穿。详见【当前地点·神识串供/因果把柄】。
 
 【人物好感 · 务必参考以演绎 NPC 态度】
 ${(() => {
@@ -284,11 +319,20 @@ ${this.buildVarietyBlock(state)}
     "pet_lost": true,
     "pet_updated": {"growth":10},
     "reputation_change": 数字(声望变化),
+    "faction_reputation_change": [{"faction":"势力名（须为本界 gen.factions 中真实存在的宗门名）","delta":数字(正为美名、负为恶名；单轮通常 3-15，大事件可达 ±30）}] 或 {"faction":"X派","delta":10}（记录玩家在某派/某地盘的名望增减；江湖情报网将据此让该派及相关 NPC 远近亲疏——美名者得助、恶名者遭避或袭）,
+    "intel": "一句江湖传闻（玩家本回合的显赫言行所化，将依地缘逐域传播，使 NPC 跨地记得你）。例：'某修士于青云镇怒斩恶霸，义名渐起'；无显赫言行可不填，但凡动摇一地风评之事皆应记下。",
+    "wound": [{"type":"外伤|真元伤|毒伤|神魂伤|灵脉滞|道基损|业障缠|劫数伤","severity":数字(1轻/2中/3重，默认1),"source":"致伤由来（如 妖狼爪牙/邪修剑气/蛊毒侵体/道基被破/业火缠身）"}] 或 {"type":"外伤"}（记录本回合所受之伤：分肉身层与道途层，须对症方能速愈，延误则恶化，重伤未愈不可强冲境界；非简单掉血，而是 lingering 伤势，UI 会显示并影响突破，narrative 须写出带伤之态。道途层创伤仅当玩家境界已至对应层次方可落笔）,
+    "heal": [{"type":"外伤|真元伤|毒伤|神魂伤|灵脉滞|道基损|业障缠|劫数伤","method":"所施对症之法（须含该伤 remedyKinds 中一字，如 外伤→'以疗伤散外敷'、道基损→'闭关重凝道基'、业障缠→'超度亡魂了结因果'；若误投丹药则收效甚微）"}] 或 "外伤"（记录本回合施法疗伤；须对症方能速愈，误治或对症有误则收效甚微；业障缠唯了结因果可解，丹药无功；多日静养亦可渐愈，须配合 day_change）,
+    "npc_gossip": "一句 NPC 间流传的闲话/情报（玩家本回合言行被某 NPC 记下并传开，将依地缘逐 NPC 传播，使其串供识破）。例：'某修士于坊市赖账，已被掌柜记下'；无显赫之举可不填。",
+    "npc_agenda": "一句 NPC 凭自身志业主动作为的记录（非回应玩家，而是其自驱议程的进展，如'某散修循血海深仇之因，暗中了结旧怨'），将记入因果把柄簿，供日后'物是人非'叙事。",
+    "npc_spawn": {"name":"自定义 NPC 名（≤12字）","origin":"你所立之'出身/来处'（一句话身世）","zhiye":"可选·其志业（如 报仇雪恨/证道飞升，不填则引擎赋之）","xingge":"可选·其性格（如 隐忍/狂傲）","gender":"可选 m/f"}（玩家立一名 NPC 的'开局'，引擎赋其志业/性格与后续行为——你写得了开局，写不了结局；该 NPC 将凭自身道途在世界中自走，不可令其唯你是从）,
+
     "lifespan_change": 数字(寿元变化),
     "justice_change": 数字(行侠仗义之举累积的正义值，正为增加；若玩家做了善举请填正数，如5),
     "evil_change": 数字(邪行恶举累积的邪恶值，正为增加；若玩家做了恶事请填正数，如5),
     "cause_credit_change": 数字(因果力变化：守诺济世、护道了缘、善举记正数，如3；了结旧债记负数),
     "cause_debt_change": 数字(因果债变化：背信弃义、残害无辜、欠恩不报记正数；偿恩了债记负数，可使因果债归零),
+    "dao_change": {"lean":"所趋向之道的id（如 ru/xue/mo/bing/dao/fo/shang/xia/qing/yao/tian/hua，见【道心】区块）","delta":数字(道心倾向增减，单轮通常1-5)","chosen":"玩家明确立道时填其道名（如 儒之礼法）"} 或 [{"lean":"ru","delta":3}]（记录玩家所趋向/所立之"道"，世界将据此以不同方式回应：同道者亲、异道者辩/敌）,
     "npc_affinity_change": {"NPC名字": 好感增减数字(正为亲近、负为疏远，范围约-100~100)；可同时含多个NPC，如 {"苏璃": 10, "玄机子": -8}},
     "npc_memory": {"NPC名字": {"note":"本回合与该人物发生的关键交集/新认知（一句话事实，须与日后其言行一致，如'已与历练者结为道侣'/'曾受历练者救命之恩'）", "flag":"可选·剧情标记（如 结仇/结缘/师徒/救命之恩），重复填写会累加", "relation":"可选·对其他目标的称呼或态度简述"}} 或 [{"name":"NPC名字","note":"...","flag":"...","relation":"..."}]（让该人物的独立记忆随剧情成长，勿让其忘记已发生之事）,
     "life_skill_changes": [{"name":"生活技能名（如 炼丹/炼器/符箓）","proficiency_change": 数字(熟练度增减，单轮通常 1-12，满 100 即登峰造极),"path":"选定/解锁的进阶之路名(如 丹王道，首次择路或强化时填，否则留空)"}],
@@ -322,7 +366,13 @@ ${this.buildVarietyBlock(state)}
     lines.push("· 已知版图（疆域·地名·性质·凶险·风貌）：");
     gen.regions.forEach(r => lines.push(`  - 【${r.macro}】${r.name}（${r.type}·凶险${r.danger}）：${r.desc}`));
     lines.push("· 当世宗门势力：");
-    gen.factions.forEach(f => lines.push(`  - ${f.name}（${f.disposition}），根基在${f.base}；${f.sigil}`));
+    gen.factions.forEach(f => {
+      const daoName = (typeof DAO_CREEDS !== "undefined") ? (DAO_CREEDS.find(d => d.id === f.dao) || {}).name : null;
+      lines.push(`  - ${f.name}（${f.disposition}），根基在${f.base}；信奉【${daoName || "未明之道"}】；${f.sigil}`);
+    });
+    if (gen.daoTension) {
+      lines.push(`· 本界道争（剑来式内核·道理之争）：「${gen.daoTension.aName}」与「${gen.daoTension.bName}」各执一词，构成贯穿此界的根本张力——你以言行所立之"道"，将决定同道者亲、异道者辩乃至相伐。`);
+    }
     lines.push("· 名动一方的人物（每位皆有独立设定与记忆，请严格遵循其性格与过往，前后不可矛盾）：");
     (gen.npcs || []).forEach(n => {
       const mem = (state.npcMemory && state.npcMemory[n.name]) || null;
@@ -408,6 +458,32 @@ ${this.buildVarietyBlock(state)}
     return s;
   },
 
+  // 道心 / 道理体系区块（剑来式内核）：把"诸道并存、玩家以言行立道"注入系统提示词
+  buildDaoBlock(state) {
+    if (typeof DAO_CREEDS === "undefined" || !DAO_CREEDS.length) return "（本界未载入道心体系，由你与玩家自由演绎道理之争）";
+    const dao = (state.meta && state.meta.dao) || { chosen: null, leanings: {} };
+    const findDao = (id) => DAO_CREEDS.find(d => d.id === id) || null;
+    const chosenObj = dao.chosen ? findDao(dao.chosen) : null;
+    let s = "";
+    s += `- 本界诸道并存，每条"道"皆为一种根本道理 / 立场（非正邪标签，各有可取与偏执）：\n`;
+    DAO_CREEDS.forEach(d => {
+      const opp = (d.opposed && d.opposed.length) ? d.opposed.map(id => (findDao(id) || {}).name).filter(Boolean).join("、") : "（调和诸道，无明示之敌）";
+      s += `  · ${d.name}：${d.tenet}（与之相左之道：${opp}）\n`;
+    });
+    s += `- 玩家当前所立之"道"：${chosenObj ? "【" + chosenObj.name + "】" : "尚未立道（随波逐流，可随自身言行逐渐显形）"}。\n`;
+    if (dao.leanings && Object.keys(dao.leanings).length) {
+      const leanStr = Object.keys(dao.leanings).map(id => {
+        const d = findDao(id);
+        return d ? `${d.name}(${dao.leanings[id] > 0 ? "+" : ""}${dao.leanings[id]})` : id;
+      }).join("、");
+      s += `- 玩家道心倾向（累积中）：${leanStr}。\n`;
+    }
+    s += `- 当玩家言辞 / 抉择显露出某种"道"的倾向（护弱→侠、重诺守契→儒 / 商、问道穷理→学、嗜杀任性→魔 / 兵、顺应自然→道、普度→佛），须在 state_changes.dao_change 回写：{"lean":"道id","delta":数字(通常 1-5)} 累积其道心；当倾向足够坚定（多次主动择此道），可标记 {"chosen":"道名"} 使其"立道"。同道势力 / NPC 对你更亲和（好感可加成），异道者可能来辩、来讥乃至相伐。\n`;
+    s += `- 可设计"道理之争"场景：NPC 引经据典与你辩难，或你以言行折服对方（呼应《剑来》"讲道理"）；胜负不在修为，而在道理是否站得住、言语是否有分量。让玩家感到"我信什么，世界就如何待我"。\n`;
+    s += `- 切勿把"道"写成非黑即白的好坏；各道皆有信徒与道理，让玩家自己沉浮、自己承担其代价与回响。\n`;
+    return s;
+  },
+
   // 由世界种子 + 当前境界，生成"本回合节奏指令"，作为 AI 的导演
   // 关键改动：剧情弧由境界(关卡)驱动，而非程数。突破即转折，飞升即大结局。
   buildPacingBlock(state) {
@@ -418,6 +494,10 @@ ${this.buildVarietyBlock(state)}
     s += `当前篇章（由境界驱动）：${p.phaseName}（${p.arc === "free" ? "前期·免费体验期" : p.arc === "finale" ? "真正大结局·飞升" : "中后期·波澜渐起"}）\n`;
     s += `张力等级：${p.tension}/5\n`;
     s += `导演意图：${p.directorNote}\n`;
+    // 沉浸模式节奏：允许"过日子"，低张力回合可不强行抛危机，时间可成片流逝
+    if (state && state.narrationMode === "immersive") {
+      s += `【沉浸模式 · 节奏】允许"过日子"：低张力回合可不强行抛危机，转而写日常 / 游荡 / 慢成长；时间可成片流逝（day_change 2-5 日亦常见）；尊重玩家奇招怪招，激发涌现式叙事。高光事件仍须依节奏指令在适当窗口抖出，不可因"慢"而长期平淡。\n`;
+    }
     if (p.finale) {
       s += "⚠ 玩家已至飞升期，这是仙途真正的'合'之大结局：须让一路伏笔尽数回响、恩怨收束、天地共贺飞升；可自由续写仙界新篇，但本程须有'功成圆满'的收束感，绝不可草草收场或又开无尽新坑。\n";
     }
@@ -491,6 +571,9 @@ ${this.buildVarietyBlock(state)}
       return "【叙事篇幅 · 快速仙途】本局为快速仙途：每回合叙事控制在 120–220 字，一屏可读完，重情节推进、轻铺陈，节奏明快。";
     }
     const mode = NARRATIVE_MODES.find(m => m.key === (state && state.narrationMode)) || NARRATIVE_MODES.find(m => m.key === "standard") || NARRATIVE_MODES[0];
+    if (mode.key === "immersive") {
+      return mode.rule + `\n【沉浸模式 · 结构深化（关键 · 区别于「只是把文章写长」）】沉浸模式的核心不是字数，而是"过日子"的真实密度：①允许无目的游荡、定居、慢成长——并非每回合都抛事件与抉择；可写一段日常（采药、读书、听书、与村民闲谈、看云听雨、独坐调息），让世界"活着"而非"推剧情"。②时间可成片流逝（偶发 day_change 2-5 日），伤病学医须假以时日，静养期间江湖自有风云流转，不必时刻围着玩家转。③尊重玩家任意奇招 / 怪招（如 BladeRPG「以冷馒头逼疯剑客」），把荒唐的坚持当作有效"行为"去回应，激发涌现式叙事——你拒绝按牌理出牌的想象力，就是最强的招式。④道德灰度：绝不替玩家标"正确选项"，抉择自有分量、后果自担，NPC 记得你做过什么。⑤【真实江湖 · 名声是活的】玩家声望 / 好感须跨地点真实延续：恶名在身者，新药铺可能拒绝赊账、旧识可能避而不见；善名在身者，异乡亦有人愿助。NPC 之间也会"传闻"你的事迹（你做过的事，可能被别的 NPC 以"听说"的口吻提起）。`;
+    }
     return mode.rule;
   },
 
@@ -498,16 +581,25 @@ ${this.buildVarietyBlock(state)}
   buildLocationBrief(state) {
     const loc = (state && state.world && state.world.location) || "";
     const gen = (state && state.world && state.world.gen);
+    // 先判子地点：玩家实际可能身处某 sublocation（而非地域中枢）
+    const subEntry = (gen && gen.sublocations) ? (gen.sublocations || []).find(s => s.name === loc) || null : null;
     let entry = null;
     if (gen && gen.regions) entry = gen.regions.find(r => r.name === loc) || null;       // 生成世界地域（优先）
     if (!entry && typeof LOCATIONS !== "undefined") entry = LOCATIONS.find(l => l.name === loc) || null; // 静态回退
+    // 若 loc 是 sublocation 名（不在 regions 中），用其所属 region 作为 sensory/danger 基底
+    if (!entry && subEntry && subEntry.region) {
+      entry = (gen && gen.regions) ? gen.regions.find(r => r.name === subEntry.region) || null : null;
+    }
     if (!entry) {
       return this._buildBranchNote(state, loc);
     }
     const danger = (entry.danger != null) ? entry.danger : 0;
     const type = entry.type || "未知之地";
     const sensory = entry.sensory || entry.desc || "";
-    let base = `【当前所在 · ${entry.name}（${type} · 凶险度${danger}/10）】\n`;
+    // 标题：身处子地点时显示「子地点（隶属地域）」
+    const subLabel = subEntry ? ` · ${subEntry.type}` : "";
+    const titleName = subEntry ? `${subEntry.name}（隶属 ${entry.name}）` : entry.name;
+    let base = `【当前所在 · ${titleName}（${type}${subLabel} · 凶险度${danger}/10）】\n`;
     if (sensory) {
       base += `环境质感（仅作灵感种子，切勿逐字抄入 narrative）：${sensory}\n` +
         `请在描写中自然融此地的气息、声响与光影，使玩家"身临其境"。⚠ 严禁把上面"环境质感"原句照抄进 narrative——须化用为属于本回合的新描写：换角度、换感官、叠加角色当下的动作与情绪，写出你自己的句子。离开此地时，须同步切换氛围与 state_changes.scene。`;
@@ -515,18 +607,210 @@ ${this.buildVarietyBlock(state)}
       base += `（此地为${type}，请在描写中自然呈现其氛围与凶险，使玩家身临其境。）`;
     }
     // —— 子地点专属故事钩子（每回合随机抽一条，AI 据此衍生本回合事件）
-    const subEntry = (gen && gen.sublocations) ? (gen.sublocations || []).find(s => s.name === loc) : null;
     if (subEntry && subEntry.hook) {
       base += `\n· 【本地点·专属钩子】${subEntry.hook}\n本回合须以此钩子为种子衍生一段独特事件（不要再写"路过此地无奇"的空场）；事件可大可小，但须让本回合有"只属于此地"的剧情回响，而非通用模板。`;
     }
+    // —— 子地点更细的景致（让"几百个地方"各有其形，而非共用地域背景）
+    if (subEntry && subEntry.desc) {
+      base += `\n· 此处更具体的景致：${subEntry.desc}`;
+    }
+    // —— 本地规矩 / 风气（入乡随俗或犯忌；E 系统）
+    if (subEntry && subEntry.custom) {
+      base += `\n· 【本地规矩·入乡随俗】${subEntry.custom}\n在此地行事须留意此风此忌；顺俗则得人缘、易成事，犯忌则可能引发排挤、冲突或风波，使本回合多一分"真实江湖"的错步之险。`;
+    }
     // —— 刚结束的赶路段（让 AI 自然衔接赶路→抵达，避免"瞬间转移"感）
     const tl = state.world && state.world.travelLast;
-    if (tl && tl.to && (tl.to === loc || loc === subEntry)) {
+    if (tl && tl.to && tl.to === loc) {
       base += `\n· 【赶路背景·勿丢】本回合前有 ${tl.days} 日跋涉（${tl.li} 里，${tl.terrain || "凡俗"}地形）：${tl.encounterHint || ""}。请在 narrative 开篇自然带出这次赶路的痕迹（一路风尘、步履反应、途中细物），绝不可写"瞬间抵达"或忽略这段时间。`;
     }
+    // —— 活名声 + 江湖情报网（P1-B）：本地点已知传闻 + 玩家名望 ——
+    const intelHere = this._buildIntelForLocation(state);
+    if (intelHere) base += "\n" + intelHere;
+    const repHere = this._buildReputationForLocation(state);
+    if (repHere) base += "\n" + repHere;
+    // —— 真实伤病学（P1-C）：当前伤势 + 对症提示，让 AI 叙事贴合伤体 ——
+    const woundHere = this._buildWoundsForLocation(state);
+    if (woundHere) base += "\n" + woundHere;
+    // —— 经济回响（P1-C）：市廛类势力因你恶名而限售抬价，坊市中尤甚 ——
+    const marketHere = this._buildMarketStanding(state);
+    if (marketHere) base += "\n" + marketHere;
+    // —— P2 NPC 自驱议程：在场人物的志业/性格，令其言行服务自身目标而非迎合玩家 ——
+    const npcAuto = this._buildNpcAutonomyBlock(state);
+    if (npcAuto) base += "\n" + npcAuto;
+    // —— P2 神识串供/因果把柄：在场 NPC 已知晓的玩家过往（可作把柄/公审之证）——
+    const npcGossipBlk = this._buildNpcGossipBlock(state);
+    if (npcGossipBlk) base += "\n" + npcGossipBlk;
+    // —— P2 NPC 自主演化：本回合同地点 NPC 的自主行为「世界动态」摘要（须如实反映，可能影响玩家）——
+    const npcTick = this._buildNpcTickBlock(state);
+    if (npcTick) base += "\n" + npcTick;
     const branchNote = this._buildBranchNote(state, loc, gen);
     const out = (base + branchNote).trim();
     return out || "";
+  },
+
+  // —— P1-A 势力态势区块：让 AI 看见诸派随世界时钟演化的实时状态 ——
+  buildFactionStateBlock(state) {
+    const gen = (state.world && state.world.gen);
+    if (!gen || !gen.factions || !gen.factions.length) return "";
+    const label = { rising: "崛起", stable: "守成", declining: "式微", war: "交战" };
+    const lines = ["【势力态势 · 此界诸派随时光自行演化，须据此让门人言行贴合】"];
+    gen.factions.forEach(f => {
+      const daoName = (typeof DAO_CREEDS !== "undefined") ? (DAO_CREEDS.find(d => d.id === f.dao) || {}).name : null;
+      const res = Math.max(0, Math.min(100, f.resources != null ? f.resources : 50));
+      const bar = "█".repeat(Math.max(0, Math.round(res / 10))) + "░".repeat(10 - Math.max(0, Math.round(res / 10)));
+      const terr = ((f.territory && f.territory.length) ? f.territory.join("、") : (f.base || "未知"));
+      const comm = f.commerce ? "·市廛" : "";
+      lines.push(`  - ${f.name}（奉【${daoName || "未明之道"}】·根基${f.base}${comm}）：现状「${label[f.status] || "守成"}」｜资源 ${bar} ${res}/100｜疆域[${terr}]｜当务：${f.agenda || "守成待变"}`);
+    });
+    const w = state.world || {};
+    if (Array.isArray(w.lastWorldShift) && w.lastWorldShift.length) {
+      lines.push("· 近来江湖生变（闭关/远游归来须以此写变迁）：");
+      w.lastWorldShift.slice(-6).forEach(s => lines.push("  - " + s));
+    }
+    return lines.join("\n");
+  },
+
+  // 将地点名解析为所属 macro 域（供情报网定位）
+  _locMacro(state) {
+    const gen = (state && state.world && state.world.gen);
+    const loc = (state && state.world && state.world.location) || "";
+    if (!gen || !loc) return null;
+    const sub = (gen.sublocations || []).find(s => s.name === loc);
+    if (sub) return sub.macro;
+    const reg = (gen.regions || []).find(r => r.name === loc);
+    if (reg) return reg.macro;
+    return null;
+  },
+
+  // —— P1-B 本地点已知江湖传闻（已传播至当前 macro 者）——
+  _buildIntelForLocation(state) {
+    const w = (state && state.world) || {};
+    const gen = w.gen;
+    if (!gen || !Array.isArray(w.intel) || !w.intel.length) return null;
+    const macro = this._locMacro(state);
+    if (!macro) return null;
+    const here = w.intel.filter(e => e.spread && e.spread[macro]);
+    if (!here.length) return null;
+    here.sort((a, b) => (b.day || 0) - (a.day || 0));
+    const top = here.slice(0, 3);
+    const lines = ["· 【本地点·江湖见闻】（传闻已随地缘传至此地，NPC 据此待你）"];
+    top.forEach(e => lines.push(`  - ${e.text}（传自${e.origin || "未知"}，第${e.day || "?"}日）`));
+    return lines.join("\n");
+  },
+
+  // —— P1-B 玩家在各派之名望（江湖情报网据此让相关 NPC 亲/疏/惧/仇）——
+  _buildReputationForLocation(state) {
+    const w = (state && state.world) || {};
+    const gen = w.gen;
+    const rep = (state && state.repByFaction) || {};
+    if (!gen || !gen.factions || !gen.factions.length) return null;
+    const known = gen.factions.filter(f => typeof rep[f.name] === "number");
+    if (!known.length) return "· 【本地点·你的名望】你在此地尚无名声，无人识得你——保持神秘，或就此扬名立万。";
+    const lines = ["· 【本地点·你的名望】（江湖情报网据此让相关 NPC 亲/疏/惧/仇）"];
+    known.forEach(f => {
+      const v = rep[f.name];
+      const tone = v >= 20 ? "（美名远扬，门下多愿相助）" : (v <= -20 ? "（恶名昭彰，人人戒备避见）" : "（略有声闻）");
+      lines.push(`  - 对${f.name}：${v >= 0 ? "+" : ""}${v} ${tone}`);
+    });
+    return lines.join("\n");
+  },
+
+  // —— P1-C 当前伤势（世界照走，须让 AI 叙事贴合伤体，不写"瞬间无伤"）——
+  _buildWoundsForLocation(state) {
+    const c = (state && state.character) || {};
+    const ws = c.wounds || [];
+    if (!ws.length) return null;
+    const lab = { 1: "轻", 2: "中", 3: "重" };
+    const lines = ["· 【你的伤势】（世界照走，无一刻不在变化）"];
+    ws.forEach(w => {
+      const wt = (typeof WOUND_TYPES !== "undefined") ? WOUND_TYPES[w.type] : null;
+      const pct = 100 - Math.round(w.healed);
+      const remedy = wt ? wt.remedy : "对症疗治";
+      const tierNote = (wt && wt.tier === "道途") ? "〔道途层〕" : "〔肉身层〕";
+      const extra = (w.type === "业障缠") ? "；此伤非丹药可解，唯了结因果、消业积德方愈" : (w.severity >= 2 ? "；重伤在身，不宜妄动、不可强冲境界" : "");
+      lines.push(`  - ${tierNote}${w.type}·${lab[w.severity] || ""}（${pct}%未愈）：须${remedy}${extra}`);
+    });
+    lines.push("  请在叙事中体现伤体之限：动作受制、运功牵痛、须觅药或静养；不可写\"瞬间无伤\"。");
+    return lines.join("\n");
+  },
+
+  // —— P1-C 经济回响：市廛/丹盟类势力因你恶名而限售抬价（跨域一致，靠江湖情报网通道）——
+  _buildMarketStanding(state) {
+    const w = (state && state.world) || {};
+    const gen = w.gen;
+    const rep = (state && state.repByFaction) || {};
+    if (!gen || !gen.factions) return null;
+    const loc = (w.location) || "";
+    const sub = (gen.sublocations || []).find(s => s.name === loc);
+    const reg = (gen.regions || []).find(r => r.name === loc);
+    const isMarket = (sub && /坊|市|互市|集|铺/.test((sub.type || "") + (sub.name || ""))) || (reg && /坊|市|互市|集/.test((reg.type || "") + (reg.name || "")));
+    const bad = gen.factions.filter(f => f.commerce && typeof rep[f.name] === "number" && rep[f.name] <= -30);
+    if (!bad.length) return null;
+    const lines = ["· 【经济回响·市廛态度】（你惹了市廛/丹盟类宗门的恶名，其名下坊市跨域一致地对你限售抬价）"];
+    bad.forEach(f => {
+      const v = rep[f.name];
+      lines.push(`  - 对${f.name}恶名昭彰（${v}）：其名下各域坊市对你限售上品丹药法宝、售价抬高三成、概不赊欠；NPC 掌柜或当面冷拒、或坐地起价——须设法洗刷恶名，或另觅门路。`);
+    });
+    if (!isMarket) lines.push("  你当前不在坊市，但此风评已随江湖情报网传开，他日入坊必受其制。");
+    return lines.join("\n");
+  },
+
+  // —— P2-A 道心硬律区块：玩家所立不可改写之天地常法（呼应刀锋"大千世界"玩家设定被 AI 严守）——
+  buildFixedLawsBlock(state) {
+    const w = (state && state.world) || {};
+    const fl = w.fixedLaws;
+    if (!fl) return "";
+    const lines = ["【不可撼动之律 · 玩家所立天地常法，绝不可被剧情改写】"];
+    if (fl.oath) lines.push(`  · 道心自述：${fl.oath}`);
+    else lines.push("  · （玩家尚未立道心自述；可于开局以命格之言立律）");
+    if (Array.isArray(fl.passiveSkills) && fl.passiveSkills.length) {
+      lines.push("  · 本命功法（永久被动·不可失）：" + fl.passiveSkills.join("、"));
+    }
+    lines.push("  · 玩家所立之律，AI 须始终遵守，不可日后以剧情将其推翻或遗忘。");
+    return lines.join("\n");
+  },
+
+  // —— P2 在场 NPC 的志业/性格（令其言行服务自身目标，而非迎合玩家）——
+  _buildNpcAutonomyBlock(state) {
+    const gen = (state && state.world && state.world.gen);
+    const loc = (state && state.world && state.world.location) || "";
+    if (!gen || !Array.isArray(gen.npcs) || !gen.npcs.length) return null;
+    const here = gen.npcs.filter(n => n.where === loc && n.autonomy);
+    if (!here.length) return null;
+    const lines = ["· 【在场人物·其志业性格】（须令其言行服务自身目标，而非唯玩家是从）"];
+    here.slice(0, 4).forEach(n => {
+      lines.push(`  - ${n.name}（${n.title || "修士"}·性${n.xingge || "隐忍"}）：志业「${n.zhiye || "行走世间"}」${n.yinguo && n.yinguo !== "未知之因" ? "·背上" + n.yinguo : ""}${n.customOrigin ? "·来处：" + n.customOrigin : ""}`);
+    });
+    return lines.join("\n");
+  },
+
+  // —— P2 神识串供/因果把柄：在场 NPC 已知晓的玩家过往（可作把柄/宗门公审之证）——
+  _buildNpcGossipBlock(state) {
+    const w = (state && state.world) || {};
+    const gen = w.gen;
+    const loc = w.location || "";
+    if (!gen || !Array.isArray(w.npcGossip) || !w.npcGossip.length) return null;
+    let curMacro = null;
+    const reg = (gen.regions || []).find(r => r.name === loc);
+    if (reg) curMacro = reg.macro;
+    else { const sub = (gen.sublocations || []).find(s => s.name === loc); if (sub) curMacro = sub.macro; }
+    if (!curMacro) return null;
+    const known = w.npcGossip.filter(g => g.spread && g.spread[curMacro]);
+    if (!known.length) return null;
+    const lines = ["· 【神识串供/因果把柄】（在场 NPC 已闻知你的某些过往，可能串供识破你的布局）"];
+    known.sort((a, b) => (b.day || 0) - (a.day || 0));
+    known.slice(0, 3).forEach(g => lines.push(`  - ${g.text}（已传至${curMacro}）`));
+    return lines.join("\n");
+  },
+
+  // —— P2 NPC 自主演化：把本回合 Game._tickNPCAutonomy 汇总的「世界动态」注入系统提示词 ——
+  _buildNpcTickBlock(state) {
+    const w = (state && state.world) || {};
+    const summaries = Array.isArray(w._npcTickSummary) ? w._npcTickSummary : [];
+    if (!summaries.length) return null;
+    const lines = ["· 【世界动态】（以下为刚刚发生在你身边的 NPC 自主行为，须在叙事中如实反映，并可能反过来影响你）："];
+    summaries.forEach(s => lines.push("  - " + s));
+    return lines.join("\n");
   },
 
   // 分支节点提示（抽成独立函数，供 buildLocationBrief 在查不到 entry 时也能调用）
@@ -565,9 +849,11 @@ ${this.buildVarietyBlock(state)}
       const cap = (cfg && typeof cfg.maxTokens === "number") ? cfg.maxTokens : 2000;
       return Math.min(base, cap);
     }
-    // 推理模型：base + 推理开销预留（standard 约 1500、immersive 约 2000 之上再留 1100~1400）
-    const headroom = (base <= 1500) ? 1100 : 1400;
-    const desired = base + headroom;
+    // 推理模型：思考 token 长度高度不确定（实测 460–4000+），必须把"思考预算"与"正文预算"都算进去，
+    // 否则偶发长思考会把正文 JSON 饿死 → 整回合走兜底、不可玩（deepseek-v4-flash 之回归）。
+    // 给推理模型充足上限：正常回合模型会提前 stop（不会浪费），仅长思考回合才用满预算。
+    const REASONING_BUDGET = 6000;
+    const desired = base + REASONING_BUDGET; // standard≈6850 / immersive≈8000
     const cap = (cfg && typeof cfg.maxTokens === "number") ? cfg.maxTokens : 2000;
     // 推理模型宁可多花 token，也绝不允许 options 被截断（截断=玩家无法操作=严重违约）；
     // 若用户设定上限低于所需，以 desired 为准，保证叙事与选项完整。
@@ -672,20 +958,78 @@ ${this.buildVarietyBlock(state)}
     throw lastErr || new Error("请求失败");
   },
 
-  // 发送请求（流式）
+  // 发送请求（流式，含解析失败重校）
+  // 统一请求入口：后端模式走服务端代理（Key 不暴露前端），否则直连用户自带 Key
+  async _postChat(body) {
+    const backendUrl = this.getBackendUrl();
+    const useBackend = !!backendUrl && this.isLoggedIn();
+    if (useBackend) {
+      const resp = await fetch(backendUrl.replace(/\/$/, "") + "/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${this.getAuthToken()}` },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
+        throw new Error("后端AI失败 (" + resp.status + "): " + errText.slice(0, 200));
+      }
+      return resp;
+    }
+    const cfg = this.getConfig();
+    const resp = await fetch(cfg.baseURL.replace(/\/$/, "") + "/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${cfg.apiKey}` },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => "");
+      throw new Error("API请求失败 (" + resp.status + "): " + errText.slice(0, 200));
+    }
+    return resp;
+  },
+
   async stream(messages, state, onChunk) {
     const cfg = this.getConfig();
-    if (!cfg.apiKey) throw new Error("未配置 API Key，请先在设置中填写");
+    const useBackend = this.isLoggedIn() && !!this.getBackendUrl();
+    if (!useBackend && !cfg.apiKey) throw new Error("未配置 API Key，请先在设置中填写（或登录后端账号使用服务端 Key）");
 
+    // 解析失败重校：偶发畸形 JSON（非截断）时，以更低温度重取一次，把毛刺压到近零。
+    // 传输层网络/超时已由 _fetchJson 内部重试，此处为应用层「格式自愈」，二者互不干扰。
+    const MAX_PARSE_RETRY = 1;
     const systemPrompt = this.buildSystemPrompt(state);
+    let lastRaw = "";
 
+    for (let attempt = 0; attempt <= MAX_PARSE_RETRY; attempt++) {
+      // 重校轮次降温度，让推理模型更「规矩」地产出合法 JSON
+      const temperature = attempt === 0
+        ? cfg.temperature
+        : Math.max(0.2, Math.min(cfg.temperature, 0.4));
+
+      const raw = await this._streamOnce(messages, systemPrompt, state, onChunk, temperature, cfg);
+      lastRaw = raw;
+
+      // 解析自检：成功则直接返回；失败且仍可重试则降温度重校
+      let ok = false;
+      try { ok = !this.parseResponse(raw).parseError; } catch (e) { ok = false; }
+      if (ok) return raw;
+
+      if (attempt < MAX_PARSE_RETRY && onChunk) {
+        // onStreamChunk 为 innerHTML 覆盖式，重校提示会被最终叙事覆盖，不会叠加
+        try { onChunk("", "推演微滞，重校中……"); } catch (e) {}
+      }
+    }
+    return lastRaw;
+  },
+
+  // 单次流式请求（被 stream() 调用，支持解析失败重校重试）
+  async _streamOnce(messages, systemPrompt, state, onChunk, temperature, cfg) {
     const body = {
       model: cfg.model,
       messages: [
         { role: "system", content: systemPrompt },
         ...messages,
       ],
-      temperature: cfg.temperature,
+      temperature: temperature,
       max_tokens: this.getMaxTokens(state, cfg),
       response_format: { type: "json_object" },
       stream: true,
@@ -695,14 +1039,8 @@ ${this.buildVarietyBlock(state)}
       body.stream_options = { include_usage: true };
     }
 
-    const resp = await this._fetchJson(
-      cfg.baseURL.replace(/\/$/, "") + "/chat/completions",
-      {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${cfg.apiKey}`,
-      },
-      JSON.stringify(body)
-    );
+    // 刀锋式：后端模式走 /api/chat 代理（Key 不暴露），否则直连用户自带 Key
+    const resp = await this._postChat(body);
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -772,15 +1110,7 @@ ${this.buildVarietyBlock(state)}
       response_format: { type: "json_object" },
     };
 
-    const resp = await this._fetchJson(
-      cfg.baseURL.replace(/\/$/, "") + "/chat/completions",
-      {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${cfg.apiKey}`,
-      },
-      JSON.stringify(body)
-    );
-
+    const resp = await this._postChat(body);
     const json = await resp.json();
     this._reportUsage(cfg.model, json.usage);
     const content = json.choices?.[0]?.message?.content || "";
@@ -1107,18 +1437,7 @@ ${logText}
       body.stream_options = { include_usage: true };
     }
 
-    const resp = await fetch(cfg.baseURL.replace(/\/$/, '') + '/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${cfg.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error('API请求失败 (' + resp.status + '): ' + errText.slice(0, 200));
-    }
+    const resp = await this._postChat(body);
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
