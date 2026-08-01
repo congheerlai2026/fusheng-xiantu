@@ -900,6 +900,158 @@ const DAO_CREEDS = [
   { id: "hua",   name: "化之圆融", tenet: "诸法皆通，不拘一隅，和而不同；万道同流，我取其中。", opposed: [] },
 ];
 
+// ============================================================
+// 世界自演化 · 事件链层 · 大事件库（天地异变）
+// 每条事件含 id/name/type/scope/desc/duration，以及：
+//   pickMacro(gen)      —— 触发时抽取的目标 macro 域（scope==='macro' 时有效）
+//   cond(state,day)     —— 是否满足触发条件（可空）
+//   apply(state,day,macro) —— 落地效果（对 state.world / state.world.gen 的修改，均做存在性检查）
+// 注：EVENT_CHAINS 为「静态行为库」，事件队列（state.world.eventQueue）只存数据，
+//     触发时按 id 回查此库取得 cond/apply，从而可随存档完整序列化而 function 不丢失。
+// ============================================================
+function _evMacroList(gen) {
+  return (gen && gen.macroRegions) ? gen.macroRegions.map(m => m.name) : [];
+}
+function _evMacroOfType(gen, types) {
+  const set = new Set();
+  if (gen && gen.regions) gen.regions.forEach(r => { if (r.macro && types.indexOf(r.type) >= 0) set.add(r.macro); });
+  let arr = Array.from(set);
+  if (!arr.length) arr = _evMacroList(gen);
+  return arr.length ? arr[Math.floor(Math.random() * arr.length)] : null;
+}
+function _evMacroRandom(gen) {
+  const arr = _evMacroList(gen);
+  return arr.length ? arr[Math.floor(Math.random() * arr.length)] : null;
+}
+function _evPushIntel(state, text, macro) {
+  const w = (state && state.world) || {};
+  if (!w.intel) w.intel = [];
+  const day = w.day || 1;
+  const m = macro || "中州";
+  const id = "evt-" + day + "-" + w.intel.length + "-" + Math.floor(Math.random() * 1e6);
+  w.intel.push({ id, day, origin: m, type: "event", text, weight: 1, spread: { [m]: day }, spreadComplete: false, verified: true });
+  if (w.intel.length > 200) w.intel = w.intel.slice(-200);
+}
+function _evMacroDanger(gen, macro, delta) {
+  if (!gen || !gen.regions || !macro) return;
+  gen.regions.forEach(r => { if (r.macro === macro) r.danger = Math.max(0, Math.min(10, (r.danger || 0) + delta)); });
+}
+function _evClampSpirit(w, v) {
+  const cap = (w && w.gen && w.gen.realmCapLevel) || 10;
+  return Math.max(0, Math.min(cap, Math.round(v)));
+}
+
+const EVENT_CHAINS = [
+  { // 1) 血色禁地开启
+    id: "blood_forbidden", name: "血色禁地开启", type: "禁地", scope: "macro", duration: 40,
+    desc: "上古禁地血光冲霄，凶煞之气外泄，周遭生灵十不存一。",
+    pickMacro: (gen) => _evMacroOfType(gen, ["禁地"]),
+    cond: null,
+    apply: (state, day, macro) => {
+      const w = state.world, gen = w.gen;
+      if (macro) _evMacroDanger(gen, macro, 2);
+      _evPushIntel(state, `血色禁地于【${macro}】开启，凶煞冲天，入者九死一生。`, macro);
+      if (Array.isArray(gen.rumors)) gen.rumors.push(`血色禁地现身${macro}，传闻其下有上古血魔封印将破。`);
+    },
+  },
+  { // 2) 虚天殿现世
+    id: "xutian_palace", name: "虚天殿现世", type: "秘境", scope: "macro", duration: 35,
+    desc: "虚天殿自虚空浮现，殿中藏无量机缘，引四方修士争夺。",
+    pickMacro: (gen) => _evMacroOfType(gen, ["秘境"]),
+    cond: null,
+    apply: (state, day, macro) => {
+      const w = state.world, gen = w.gen;
+      w.spirit = _evClampSpirit(w, (w.spirit || 0) + 1);
+      if (gen.treasures) gen.treasures.push({ name: "虚天遗宝", where: macro || "虚天殿", desc: `虚天殿现世，殿心悬着一件传闻中的古修遗宝。` });
+      _evPushIntel(state, `虚天殿于【${macro}】上空浮现，群修争相涌入，机缘与杀机并存。`, macro);
+    },
+  },
+  { // 3) 正魔大战
+    id: "zhengmo_war", name: "正魔大战", type: "战乱", scope: "global", duration: 50,
+    desc: "正邪两道彻底决裂，烽烟遍地，战乱之地物价飞涨、流民四起。",
+    pickMacro: null,
+    cond: (state, day) => {
+      const wp = (state.world.warPairs || []);
+      if (wp.length) return true;
+      return day > 60 && Math.random() < 0.05;
+    },
+    apply: (state, day, macro) => {
+      const w = state.world, gen = w.gen;
+      (w.warPairs || []).forEach(pk => {
+        const parts = pk.split("|");
+        parts.forEach(nm => {
+          const f = (gen.factions || []).find(x => x.name === nm);
+          if (f && Array.isArray(f.territory)) f.territory.forEach(m => _evMacroDanger(gen, m, 1));
+        });
+      });
+      _evPushIntel(state, `正魔两道全面开战，山河染血，黎民流离。`, "中州");
+    },
+  },
+  { // 4) 灵潮来袭
+    id: "spirit_tide", name: "灵潮来袭", type: "灵气", scope: "global", duration: 30,
+    desc: "天地灵气如潮暴涨，修行事半功倍，秘境机缘频现。",
+    pickMacro: null,
+    cond: null,
+    apply: (state, day, macro) => {
+      const w = state.world;
+      w.spirit = _evClampSpirit(w, (w.spirit || 0) + 2);
+      _evPushIntel(state, `灵潮自九天垂落，四海灵气翻涌，有缘者进境神速。`, "中州");
+    },
+  },
+  { // 5) 宗门大比
+    id: "sect_grand_contest", name: "宗门大比", type: "盛会", scope: "macro", duration: 25,
+    desc: "一方霸主开坛论道、比斗收徒，胜者声名鹊起，门派底蕴大增。",
+    pickMacro: (gen) => {
+      const fs = (gen && gen.factions) || [];
+      if (!fs.length) return _evMacroRandom(gen);
+      const f = fs[Math.floor(Math.random() * fs.length)];
+      return f.baseMacro || _evMacroRandom(gen);
+    },
+    cond: null,
+    apply: (state, day, macro) => {
+      const w = state.world, gen = w.gen;
+      const f = (gen.factions || []).find(x => x.baseMacro === macro);
+      if (f) f.resources = Math.max(0, Math.min(100, (f.resources || 50) + 15));
+      _evPushIntel(state, `${f ? f.name : "某大宗门"}于【${macro}】开宗门大比，天下俊才齐聚。`, macro);
+    },
+  },
+  { // 6) 妖潮
+    id: "demon_tide", name: "妖潮", type: "妖患", scope: "macro", duration: 35,
+    desc: "妖族倾巢而出，沿域肆虐，村寨十室九空。",
+    pickMacro: (gen) => _evMacroOfType(gen, ["妖洞", "妖市", "妖窟"]),
+    cond: null,
+    apply: (state, day, macro) => {
+      const w = state.world, gen = w.gen;
+      if (macro) _evMacroDanger(gen, macro, 2);
+      _evPushIntel(state, `妖潮自【${macro}】涌出，沿域噬人，修士结阵死守。`, macro);
+    },
+  },
+  { // 7) 寒灾灵衰
+    id: "cold_disaster", name: "寒灾灵衰", type: "天灾", scope: "global", duration: 30,
+    desc: "天地骤寒，灵脉凝滞，灵气淡薄，粮草价飞涨。",
+    pickMacro: null,
+    cond: null,
+    apply: (state, day, macro) => {
+      const w = state.world;
+      w.spirit = _evClampSpirit(w, (w.spirit || 0) - 1);
+      if (w.economy && w.economy["粮草"]) w.economy["粮草"].price = Math.max(1, Math.round(w.economy["粮草"].price * 1.3));
+      _evPushIntel(state, `寒灾席卷诸界，灵脉凝滞，粮草紧缺、物价腾贵。`, "中州");
+    },
+  },
+  { // 8) 古修遗蜕现
+    id: "ancient_corpse", name: "古修遗蜕现", type: "机缘", scope: "macro", duration: 30,
+    desc: "上古大能遗蜕现世，其随身道藏与法宝引各方窥伺。",
+    pickMacro: (gen) => _evMacroRandom(gen),
+    cond: null,
+    apply: (state, day, macro) => {
+      const w = state.world, gen = w.gen;
+      if (gen.treasures) gen.treasures.push({ name: "古修遗蜕", where: macro || "未知之地", desc: `上古大能遗蜕现身${macro}，其座下道藏引动杀机。` });
+      if (Array.isArray(gen.rumors)) gen.rumors.push(`传闻${macro}深处有古修遗蜕，得之可窥大道。`);
+      _evPushIntel(state, `古修遗蜕于【${macro}】现世，群雄暗动。`, macro);
+    },
+  },
+];
+
 // ---- 地域规矩 / 本地风气（入乡随俗或犯忌）----
 // 每处子地点随机挂载一条，注入 AI 提示词；顺俗得人缘，犯忌引风波。
 const LOCAL_CUSTOMS = [
