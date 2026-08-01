@@ -1077,7 +1077,7 @@ body::before {
 @keyframes p2-glow { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
 
 /* 自主拨弦：傀儡 / 半醒 / 自在 */
-.p2-asis-switch { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+.p2-asis-switch { display: flex; align-items: center; gap: 8px; margin-top: 7px; flex-wrap: wrap; }
 .p2-asis-label { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; white-space: nowrap; }
 .p2-asis-btns { display: flex; gap: 4px; flex: 1; }
 .p2-asis-btn {
@@ -1088,6 +1088,8 @@ body::before {
 }
 .p2-asis-btn:hover { color: var(--text); border-color: var(--text-dim); }
 .p2-asis-btn.active { color: var(--gold-bright); border-color: var(--gold); background: rgba(201,168,76,0.12); }
+/* 当前自主层级的行为释义：让玩家一眼读懂傀儡/半醒/自在的含义 */
+.p2-asis-desc { flex-basis: 100%; font-size: 10px; color: var(--text-dim); margin-top: 2px; letter-spacing: .5px; }
 
 /* 天机盘 · 流言（神识串供扩散） */
 .p2-gossip-hint { font-size: 11px; color: var(--text-dim); line-height: 1.5; margin: 2px 0 6px; font-style: italic; }
