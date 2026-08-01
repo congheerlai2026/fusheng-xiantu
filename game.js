@@ -996,16 +996,27 @@ const Game = {
     return log;
   },
 
-  // 势力演化：资源消长、目标推进、结盟/开战、态势变迁（确定性，按日播种）
+  // 势力演化：剑来式慢节拍——修真宗门以「甲子」为节点，掌教在位动辄数百载，一宗可跨越数个乃至十数王朝。
+  // 每日仅极缓呼吸（资源 ±1 浮动），结构性演化（拓疆、关系漂移、结盟开战、掌教更替）仅在每 _SECT_EPOCH 日的大节点发生。
   _evolveFactions(day, log) {
     const gen = this.state.world.gen;
     const fs = gen.factions;
     const label = { rising: "崛起", stable: "守成", declining: "式微", war: "交战" };
+    const SECT_EPOCH = this._SECT_EPOCH || 360;
+    // —— 每日：极缓呼吸，仅资源 ±1 浮动，绝不动态势、易同盟、改关系（宗门长存之要）——
+    if (day % SECT_EPOCH !== 0) {
+      fs.forEach(f => {
+        const r = this._rng(f.name + "|breath|" + day);
+        f.resources = this._clamp100((f.resources || 50) + Math.round(r() * 2 - 1));
+      });
+      return;
+    }
+    // —— 甲子大节点：宗门结构性演化 ——
     // 1) 每派资源与当前目标进度；目标达成则拓疆或丰收，并另立新标
     fs.forEach(f => {
       const r = this._rng(f.name + "|ev|" + day);
-      f.resources = Math.max(0, Math.min(100, (f.resources || 50) + Math.round(r() * 10 - 5)));
-      f.agendaProgress = Math.max(0, Math.min(100, (f.agendaProgress || 0) + Math.round(r() * 8 + 2)));
+      f.resources = this._clamp100((f.resources || 50) + Math.round(r() * 12 - 5));
+      f.agendaProgress = this._clamp100((f.agendaProgress || 0) + Math.round(r() * 22 + 8));
       if (f.agendaProgress >= 100) {
         const macs = (typeof MACRO_ADJACENCY !== "undefined") ? MACRO_ADJACENCY : {};
         const held = f.territory || [];
@@ -1091,6 +1102,15 @@ const Game = {
         if (w2.intel.length > 200) w2.intel = w2.intel.slice(-200);
       });
     }
+    // 5) 甲子大节点偶发「掌教更替」——本宗历 X 代，道统随代际微变（宗门长存、代际慢转）
+    fs.forEach(f => {
+      const r = this._rng(f.name + "|gen|" + day);
+      if (r() < 0.14) {
+        f.eraGen = (f.eraGen || 1) + 1;
+        f.resources = this._clamp100((f.resources || 50) + Math.round(r() * 10 - 5));
+        if (log && log.push) log.push(`· 【宗门】${f.name}掌教更替，本宗已历 ${f.eraGen} 代，道统未绝`);
+      }
+    });
   },
 
   // ===================== 世界自演化 · 经济层 =====================
@@ -1196,9 +1216,11 @@ const Game = {
   },
 
   // ===================== 世界自演化 · 王朝层 =====================
-  // 凡间王朝与修真宗门并存：王朝随光阴自行兴衰、易代，构成「庙堂」一极。
-  // 一年 = 30 日；每日微调数值（让光阴可感），年界触发大事件（驾崩继位/改朝换代/外患/天灾祥瑞/宫变民变等）。
+  // 剑来式时间尺度：凡间王朝以「年」为节拍（_DYN_YEAR = 30 日/年），人事更迭频繁，数十年至数百载一易代；
+  // 修真宗门以「甲子/百年」为节拍（_SECT_EPOCH = 360 日 ≈ 12 王朝年），掌教在位动辄数百载，一宗可跨越数个乃至十数王朝。
+  // 二者由「气运」耦合：王朝国祚系于护国宗门之盛衰，宗门若过度押注人间皇权，亦随其倾覆而道统受损。
   _DYN_YEAR: 30,
+  _SECT_EPOCH: 360,
 
   _initDynasties(w, gen) {
     if (!w) return;
@@ -1214,7 +1236,19 @@ const Game = {
       rival.name = "（割据）" + rival.name;
       list.push(rival);
     }
+    list.forEach(d => this._assignPatron(w, d, r)); // 每个王朝择一护国宗门，气运相系
     w.dynasties = list;
+  },
+
+  // 剑来式「气运」：为每个王朝择定护国宗门（优先皇朝供奉派，否则最强正道名门）
+  _assignPatron(w, d, r) {
+    const fs = (w && w.gen && w.gen.factions) || [];
+    if (!fs.length) { d.patron = null; return; }
+    let pool = fs.filter(f => f.disposition === "皇朝供奉");
+    if (!pool.length) pool = fs.filter(f => f.disposition === "正道名门");
+    if (!pool.length) pool = fs;
+    const p = pool[Math.floor(r() * pool.length)];
+    d.patron = p ? p.name : null;
   },
 
   _makeDynasty(defs, r, idx, forceStatus) {
@@ -1236,6 +1270,7 @@ const Game = {
       era: 1 + Math.floor(r() * (forceStatus === "crisis" ? 40 : 120)),
       rulerAge: 24 + Math.floor(r() * 36),
       status,
+      patron: null,            // 护国宗门（剑来式气运耦合：国祚系于此派盛衰）
       relations: [],
     };
   },
@@ -1278,11 +1313,19 @@ const Game = {
   },
 
   _dynastyOverthrow(w, cur, r, log) {
+    // 剑来式反噬：过度押注人间皇权的护国宗门，随旧朝倾覆而道统受损（宗门不随王朝亡，但押错注者受伤）
+    const gen2 = (w && w.gen && w.gen.factions) || [];
+    const bound = (cur.patron) ? gen2.find(f => f.name === cur.patron) : null;
+    if (bound && bound.disposition === "皇朝供奉") {
+      bound.resources = this._clamp100((bound.resources || 50) - (10 + Math.floor(r() * 10)));
+      if (log && log.push) log.push(`· 【气运】护国宗门${bound.name}押注旧朝过深，随${cur.name}倾覆而道统受挫`);
+    }
     cur.status = "fallen";
     const defs = (typeof DYNASTY_DEFS !== "undefined") ? DYNASTY_DEFS : null;
-    const nd = defs ? this._makeDynasty(defs, r, w.dynasties.length, "new") : { id: "dyn-x", name: "新朝", reign: "新兴", capital: "未知", house: "?", ruler: "新君", legitimacy: 30, prosperity: 38, stability: 32, mandate: 34, era: 1, rulerAge: 35, status: "new", relations: [] };
+    const nd = defs ? this._makeDynasty(defs, r, w.dynasties.length, "new") : { id: "dyn-x", name: "新朝", reign: "新兴", capital: "未知", house: "?", ruler: "新君", legitimacy: 30, prosperity: 38, stability: 32, mandate: 34, era: 1, rulerAge: 35, status: "new", patron: null, relations: [] };
+    this._assignPatron(w, nd, r); // 新朝另择护国宗门，气运相系（宗门长存、王朝过客）
     w.dynasties.push(nd);
-    if (log && log.push) log.push(`· 【王朝更迭】${cur.name}气数已尽，群雄逐鹿；${nd.name}起于${nd.capital}一带，改元${nd.reign}，天下易主。`);
+    if (log && log.push) log.push(`· 【王朝更迭】${cur.name}气数已尽，群雄逐鹿；${nd.name}起于${nd.capital}一带，改元${nd.reign}，天下易主${nd.patron ? "（护国宗门" + nd.patron + "）" : ""}。`);
     if (w.intel && Array.isArray(w.intel)) {
       w.intel.push({ id: "dyn-ovt-" + (w.day || 1) + "-" + w.intel.length, day: w.day || 1, origin: nd.capital || "中州", type: "event", text: `${cur.name}倾覆，${nd.name}立国改元${nd.reign}，烽火遍野，天下分合未定。`, weight: 2, spread: { [nd.capital || "中州"]: (w.day || 1) }, spreadComplete: false, verified: true });
       if (w.intel.length > 200) w.intel = w.intel.slice(-200);
@@ -1293,14 +1336,28 @@ const Game = {
     const gen = (w && w.gen) || {};
     const fs = (gen.factions || []);
     if (!fs.length) return;
-    // 朝堂与「皇朝供奉」派互为奥援：该派稳固则国祚得补，若其陷入交兵则反噬
-    const gong = fs.filter(f => f.disposition === "皇朝供奉");
-    gong.forEach(f => {
-      if ((f.resources || 50) > 75) cur.legitimacy = this._clamp100(cur.legitimacy + 2 + Math.floor(r() * 3));
-      const inWar = (w.warPairs || []).some(pk => pk.split("|").indexOf(f.name) >= 0);
-      if (inWar) cur.legitimacy = this._clamp100(cur.legitimacy - (3 + Math.floor(r() * 6)));
-    });
-    // 最强正道宗门之盛衰，牵动天下归心
+    // 剑来式「气运」：王朝国祚系于护国宗门之盛衰——这正是庙堂与修行二极相系之要
+    const patron = (cur.patron) ? fs.find(f => f.name === cur.patron) : null;
+    if (patron) {
+      const pr = patron.resources || 50;
+      if (pr > 75) {
+        cur.mandate = this._clamp100(cur.mandate + 3 + Math.floor(r() * 3));
+        cur.legitimacy = this._clamp100(cur.legitimacy + 2);
+        if (log && log.push) log.push(`· 【气运】护国宗门${patron.name}鼎盛，王朝国祚得庇，气运昌隆`);
+      } else if (pr < 35) {
+        cur.mandate = this._clamp100(cur.mandate - (4 + Math.floor(r() * 5)));
+        cur.legitimacy = this._clamp100(cur.legitimacy - 3);
+        if (log && log.push) log.push(`· 【气运】护国宗门${patron.name}式微，王朝气运随之消散`);
+      }
+      // 护国宗门若陷于宗门之战，王朝立受反噬
+      const inWar = (w.warPairs || []).some(pk => pk.split("|").indexOf(patron.name) >= 0);
+      if (inWar) {
+        cur.mandate = this._clamp100(cur.mandate - (5 + Math.floor(r() * 6)));
+        cur.legitimacy = this._clamp100(cur.legitimacy - 4);
+        if (log && log.push) log.push(`· 【气运】护国宗门${patron.name}陷于宗门之战，王朝国祚大损`);
+      }
+    }
+    // 最强正道宗门之盛衰，牵动天下归心（环境效应，弱于护国宗门）
     const top = fs.reduce((a, b) => ((a.resources || 0) > (b.resources || 0) ? a : b), fs[0]);
     if (top && (top.resources || 0) > 80) cur.legitimacy = this._clamp100(cur.legitimacy + 1 + Math.floor(r() * 3));
   },
@@ -2007,6 +2064,11 @@ const Game = {
       if (!Array.isArray(this.state.world.eventQueue)) this.state.world.eventQueue = [];
       // 旧档兼容：世界自演化 · 王朝层
       if (!Array.isArray(this.state.world.dynasties)) this.state.world.dynasties = [];
+      else {
+        // 旧档王朝缺「护国宗门」绑定则补派，使气运耦合与渲染不报错
+        const _r = this._rng("dyn-compat|" + (this.state.world.seed || ""));
+        this.state.world.dynasties.forEach(d => { if (d && d.status !== "fallen" && !d.patron) this._assignPatron(this.state.world, d, _r); });
+      }
       // 旧档兼容：P2 · NPC 自驱议程 + 神识串供/因果把柄 + 道心硬律
       if (!Array.isArray(this.state.world.npcLedger)) this.state.world.npcLedger = [];
       if (!Array.isArray(this.state.world.npcGossip)) this.state.world.npcGossip = [];
@@ -5177,7 +5239,7 @@ const UI = {
         const cls = f.status === "war" ? "ms-evil" : (f.status === "rising" ? "ms-good" : "");
         const clsAttr = cls ? ` class="${cls}"` : "";
         const res = Math.max(0, Math.min(100, f.resources || 50));
-        return `<div class="mdrawer-npc-item"><span>${this.escapeHtml(f.name)}</span><span${clsAttr}>${facLabel[f.status] || "守成"} · 资源${res}</span></div>`;
+        return `<div class="mdrawer-npc-item"><span>${this.escapeHtml(f.name)}</span><span${clsAttr}>${facLabel[f.status] || "守成"} · 资源${res} · 历${f.eraGen || 1}代</span></div>`;
       }).join("");
     }
     factionHtml += `<div class="mdrawer-npc-empty" style="opacity:.7">江湖见闻 ${(Game.state.world.intel || []).length} 则</div></div>`;
@@ -5193,7 +5255,7 @@ const UI = {
         const cls = d.status === "crisis" ? "ms-evil" : (d.status === "prosper" ? "ms-good" : "");
         const clsAttr = cls ? ` class="${cls}"` : "";
         return `<div class="mdrawer-npc-item"><span>${this.escapeHtml(d.name)}·${this.escapeHtml(d.reign || "")}</span><span${clsAttr}>${dynLab[d.status] || "治世"}·第${d.era || 1}年</span></div>` +
-          `<div class="mdrawer-npc-item" style="opacity:.85;font-size:12px"><span>国势${d.prosperity}｜社稷${d.stability}｜国祚${d.mandate}</span><span>${this.escapeHtml(d.ruler || "今上")}·都${this.escapeHtml(d.capital || "?")}</span></div>`;
+          `<div class="mdrawer-npc-item" style="opacity:.85;font-size:12px"><span>国势${d.prosperity}｜社稷${d.stability}｜国祚${d.mandate}${d.patron ? "｜护国" + this.escapeHtml(d.patron) : ""}</span><span>${this.escapeHtml(d.ruler || "今上")}·都${this.escapeHtml(d.capital || "?")}</span></div>`;
       }).join("");
       const dynLog = (Game.state.world.lastWorldShift || []).filter(s => /^·\s*【王朝/.test(s)).slice(-3);
       if (dynLog.length) dynastyHtml += '<div class="mdrawer-npc-empty" style="opacity:.7">' + dynLog.map(s => this.escapeHtml(s.replace(/^·\s*/, ""))).join("；") + '</div>';
